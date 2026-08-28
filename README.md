@@ -11,6 +11,8 @@
 
 A unified CLI tool that simplifies Android Debug Bridge (ADB) operations including APK management, device control, and app inspection.
 
+![ak install demo](demo/install.gif)
+
 **Languages:** [🇺🇸 English](README.md) | [🇰🇷 한국어](README.ko.md)
 
 ## Features
