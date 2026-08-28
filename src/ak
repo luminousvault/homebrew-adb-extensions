@@ -57,11 +57,6 @@ show_help() {
 
 main() {
 
-  # ADB 필수 체크
-  if ! check_adb_available; then
-    exit 1
-  fi
-  
   # 인자 없으면 도움말
   if [ $# -eq 0 ]; then
     show_help
@@ -82,6 +77,11 @@ main() {
     
     # 다른 커맨드들 (동적 로드 또는 이미 로드됨)
     install|pull|extract|info|permissions|uninstall|clear|kill|launch|signature|activities|devices)
+      # ADB 필수 체크 (--version, --help는 adb 없이도 동작)
+      if ! check_adb_available; then
+        exit 1
+      fi
+
       # 개발 모드: load_command 함수 존재 시 동적 로드
       if declare -f load_command >/dev/null 2>&1; then
         if ! load_command "$command"; then

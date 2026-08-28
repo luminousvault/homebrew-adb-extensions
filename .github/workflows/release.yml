@@ -70,6 +70,8 @@ jobs:
       
       - name: Verify build
         run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
           if [ ! -f "build/ak" ]; then
             echo "Error: build/ak not found"
             exit 1
@@ -78,6 +80,25 @@ jobs:
             echo "Error: build/completions/_ak not found"
             exit 1
           fi
+
+          # 빌드 산출물 스모크 테스트 (Formula test 블록과 동일한 검증)
+          chmod +x build/ak
+
+          VERSION_OUTPUT=$(./build/ak --version)
+          if ! echo "$VERSION_OUTPUT" | grep -qF "$VERSION"; then
+            echo "Error: 'ak --version' output does not contain version $VERSION"
+            echo "$VERSION_OUTPUT"
+            exit 1
+          fi
+
+          HELP_OUTPUT=$(./build/ak --help)
+          if ! echo "$HELP_OUTPUT" | grep -qF "install"; then
+            echo "Error: 'ak --help' output does not list install command"
+            echo "$HELP_OUTPUT"
+            exit 1
+          fi
+
+          echo "Smoke test passed: version and help output verified"
       
       - name: Create source archive
         run: |
