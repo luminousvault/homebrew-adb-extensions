@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
   - Randomized MAC detection via the locally administered bit
   - Factory Wi-Fi MAC (`wifi_sta_factory_mac_address`), available even when Wi-Fi is off; if not exposed, a hint on how to see it is shown
   - Connected SSID and Bluetooth MAC (`settings get secure bluetooth_address` → `dumpsys bluetooth_manager`), `n/a` when unavailable
-  - `-m` shows all connected devices as a table
+  - `-m` shows all connected devices
 
 ## [1.2.0] - 2026-07-14
 

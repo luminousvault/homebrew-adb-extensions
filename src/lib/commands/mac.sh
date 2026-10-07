@@ -16,7 +16,7 @@ AK_COMPLETION_DESC
         mac)
           _arguments \
             '(- *)'{-h,--help}'[Show help for this command]' \
-            '-m[Show all connected devices as a table]'
+            '-m[Show all connected devices]'
           ;;
 AK_COMPLETION
 
@@ -24,12 +24,12 @@ show_help_mac() {
     echo -e "${CYAN}${BOLD}Usage:${NC} ak mac [-m] [-h|--help]"
     echo
     echo "Description: Show MAC addresses of the device."
-    echo "  Wi-Fi      MAC used for the current connection (per-network, may be randomized)"
-    echo "  Factory    Factory Wi-Fi MAC (available even when Wi-Fi is off, if exposed)"
-    echo "  Bluetooth  Bluetooth MAC"
+    echo "  Wi-Fi (current)  MAC used for the current connection (per-network, may be randomized)"
+    echo "  Wi-Fi (factory)  Device's own Wi-Fi MAC (available even when Wi-Fi is off, if exposed)"
+    echo "  Bluetooth        Bluetooth MAC"
     echo
     echo "Options:"
-    echo "  -m          Show all connected devices as a table"
+    echo "  -m          Show all connected devices"
     echo "  -h, --help  Show this help message"
     echo
     exit 1
@@ -124,58 +124,20 @@ print_mac_detail() {
     if [ -n "$wifi" ]; then
         is_randomized_mac "$wifi" && note="randomized"
         [ -n "$ssid" ] && note="${note:+$note · }SSID \"$ssid\""
-        printf "  %-10s %s" "Wi-Fi" "$wifi"
+        printf "  %-16s %s" "Wi-Fi (current)" "$wifi"
         [ -n "$note" ] && echo -ne "   ${DIM}(${note})${NC}"
         echo
     else
-        printf "  %-10s %s" "Wi-Fi" "n/a"
+        printf "  %-16s %s" "Wi-Fi (current)" "n/a"
         echo -e "   ${DIM}(Wi-Fi is off or not connected)${NC}"
     fi
 
-    printf "  %-10s %s\n" "Factory" "${factory:-n/a}"
-    printf "  %-10s %s\n" "Bluetooth" "${bt:-n/a}"
+    printf "  %-16s %s\n" "Wi-Fi (factory)" "${factory:-n/a}"
+    printf "  %-16s %s\n" "Bluetooth" "${bt:-n/a}"
 
     if [ -z "$factory" ] && [ -n "$wifi" ] && is_randomized_mac "$wifi"; then
         echo -e "  ${DIM}↳ Factory MAC: set Wi-Fi privacy to 'Use device MAC' and run again${NC}"
     fi
-    echo
-}
-
-# 다중 디바이스 표 출력 (행 데이터는 cmd_mac의 배열 사용)
-print_mac_table() {
-    local i w_dev=6 w_wifi=9 w_rand=6 w_ssid=4 w_fac=11 w_bt=9
-    local fmt sep total
-
-    i=0
-    while [ $i -lt ${#rows_device[@]} ]; do
-        [ ${#rows_device[$i]} -gt $w_dev ] && w_dev=${#rows_device[$i]}
-        [ ${#rows_wifi[$i]} -gt $w_wifi ] && w_wifi=${#rows_wifi[$i]}
-        [ ${#rows_ssid[$i]} -gt $w_ssid ] && w_ssid=${#rows_ssid[$i]}
-        [ ${#rows_factory[$i]} -gt $w_fac ] && w_fac=${#rows_factory[$i]}
-        [ ${#rows_bt[$i]} -gt $w_bt ] && w_bt=${#rows_bt[$i]}
-        i=$((i + 1))
-    done
-
-    fmt="%-${w_dev}s  %-${w_wifi}s  %-${w_rand}s  %-${w_ssid}s  %-${w_fac}s  %-${w_bt}s"
-    total=$((w_dev + w_wifi + w_rand + w_ssid + w_fac + w_bt + 10))
-
-    sep=""
-    i=0
-    while [ $i -lt $total ]; do
-        sep="${sep}─"
-        i=$((i + 1))
-    done
-
-    echo
-    echo -e "${DIM}${BOLD}$(printf "$fmt" "Device" "Wi-Fi MAC" "Random" "SSID" "Factory MAC" "Bluetooth")${NC}"
-    echo -e "${DIM}${sep}${NC}"
-
-    i=0
-    while [ $i -lt ${#rows_device[@]} ]; do
-        printf "${fmt}\n" "${rows_device[$i]}" "${rows_wifi[$i]}" "${rows_rand[$i]}" "${rows_ssid[$i]}" "${rows_factory[$i]}" "${rows_bt[$i]}"
-        i=$((i + 1))
-    done
-    echo
 }
 
 # ─────────────────────────────────────────────────────
@@ -220,33 +182,14 @@ cmd_mac() {
     fi
 
     # 조회
-    local serial wifi ssid factory bt rand
-    local -a rows_device rows_wifi rows_rand rows_ssid rows_factory rows_bt
+    local serial wifi ssid factory bt
     for serial in "${serials[@]}"; do
         get_wifi_mac "$serial"
         wifi="$G_WIFI_MAC"
         ssid=$(extract_wifi_ssid)
         factory=$(get_factory_mac "$serial")
         bt=$(get_bt_mac "$serial")
-
-        if [ $opt_multi -eq 1 ]; then
-            rand="-"
-            if [ -n "$wifi" ]; then
-                rand="no"
-                is_randomized_mac "$wifi" && rand="yes"
-            fi
-            rows_device+=("$(pretty_device "$serial" short)")
-            rows_wifi+=("${wifi:-n/a}")
-            rows_rand+=("$rand")
-            rows_ssid+=("${ssid:--}")
-            rows_factory+=("${factory:-n/a}")
-            rows_bt+=("${bt:-n/a}")
-        else
-            print_mac_detail "$serial" "$wifi" "$ssid" "$factory" "$bt"
-        fi
+        print_mac_detail "$serial" "$wifi" "$ssid" "$factory" "$bt"
     done
-
-    if [ $opt_multi -eq 1 ]; then
-        print_mac_table
-    fi
+    echo
 }

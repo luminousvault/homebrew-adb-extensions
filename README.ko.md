@@ -123,7 +123,7 @@ ak <command> [options] [arguments...]
 
 - `devices` - 연결된 디바이스 목록 (브랜드, 모델, ID, Android 버전, CPU)
 - `mac [options]` - 현재 Wi-Fi MAC(랜덤 여부·SSID 포함), 공장 Wi-Fi MAC, Bluetooth MAC 표시
-  - `-m` 연결된 모든 디바이스를 표로 출력
+  - `-m` 연결된 모든 디바이스 표시
 
 ### 인터랙티브 UI 기능
 
@@ -311,18 +311,18 @@ ak devices
 **MAC 주소 조회:**
 ```bash
 ak mac                # 선택한 디바이스의 MAC 주소
-ak mac -m             # 연결된 모든 디바이스를 표로 출력
+ak mac -m             # 연결된 모든 디바이스 표시
 ```
 
 출력 예시:
 ```
 Samsung SM-S928N (R3CW80E6Y8Z) Android 15, API 35
-  Wi-Fi      a2:70:aa:5b:37:f2   (randomized · SSID "ONE-GUEST")
-  Factory    6c:ac:c2:75:85:ff
-  Bluetooth  6c:ac:c2:75:85:fe
+  Wi-Fi (current)  a2:70:aa:5b:37:f2   (randomized · SSID "ONE-GUEST")
+  Wi-Fi (factory)  6c:ac:c2:75:85:ff
+  Bluetooth        6c:ac:c2:75:85:fe
 ```
 
-**참고:** Android 10부터 Wi-Fi MAC은 기본적으로 네트워크마다 랜덤으로 사용되므로, `Wi-Fi`는 현재 연결에 쓰이는 MAC만 표시합니다(Wi-Fi가 꺼져 있거나 미연결이면 `n/a`). `Factory`는 기기 고유의 Wi-Fi MAC으로 Wi-Fi가 꺼져 있어도 조회되지만, 일부 기기(예: Pixel)는 노출하지 않습니다. 이 경우 Wi-Fi 개인정보 보호 설정을 '기기 MAC 사용'으로 바꾸면 현재 MAC으로 확인할 수 있습니다. Bluetooth MAC 접근을 제한하는 기기에서는 `n/a`로 표시될 수 있습니다.
+**참고:** Android 10부터 Wi-Fi MAC은 기본적으로 네트워크마다 랜덤으로 사용되므로, `Wi-Fi (current)`는 현재 연결에 쓰이는 MAC만 표시합니다(Wi-Fi가 꺼져 있거나 미연결이면 `n/a`). `Wi-Fi (factory)`는 기기 고유의 Wi-Fi MAC으로 Wi-Fi가 꺼져 있어도 조회되지만, 일부 기기는 노출하지 않을 수 있습니다. 이 경우 Wi-Fi 개인정보 보호 설정을 '기기 MAC 사용'으로 바꾸면 현재 MAC으로 확인할 수 있습니다. Bluetooth MAC 접근을 제한하는 기기에서는 `n/a`로 표시될 수 있습니다.
 
 ### 워크플로우 예시
 
