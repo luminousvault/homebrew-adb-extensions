@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-10-07
+
+### Added
+- New `mac` command: show device network identifiers
+  - Current Wi-Fi MAC with a fallback chain (`cmd wifi status` on API 30+ → `dumpsys wifi` → `ip link` → `/sys/class/net/wlan0/address` → `ifconfig`); only reported while connected, so a stale MAC or placeholder `02:00:00:00:00:00` is never shown
+  - Randomized MAC detection via the locally administered bit
+  - Factory Wi-Fi MAC (`wifi_sta_factory_mac_address`), available even when Wi-Fi is off; if not exposed, a hint on how to see it is shown
+  - Connected SSID and Bluetooth MAC (`settings get secure bluetooth_address` → `dumpsys bluetooth_manager`), `n/a` when unavailable
+  - `-m` shows all connected devices as a table
+
 ## [1.2.0] - 2026-07-14
 
 ### Added

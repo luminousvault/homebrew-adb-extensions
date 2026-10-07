@@ -122,6 +122,8 @@ ak <command> [options] [arguments...]
 #### Device Management
 
 - `devices` - List connected devices (brand, model, ID, Android version, CPU)
+- `mac [options]` - Show current Wi-Fi MAC (with randomized detection and SSID), factory Wi-Fi MAC, and Bluetooth MAC
+  - `-m` all connected devices as a table
 
 ### Interactive UI Features
 
@@ -305,6 +307,22 @@ ak uninstall com.example.app
 ```bash
 ak devices
 ```
+
+**Show MAC addresses:**
+```bash
+ak mac                # MAC addresses of the selected device
+ak mac -m             # All connected devices as a table
+```
+
+Example output:
+```
+Samsung SM-S928N (R3CW80E6Y8Z) Android 15, API 35
+  Wi-Fi      a2:70:aa:5b:37:f2   (randomized · SSID "ONE-GUEST")
+  Factory    6c:ac:c2:75:85:ff
+  Bluetooth  6c:ac:c2:75:85:fe
+```
+
+**Note:** Since Android 10, the Wi-Fi MAC is randomized per network by default, so `Wi-Fi` shows the MAC used for the current connection only (`n/a` when Wi-Fi is off or not connected). `Factory` is the device's own Wi-Fi MAC and is available even when Wi-Fi is off, but some devices (e.g. Pixel) do not expose it; in that case, set the Wi-Fi privacy setting to "Use device MAC" to see it as the current MAC. Bluetooth MAC may show `n/a` on devices that restrict access to it.
 
 ### Workflow Examples
 
