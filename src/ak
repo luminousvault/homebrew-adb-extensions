@@ -42,6 +42,7 @@ show_help() {
   echo -e "  ${BOLD}signature${NC} [package|apk]          Show signature"
   echo -e "  ${BOLD}activities${NC} [--all]               Show activity stack"
   echo -e "  ${BOLD}devices${NC}                          List connected devices"
+  echo -e "  ${BOLD}mac${NC} [options]                    Show device MAC addresses"
   echo
   echo -e "${BOLD}Global Options:${NC}"
   echo -e "  ${BOLD}--version, -v${NC}    Show version"
@@ -76,7 +77,7 @@ main() {
       ;;
     
     # 다른 커맨드들 (동적 로드 또는 이미 로드됨)
-    install|pull|extract|info|permissions|uninstall|clear|kill|launch|signature|activities|devices)
+    install|pull|extract|info|permissions|uninstall|clear|kill|launch|signature|activities|devices|mac)
       # ADB 필수 체크 (--version, --help는 adb 없이도 동작)
       if ! check_adb_available; then
         exit 1
