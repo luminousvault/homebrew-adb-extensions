@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-11-11
+
+### Added
+- `devices`: CPU column now shows 32/64-bit app support derived from `ro.product.cpu.abilist32`/`abilist64` (`(64/32)`, `(64only)`, `(32only)`); `(64only)` is highlighted since 32-bit apps cannot be installed
+
 ## [1.3.0] - 2026-10-07
 
 ### Added

@@ -121,7 +121,7 @@ ak <command> [options] [arguments...]
 
 #### 디바이스 관리
 
-- `devices` - 연결된 디바이스 목록 (브랜드, 모델, ID, Android 버전, CPU)
+- `devices` - 연결된 디바이스 목록 (브랜드, 모델, ID, Android 버전, CPU ABI 및 32/64비트 지원 여부)
 - `mac [options]` - 현재 Wi-Fi MAC(랜덤 여부·SSID 포함), 공장 Wi-Fi MAC, Bluetooth MAC 표시
   - `-m` 연결된 모든 디바이스 표시
 

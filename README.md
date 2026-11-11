@@ -121,7 +121,7 @@ ak <command> [options] [arguments...]
 
 #### Device Management
 
-- `devices` - List connected devices (brand, model, ID, Android version, CPU)
+- `devices` - List connected devices (brand, model, ID, Android version, CPU ABI with 32/64-bit support)
 - `mac [options]` - Show current Wi-Fi MAC (with randomized detection and SSID), factory Wi-Fi MAC, and Bluetooth MAC
   - `-m` all connected devices
 

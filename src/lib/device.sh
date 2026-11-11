@@ -222,6 +222,18 @@ find_and_list_devices() {
                     [ -z "$version" ] && version="Unknown"
                     [ -z "$api" ] && api="Unknown"
                     [ -z "$cpu" ] && cpu="Unknown"
+
+                    # 32/64비트 지원 여부 표시 (abilist는 Android 5.0+에만 존재)
+                    local abilist32 abilist64
+                    abilist32=$(echo "$props" | awk -F'[][]' '$2 == "ro.product.cpu.abilist32" {print $4}' | tr -d '\r\n')
+                    abilist64=$(echo "$props" | awk -F'[][]' '$2 == "ro.product.cpu.abilist64" {print $4}' | tr -d '\r\n')
+                    if [[ -n "$abilist64" && -n "$abilist32" ]]; then
+                        cpu="$cpu (64/32)"
+                    elif [[ -n "$abilist64" ]]; then
+                        cpu="$cpu (64only)"
+                    elif [[ -n "$abilist32" ]]; then
+                        cpu="$cpu (32only)"
+                    fi
                 fi
                 
                 brands+=("$brand")
@@ -307,7 +319,9 @@ find_and_list_devices() {
         colored_model="${model}"
         colored_version="${version}"
         colored_cpu="${cpu}"
-        
+        # 64비트 전용 디바이스는 32비트 앱 설치 불가 → 강조
+        [[ "$cpu" == *"(64only)" ]] && colored_cpu="${YELLOW}${cpu}${NC}"
+
         case "$status_str" in
             Connected)
                 colored_status="${status_str}"
