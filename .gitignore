@@ -78,3 +78,5 @@ yarn-error.log*
 .env.development
 .env.test
 .env.production 
+# Claude Code local settings
+.claude/settings.local.json
