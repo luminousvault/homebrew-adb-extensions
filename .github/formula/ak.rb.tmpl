@@ -31,7 +31,8 @@ class Ak < Formula
 
   def install
     bin.install "ak"
-    zsh_completion.install "completions/_ak"
+    # bash, zsh and fish completion from `ak completion <shell>`
+    generate_completions_from_executable(bin/"ak", "completion")
   end
 
   def caveats
@@ -41,6 +42,7 @@ class Ak < Formula
       Run 'ak doctor' to see which adb ak uses.
 
       To enable tab completion, restart your terminal.
+      PowerShell and other setups: ak completion --help
     EOS
   end
 

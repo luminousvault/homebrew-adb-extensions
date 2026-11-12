@@ -64,7 +64,8 @@ adb-extensions/
 │   │   ├── activities.go, devices.go, mac.go, pull.go, signature.go, doctor.go
 │   │   ├── screenshot.go, record.go, logcat.go, restart.go, wifi.go  # adb 여러 단계를 묶은 커맨드
 │   │   ├── cli_test.go, parallel_test.go  # 가짜 adb로 커맨드 흐름 테스트
-│   │   └── completion_test.go  # completions/_ak ↔ 커맨드 정의 일치 검사
+│   │   ├── completion.go       # ak completion zsh|bash|fish|powershell — 커맨드 정의 + compArgs(인자 종류)에서 생성
+│   │   └── completion_test.go · completion_shell_test.go  # _ak = 생성 결과 검사, 설치된 셸(bash · fish · pwsh)에서 실제 Tab 결과 검사
 │   ├── ui/                     # 출력 규칙 구현: 스트림·색상 판단, 메시지, 표, JSON, 확인 질문, 스피너, 상태판, Fit
 │   ├── adb/                    # adb 실행·탐색(locate.go)·SDK build-tools 탐색(sdk.go)·파싱
 │   │   └── adbtest/            # 가짜 adb Runner
@@ -72,7 +73,7 @@ adb-extensions/
 │   ├── apk/                    # APK 패키지명·서명 인증서 (aapt/apksigner 대체), testdata/aktest.apk
 │   ├── style/                  # 선택 UI(tui) 내부 색상 상수
 │   └── debuglog/               # AK_DEBUG=1 로그
-├── completions/_ak             # Zsh completion (수동 관리, 테스트로 동기화 검증)
+├── completions/_ak             # `ak completion zsh` 출력(직접 고치지 않음, `make completions`로 재생성 — 테스트가 일치 검사)
 ├── docs/
 │   ├── go-migration-plan.md    # Go 전환 계획
 │   ├── design/cli-output.md    # CLI 출력 설계 가이드 (출력·오류·종료 코드·옵션 규칙)
@@ -107,7 +108,7 @@ goreleaser build --snapshot --clean   # 멀티 플랫폼 빌드 확인
    - `Summary`(전체 도움말·completion 설명), `Args`, `Long`, `ArgHelp`, `Flags`, `Examples`, `Device`, `JSON`, `Run func(*Ctx) error`
    - 도움말은 정의에서 자동 생성됩니다. 디바이스는 `c.Device()`/`c.Devices()`, 옵션은 `c.Bool/String/Strings`, 인자 개수는 `tooMany(c, n)`
 2. `internal/cli/cli.go`의 `Commands`에 추가
-3. `completions/_ak`에 커맨드와 옵션 추가 (`TestCompletionMatchesCommands`가 불일치를 잡음)
+3. 인자가 있으면 `completion.go`의 `compArgs`에 종류(패키지 · APK · 폴더 · 단어)를 적고, 값을 고를 수 있는 옵션은 `compValues`에. 그다음 `make completions` (`TestCompletionFileIsGenerated` · `TestCompletionKnowsEveryArgument`가 빠진 것을 잡음)
 4. `cli_test.go`에 가짜 adb 기반 테스트 추가
 5. `README.md`, `README.ko.md`, `CHANGELOG.md` 갱신
 

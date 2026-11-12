@@ -18,7 +18,7 @@ SUDO    := $(shell for d in $(BINDIR) $(ZSHDIR); do \
              while [ ! -e "$$d" ]; do d=$$(dirname "$$d"); done; \
              [ -w "$$d" ] || { echo sudo; break; }; done)
 
-.PHONY: build install uninstall FORCE
+.PHONY: build install uninstall completions FORCE
 
 build: build/ak
 
@@ -34,6 +34,10 @@ install: build/ak
 	@echo "Installed $(BINDIR)/ak and $(ZSHDIR)/_ak"
 	@echo "Run 'exec zsh' in open terminals to load the new completion"
 	@echo "(first install with oh-my-zsh: rm -f ~/.zcompdump* && exec zsh)"
+
+# completions/_ak is generated from the command table (a test checks it).
+completions: build/ak
+	build/ak completion zsh > completions/_ak
 
 uninstall:
 	$(SUDO) rm -f $(BINDIR)/ak $(ZSHDIR)/_ak

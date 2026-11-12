@@ -21,7 +21,7 @@ A unified CLI tool that simplifies Android Debug Bridge (ADB) operations includi
 - **Multi-device Support** - Install APKs to multiple devices simultaneously
 - **Interactive UI** - Intuitive selection interface with keyboard navigation
 - **Auto Recovery** - Automatic error handling and recovery attempts
-- **Tab Completion** - Zsh completion for commands and options
+- **Tab Completion** - zsh, bash, fish and PowerShell: commands, options, device serials, and only the files each argument takes
 - **Rich Output** - Color-coded, structured information display
 
 ## Installation
@@ -60,7 +60,7 @@ go install github.com/luminousvault/homebrew-adb-extensions/cmd/ak@latest
 
 ### Prebuilt Binaries
 
-Download the archive for your OS (macOS, Linux, Windows; amd64/arm64) from [GitHub Releases](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest). Each archive includes the `ak` binary and the Zsh completion file.
+Download the archive for your OS (macOS, Linux, Windows; amd64/arm64) from [GitHub Releases](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest). Each archive includes the `ak` binary and the zsh completion file; for other shells see [Tab Completion](#tab-completion).
 
 ### Requirements
 
@@ -113,6 +113,19 @@ ak <command> [options] [arguments...]
 | (none) | The only connected device, or a picker when several are connected |
 
 Without a terminal (pipes, CI), ak does not open pickers: it asks for `-s` instead.
+
+### Tab Completion
+
+Homebrew installs completion for bash, zsh and fish. Otherwise add one line for your shell — `ak doctor` shows whether it is set up:
+
+| Shell | Setup |
+|---|---|
+| zsh | `source <(ak completion zsh)` in `~/.zshrc` (after `compinit`) |
+| bash | `eval "$(ak completion bash)"` in `~/.bashrc` |
+| fish | `ak completion fish > ~/.config/fish/completions/ak.fish` |
+| PowerShell | `ak completion powershell \| Out-String \| Invoke-Expression` in `$PROFILE` |
+
+Arguments complete only what they take: `install` and `signature` offer APK files and directories, `screenshot`, `record`, `pull` and the save name of `extract` offer directories, and `-s` offers connected device serials. Open a new terminal after updating ak (zsh keeps the old completion loaded until then).
 
 ### Output and Scripting
 

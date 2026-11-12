@@ -21,7 +21,7 @@ APK 관리, 디바이스 제어, 앱 검사 등 Android Debug Bridge(ADB) 작업
 - **멀티 디바이스 지원** - 여러 디바이스에 동시 APK 설치
 - **인터랙티브 UI** - 키보드 탐색이 가능한 직관적인 선택 인터페이스
 - **자동 복구** - 자동 에러 처리 및 복구 시도
-- **탭 자동완성** - 명령어 및 옵션 Zsh 자동완성
+- **탭 자동완성** - zsh · bash · fish · PowerShell. 명령어, 옵션, 디바이스 시리얼, 인자마다 받는 것(폴더만 · APK만)
 - **풍부한 출력** - 색상 구분, 구조화된 정보 표시
 
 ## 설치
@@ -60,7 +60,7 @@ go install github.com/luminousvault/homebrew-adb-extensions/cmd/ak@latest
 
 ### 빌드된 바이너리
 
-[GitHub Releases](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest)에서 OS별(macOS, Linux, Windows / amd64·arm64) 압축 파일을 받으세요. `ak` 실행 파일과 Zsh 자동 완성 파일이 들어 있습니다.
+[GitHub Releases](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest)에서 OS별(macOS, Linux, Windows / amd64·arm64) 압축 파일을 받으세요. `ak` 실행 파일과 zsh 자동 완성 파일이 들어 있습니다. 다른 셸은 [탭 자동 완성](#탭-자동-완성)을 보세요.
 
 ### 요구 사항
 
@@ -113,6 +113,19 @@ ak <command> [options] [arguments...]
 | (없음) | 연결된 디바이스가 하나면 그것, 여러 대면 선택 UI |
 
 터미널이 아니면(파이프, CI) 선택 UI를 띄우지 않고 `-s`를 지정하라고 안내합니다.
+
+### 탭 자동 완성
+
+Homebrew로 설치하면 bash · zsh · fish 자동 완성이 함께 설치됩니다. 그 밖에는 셸에 맞는 한 줄을 넣으세요. 설정됐는지는 `ak doctor`가 알려 줍니다.
+
+| 셸 | 설정 |
+|---|---|
+| zsh | `~/.zshrc`에 `source <(ak completion zsh)` (`compinit` 다음) |
+| bash | `~/.bashrc`에 `eval "$(ak completion bash)"` |
+| fish | `ak completion fish > ~/.config/fish/completions/ak.fish` |
+| PowerShell | `$PROFILE`에 `ak completion powershell \| Out-String \| Invoke-Expression` |
+
+인자마다 받는 것만 보여 줍니다. `install` · `signature`는 APK 파일과 폴더, `screenshot` · `record` · `pull`과 `extract`의 저장 이름은 폴더, `-s`는 연결된 디바이스 시리얼입니다. ak를 업데이트한 뒤에는 터미널을 새로 여세요(zsh는 그때까지 예전 자동 완성을 들고 있습니다).
 
 ### 출력과 스크립트 사용
 

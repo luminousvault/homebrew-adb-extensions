@@ -19,6 +19,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Install fish (completion tests run it when present)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y fish
       - run: go vet ./...
       - run: go test ./...
       - run: go build ./cmd/ak

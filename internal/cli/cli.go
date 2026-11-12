@@ -85,7 +85,7 @@ func (cmd *Command) AllFlags() []Flag {
 var Commands = []*Command{
 	cmdInstall, cmdPull, cmdExtract, cmdInfo, cmdPermissions, cmdUninstall, cmdClear,
 	cmdKill, cmdLaunch, cmdRestart, cmdSignature, cmdActivities, cmdLogcat, cmdScreenshot, cmdRecord,
-	cmdDevices, cmdMac, cmdWifi, cmdDoctor, cmdVerifier,
+	cmdDevices, cmdMac, cmdWifi, cmdDoctor, cmdCompletion, cmdVerifier, cmdSerials,
 }
 
 func find(name string) *Command {
