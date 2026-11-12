@@ -11,9 +11,9 @@ import (
 
 var cmdActivities = &Command{
 	Name: "activities", Summary: "Show activity stack",
-	Long:     "Show the activity stack of the foreground task, or of every task with --all-tasks.",
-	Flags:    []Flag{{"-a", "--all-tasks", "", "Show every task"}},
-	Examples: []string{"ak activities", "ak activities -a", "ak activities --json"},
+	Long:     "Show the activity stack of the foreground task, or of every task with --every-task.",
+	Flags:    []Flag{{"-e", "--every-task", "", "Show every task"}},
+	Examples: []string{"ak activities", "ak activities -e", "ak activities --json"},
 	Device:   oneDevice, JSON: true, Run: runActivities,
 }
 
@@ -123,7 +123,7 @@ func runActivities(c *Ctx) error {
 	}
 	hist := histLines(dumpsys)
 	tasks := []string{foreground}
-	if c.Bool("--all-tasks") {
+	if c.Bool("--every-task") {
 		tasks = nil
 		seen := map[string]bool{}
 		for _, l := range hist {

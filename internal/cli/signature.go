@@ -32,9 +32,9 @@ type signatureTarget struct {
 
 func (t signatureTarget) describe() string {
 	if t.pkg != "" {
-		return t.pkg + " on " + deviceName(t.serial)
+		return q(t.pkg) + " on " + deviceName(t.serial)
 	}
-	return filepath.Base(t.apkPath)
+	return q(filepath.Base(t.apkPath))
 }
 
 // pickSignatureTarget lists foreground apps of devices and local APKs.
@@ -90,7 +90,7 @@ func resolveSignatureTarget(c *Ctx) (signatureTarget, error) {
 	input := c.Args[0]
 	if strings.HasSuffix(input, ".apk") {
 		if st, err := os.Stat(input); err != nil || st.IsDir() {
-			return signatureTarget{}, failErr("", "APK file not found: %s", input)
+			return signatureTarget{}, failErr("", "APK file not found: %s", q(input))
 		}
 		return signatureTarget{apkPath: absPath(input)}, nil
 	}
@@ -138,7 +138,7 @@ func runSignature(c *Ctx) error {
 		out, err := adb.Combined("-s", t.serial, "pull", remote, tmp.Name())
 		sp.Stop()
 		if err != nil {
-			ui.Errorf("Couldn't pull the APK of %s", t.pkg)
+			ui.Errorf("Couldn't pull the APK of %s", q(t.pkg))
 			ui.Detail("%s", out)
 			return errReported
 		}

@@ -16,8 +16,8 @@ var cmdRestart = &Command{
 	Long: "Force-stop an app, start its launcher activity again and show how long the launch took\n" +
 		"(am start -W: TotalTime). With --repeat, restart several times and show min/avg/max.",
 	ArgHelp:  [][2]string{argPackage},
-	Flags:    []Flag{{"-n", "--repeat", "N", "Restart N times (default 1)"}},
-	Examples: []string{"ak restart", "ak restart com.example.app -n 5", "ak restart --json"},
+	Flags:    []Flag{{"-r", "--repeat", "N", "Restart N times (default 1)"}},
+	Examples: []string{"ak restart", "ak restart com.example.app -r 5", "ak restart --json"},
 	Device:   oneDevice, JSON: true, Run: runRestart,
 }
 
@@ -72,7 +72,7 @@ func runRestart(c *Ctx) error {
 	resolved, _ := adb.Combined("-s", serial, "shell", "cmd", "package", "resolve-activity", "--brief", t.pkg)
 	component := lastLine(resolved)
 	if !strings.Contains(component, "/") {
-		return failErr("", "%s has no launcher activity", t.pkg)
+		return failErr("", "%s has no launcher activity", q(t.pkg))
 	}
 
 	var runs []launchResult

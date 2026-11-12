@@ -75,6 +75,9 @@ func TestCompletionMatchesCommands(t *testing.T) {
 	spec := loadZsh(t)
 	names := map[string]bool{}
 	for _, c := range Commands {
+		if c.Hidden {
+			continue // hidden commands stay out of the completion
+		}
 		names[c.Name] = true
 		desc, ok := spec.desc[c.Name]
 		if !ok {

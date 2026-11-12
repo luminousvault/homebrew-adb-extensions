@@ -106,21 +106,21 @@ func uniqueName(base string, used map[string]bool) string {
 func ensureDir(dest string) error {
 	if st, err := os.Stat(dest); err == nil {
 		if !st.IsDir() {
-			return failErr("", "Not a directory: %s", dest)
+			return failErr("", "Not a directory: %s", q(dest))
 		}
 		return nil
 	}
 	ok, err := ui.Confirm("Directory "+dest+" does not exist. Create it?", false)
 	switch {
 	case errors.Is(err, ui.ErrNoInput):
-		return failErr("Pass -y to create it", "Directory does not exist: %s", dest)
+		return failErr("Pass -y to create it", "Directory does not exist: %s", q(dest))
 	case err != nil:
 		return err
 	case !ok:
 		return failErr("", "Aborted")
 	}
 	if err := os.MkdirAll(dest, 0o755); err != nil {
-		return failErr("", "Cannot create directory %s: %v", dest, err)
+		return failErr("", "Cannot create directory %s: %v", q(dest), err)
 	}
 	return nil
 }
@@ -136,6 +136,8 @@ func runPull(c *Ctx) error {
 	if err := ensureDir(dest); err != nil {
 		return err
 	}
+	release := holdPickers() // device picker, then file picker, on one screen
+	defer release()
 	serial, err := c.Device()
 	if err != nil {
 		return err
@@ -151,6 +153,7 @@ func runPull(c *Ctx) error {
 			return failErr("", "No recent files found on %s", deviceName(serial))
 		}
 		lines := strings.Split(strings.TrimRight(raw, "\n"), "\n")
+		release()
 		ui.Errorf("Couldn't query recent files on %s", deviceName(serial))
 		ui.Detail("%s", strings.Join(lines[:min(5, len(lines))], "\n"))
 		return errReported
@@ -165,6 +168,7 @@ func runPull(c *Ctx) error {
 	if err != nil {
 		return err
 	}
+	release()
 
 	used := map[string]bool{}
 	ok, failed := 0, 0
@@ -173,28 +177,28 @@ func runPull(c *Ctx) error {
 		base := uniqueName(path.Base(remote), used)
 		used[base] = true
 		if base != path.Base(remote) {
-			ui.Warn("Duplicate file name, saving %s as %s", path.Base(remote), base)
+			ui.Warn("Duplicate file name, saving %s as %s", q(path.Base(remote)), q(base))
 		}
 		local := filepath.Join(dest, base)
 		start := time.Now()
-		sp := ui.Spin("Pulling %s", path.Base(remote))
+		sp := ui.Spin("Pulling %s", q(path.Base(remote)))
 		out, err := adb.Combined("-s", serial, "pull", remote, local)
 		sp.Stop()
 		if err != nil {
 			failed++
-			ui.Errorf("Couldn't pull %s", remote)
+			ui.Errorf("Couldn't pull %s", q(remote))
 			ui.Detail("%s", out)
 			continue
 		}
 		ok++
-		ui.Success("Pulled %s %s", local, ui.Err.Dim("("+fileMeta(remote, files[i].size)+", "+elapsed(start)+")"))
+		ui.Success("Pulled %s %s", q(local), ui.Err.Dim("("+fileMeta(remote, files[i].size)+", "+elapsed(start)+")"))
 	}
 	if failed > 0 {
 		ui.Errorf("%d of %d files failed", failed, ok+failed)
 		return errReported
 	}
 	if ok > 1 {
-		ui.Success("Pulled %d files to %s", ok, dest)
+		ui.Success("Pulled %d files to %s", ok, q(dest))
 	}
 	return nil
 }

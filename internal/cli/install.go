@@ -2,11 +2,17 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
@@ -25,16 +31,16 @@ var cmdInstall = &Command{
 	ArgHelp: [][2]string{{"apk", "APK files to install"}, {"directory", "Pick APKs from these directories"}},
 	Flags: []Flag{
 		{"-l", "--latest", "", "Install the newest APK (in the current or given directory)"},
-		{"-a", "--all-apks", "", "Install every APK (in the current or given directory)"},
+		{"-e", "--every-apk", "", "Install every APK (in the current or given directory)"},
 		{"-f", "--filter", "WORDS", "Pick among APKs whose names contain all the words"},
 		{"-r", "", "", "Replace the existing app, keeping its data (always on)"},
-		{"-t", "", "", "Allow test-only APKs"},
-		{"-d", "", "", "Allow version downgrade"},
+		{"-t", "--test-only", "", "Allow test-only APKs"},
+		{"-d", "--downgrade", "", "Allow version downgrade"},
 		flagYes,
 	},
 	Examples: []string{
 		"ak install", "ak install app-debug.apk", "ak install -l build/outputs/apk/debug",
-		"ak install -f \"myapp release\"", "ak install app.apk --all", "ak install app.apk -s 46171FDAP000P8 -y",
+		"ak install -f \"myapp release\"", "ak install app.apk --all", "ak install -e build/outputs/apk --all", "ak install app.apk -s emulator-5554 -y",
 	},
 	Device: manyDevices, Run: runInstall,
 }
@@ -47,13 +53,14 @@ type installOptions struct {
 }
 
 func installOptionsFrom(c *Ctx) installOptions {
-	o := installOptions{latest: c.Bool("--latest"), all: c.Bool("--all-apks"), filter: c.String("--filter"), args: c.Args}
+	o := installOptions{latest: c.Bool("--latest"), all: c.Bool("--every-apk"), filter: c.String("--filter"), args: c.Args}
 	o.filtered = c.Bool("--filter")
 	o.adbOpts = []string{"-r"}
-	for _, f := range []string{"-t", "-d"} {
-		if c.Bool(f) {
-			o.adbOpts = append(o.adbOpts, f)
-		}
+	if c.Bool("--test-only") {
+		o.adbOpts = append(o.adbOpts, "-t")
+	}
+	if c.Bool("--downgrade") {
+		o.adbOpts = append(o.adbOpts, "-d")
 	}
 	return o
 }
@@ -66,7 +73,7 @@ func validateInstallOptions(cmd *Command, o installOptions) error {
 		}
 	}
 	if n > 1 {
-		return usageErr(cmd, "Use only one of -l, -a and -f")
+		return usageErr(cmd, "Use only one of -l, -e and -f")
 	}
 	for _, a := range o.args {
 		st, err := os.Stat(a)
@@ -77,7 +84,7 @@ func validateInstallOptions(cmd *Command, o installOptions) error {
 			return usageErr(cmd, "Not an APK file: %s", a)
 		}
 		if n > 0 {
-			return usageErr(cmd, "-l, -a and -f choose APKs from a directory; they cannot be used with APK files (%s)", a)
+			return usageErr(cmd, "-l, -e and -f choose APKs from a directory; they cannot be used with APK files (%s)", a)
 		}
 	}
 	return nil
@@ -118,14 +125,14 @@ func displayDir(dir string) string {
 	return tildeHome(dir)
 }
 
-const hintChooseAPK = "Pass APK files, or use -l (newest) or -a (all)"
+const hintChooseAPK = "Pass APK files, or use -l (newest) or -e (every APK)"
 
 // pickAPKs asks which APKs to install (or uses the only one).
 // scanned says the list came from a directory, so a single result is announced.
 func pickAPKs(list, sources, location []string, prompt string, scanned bool) ([]string, error) {
 	if len(list) == 1 {
 		if scanned {
-			ui.Step("Using %s %s", filepath.Base(list[0]), ui.Err.Dim("(the only APK found)"))
+			ui.Step("Using %s %s", q(filepath.Base(list[0])), ui.Err.Dim("(the only APK found)"))
 		}
 		return list, nil
 	}
@@ -241,10 +248,13 @@ func selectInstallAPKs(o installOptions) ([]string, error) {
 }
 
 func runInstall(c *Ctx) error {
+	installStop.Store(false)
 	o := installOptionsFrom(c)
 	if err := validateInstallOptions(c.Cmd, o); err != nil {
 		return err
 	}
+	release := holdPickers() // APK picker, then device picker, on one screen
+	defer release()
 	files, err := selectInstallAPKs(o)
 	if err != nil {
 		return err
@@ -253,17 +263,40 @@ func runInstall(c *Ctx) error {
 	if err != nil {
 		return err
 	}
+	release()
+	// After the device picker, which clears the screen, so the list stays visible.
+	if o.all {
+		ui.Step("Found %d APK(s) in %s", len(files), q(displayDir(filepath.Dir(files[0]))))
+		for _, l := range apkListLines(files) {
+			ui.Err.Println(l)
+		}
+		ui.Err.Println("")
+	}
 	if len(devices) > 1 {
 		return installParallel(devices, files, o.adbOpts)
 	}
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt)
+	defer signal.Stop(sig)
+	go func() {
+		if _, ok := <-sig; ok {
+			installStop.Store(true)
+		}
+	}()
 	r := &directReporter{}
 	ok := true
 	for _, f := range files {
+		if installStop.Load() {
+			break
+		}
 		if !installOne(r, devices[0], o.adbOpts, f) {
 			ok = false
 		}
 	}
-	if !ok {
+	switch {
+	case installStop.Load():
+		return ui.ErrInterrupted
+	case !ok:
 		return errReported
 	}
 	return nil
@@ -283,10 +316,29 @@ type reporter interface {
 	confirm(question string) (bool, error)
 }
 
-type directReporter struct{ sp *ui.Spinner }
+// A step that takes longer than this is usually waiting for the user on the
+// device: Play Protect asking to scan the app, or an "install via USB" prompt.
+var slowStep = 10 * time.Second
 
-func (r *directReporter) progress(f string, a ...any) { r.done(); r.sp = ui.Spin(f, a...) }
+const slowHint = "(check the device screen)"
+
+type directReporter struct {
+	sp   *ui.Spinner
+	slow *time.Timer
+}
+
+func (r *directReporter) progress(f string, a ...any) {
+	r.done()
+	text := fmt.Sprintf(f, a...)
+	sp := ui.Spin("%s", text)
+	r.sp = sp
+	r.slow = time.AfterFunc(slowStep, func() { sp.SetText("%s %s", text, ui.Err.Dim(slowHint)) })
+}
 func (r *directReporter) done() {
+	if r.slow != nil {
+		r.slow.Stop()
+		r.slow = nil
+	}
 	if r.sp != nil {
 		r.sp.Stop()
 		r.sp = nil
@@ -308,9 +360,31 @@ func failureCode(out string) string {
 	return "unknown error"
 }
 
+// installStop is set on Ctrl+C: no further adb install, retry or uninstall starts.
+var installStop atomic.Bool
+
+// resultStopped stands in for adb output when Ctrl+C stopped an install.
+const resultStopped = "\x00stopped"
+
 func adbInstall(serial string, opts []string, apkFile string) string {
-	out, _ := adb.Combined(append(append([]string{"-s", serial, "install"}, opts...), apkFile)...)
+	if installStop.Load() {
+		return resultStopped
+	}
+	out, err := adb.Combined(append(append([]string{"-s", serial, "install"}, opts...), apkFile)...)
+	if installStop.Load() || killedBySignal(err) {
+		return resultStopped // the terminal sent SIGINT to adb as well
+	}
 	return strings.TrimRight(out, "\n")
+}
+
+func killedBySignal(err error) bool {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			return true
+		}
+	}
+	return false
 }
 
 func hasOpt(opts []string, opt string) bool {
@@ -332,15 +406,19 @@ func installOne(r reporter, serial string, opts []string, apkFile string) bool {
 	}
 	start := time.Now()
 	attempt := func(o []string) string {
-		r.progress("Installing %s on %s", base, deviceName(serial))
+		r.progress("Installing %s on %s", q(base), deviceName(serial))
 		return adbInstall(serial, o, apkFile)
 	}
 	finish := func(result string) bool {
+		if result == resultStopped {
+			r.fail("Stopped installing %s on %s: interrupted", q(base), deviceName(serial))
+			return false
+		}
 		if strings.Contains(result, "Success") {
-			r.success("Installed %s on %s %s", base, deviceName(serial), ui.Err.Dim("("+elapsed(start)+")"))
+			r.success("Installed %s on %s %s", q(base), deviceName(serial), ui.Err.Dim("("+elapsed(start)+")"))
 			return true
 		}
-		r.fail("Couldn't install %s on %s: %s", base, deviceName(serial), failureCode(result))
+		r.fail("Couldn't install %s on %s: %s", q(base), deviceName(serial), failureCode(result))
 		r.detail(result)
 		return false
 	}
@@ -348,7 +426,7 @@ func installOne(r reporter, serial string, opts []string, apkFile string) bool {
 	result := attempt(opts)
 	switch {
 	case strings.Contains(result, "INSTALL_FAILED_TEST_ONLY"):
-		r.warn("%s is a test-only APK, retrying with -t", base)
+		r.warn("%s is a test-only APK, retrying with -t", q(base))
 		opts = append(opts, "-t")
 		result = attempt(opts)
 		if strings.Contains(result, "INSTALL_FAILED_VERSION_DOWNGRADE") {
@@ -357,7 +435,7 @@ func installOne(r reporter, serial string, opts []string, apkFile string) bool {
 		return finish(result)
 	case strings.Contains(result, "INSTALL_FAILED_VERSION_DOWNGRADE"):
 		if !hasOpt(opts, "-d") {
-			r.warn("%s is older than the installed version, retrying with -d", base)
+			r.warn("%s is older than the installed version, retrying with -d", q(base))
 			result = attempt(append(opts, "-d"))
 			if !strings.Contains(result, "INSTALL_FAILED_VERSION_DOWNGRADE") {
 				return finish(result)
@@ -369,7 +447,7 @@ func installOne(r reporter, serial string, opts []string, apkFile string) bool {
 		if pkg == "" {
 			pkg, _ = apk.PackageName(apkFile)
 		}
-		r.warn("The signature of %s differs from %s installed on %s", base, pkg, deviceName(serial))
+		r.warn("The signature of %s differs from %s installed on %s", q(base), q(pkg), deviceName(serial))
 		return uninstallThenInstall(r, serial, pkg, opts, apkFile, finish)
 	}
 	return finish(result)
@@ -378,10 +456,10 @@ func installOne(r reporter, serial string, opts []string, apkFile string) bool {
 func reinstallAfterDowngrade(r reporter, serial string, opts []string, apkFile string, finish func(string) bool) bool {
 	pkg, err := apk.PackageName(apkFile)
 	if err != nil {
-		r.fail("Couldn't read the package name of %s: %v", filepath.Base(apkFile), err)
+		r.fail("Couldn't read the package name of %s: %v", q(filepath.Base(apkFile)), err)
 		return false
 	}
-	r.warn("%s does not allow downgrading %s without uninstalling it", deviceName(serial), pkg)
+	r.warn("%s does not allow downgrading %s without uninstalling it", deviceName(serial), q(pkg))
 	return uninstallThenInstall(r, serial, pkg, opts, apkFile, finish)
 }
 
@@ -397,24 +475,47 @@ func conflictPackage(result string) string {
 }
 
 func uninstallThenInstall(r reporter, serial, pkg string, opts []string, apkFile string, finish func(string) bool) bool {
-	ok, err := r.confirm("Uninstall " + pkg + " from " + deviceName(serial) + " (removes its data) and reinstall?")
+	ok, err := r.confirm("Uninstall " + q(pkg) + " from " + deviceName(serial) + " (removes its data) and reinstall?")
 	switch {
 	case errors.Is(err, ui.ErrNoInput):
-		r.fail("Skipped %s on %s: uninstalling needs confirmation (pass -y)", filepath.Base(apkFile), deviceName(serial))
+		r.fail("Skipped %s on %s: uninstalling needs confirmation (pass -y)", q(filepath.Base(apkFile)), deviceName(serial))
 		return false
 	case errors.Is(err, ui.ErrInterrupted):
-		r.fail("Skipped %s on %s: interrupted", filepath.Base(apkFile), deviceName(serial))
+		r.fail("Skipped %s on %s: interrupted", q(filepath.Base(apkFile)), deviceName(serial))
 		return false
 	case err != nil || !ok:
-		r.fail("Skipped %s on %s", filepath.Base(apkFile), deviceName(serial))
+		r.fail("Skipped %s on %s", q(filepath.Base(apkFile)), deviceName(serial))
 		return false
 	}
-	r.progress("Uninstalling %s from %s", pkg, deviceName(serial))
+	if installStop.Load() {
+		return finish(resultStopped)
+	}
+	r.progress("Uninstalling %s from %s", q(pkg), deviceName(serial))
 	if out, err := adb.Combined("-s", serial, "uninstall", pkg); err != nil || !strings.Contains(out, "Success") {
-		r.fail("Couldn't uninstall %s from %s", pkg, deviceName(serial))
+		r.fail("Couldn't uninstall %s from %s", q(pkg), deviceName(serial))
 		r.detail(out)
 		return false
 	}
-	r.progress("Reinstalling %s on %s", filepath.Base(apkFile), deviceName(serial))
+	r.progress("Reinstalling %s on %s", q(filepath.Base(apkFile)), deviceName(serial))
 	return finish(adbInstall(serial, opts, apkFile))
+}
+
+// apkListLines numbers APKs in install order with their size and time:
+//
+//  1. app-debug.apk  12.3 MB · 2026-11-10 14:02
+func apkListLines(list []string) []string {
+	nameW := 0
+	for _, f := range list {
+		nameW = max(nameW, len([]rune(filepath.Base(f))))
+	}
+	numW := len(strconv.Itoa(len(list)))
+	var lines []string
+	for i, f := range list {
+		meta := ""
+		if st, err := os.Stat(f); err == nil {
+			meta = humanSize(strconv.FormatInt(st.Size(), 10)) + " · " + st.ModTime().Format("2006-01-02 15:04")
+		}
+		lines = append(lines, fmt.Sprintf("  %*d. %-*s  %s", numW, i+1, nameW, filepath.Base(f), ui.Err.Dim(meta)))
+	}
+	return lines
 }

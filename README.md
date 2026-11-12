@@ -43,13 +43,14 @@ brew install ak
 git clone https://github.com/luminousvault/homebrew-adb-extensions.git
 cd homebrew-adb-extensions
 
-# Build (Go 1.27+)
-go build -o ak ./cmd/ak
-sudo mv ak /usr/local/bin/
+# Build and install ak + zsh completion into /usr/local (Go 1.27+)
+make install
 
-# Zsh completion (optional)
-cp completions/_ak "${fpath[1]}/_ak"
+# Remove
+make uninstall
 ```
+
+`make install PREFIX=~/.local` installs elsewhere; the completion goes to `$PREFIX/share/zsh/site-functions`, which must be in `fpath`.
 
 Or with `go install`:
 
@@ -108,13 +109,14 @@ ak <command> [options] [arguments...]
 |---|---|
 | `-s, --serial <ID>` | Target this device (`install` and `mac` accept it more than once) |
 | `ANDROID_SERIAL` | Default target device, same as adb |
-| `-m, --all` | All connected devices (`install`, `mac`) |
+| `-a, --all` | All connected devices (`install`, `mac`, `screenshot`) |
 | (none) | The only connected device, or a picker when several are connected |
 
 Without a terminal (pipes, CI), ak does not open pickers: it asks for `-s` instead.
 
 ### Output and Scripting
 
+- Options can come before or after arguments, and short options can be combined: `ak install -ea` is `ak install -e -a`, `ak logcat -clW` is `ak logcat -c -l W`.
 - Results go to stdout; progress, warnings, errors and prompts go to stderr. `ak info --json | jq` gets only the result.
 - `--json` prints machine-readable output for `devices`, `info`, `permissions`, `signature`, `mac`, `activities` and `doctor`.
 - `-y, --yes` answers confirmations (e.g. uninstall-and-reinstall in `install`); without a terminal and without `-y`, ak does not guess.
@@ -128,15 +130,15 @@ Without a terminal (pipes, CI), ak does not open pickers: it asks for `-s` inste
 - `install [apk_files|directories...]` - Install APK files (named APKs directly; directories or no argument open a picker)
   - APK Selection:
     - `-l, --latest` - Install the newest APK (from current directory or specified directory)
-    - `-a, --all-apks` - Install all APK files (from current directory or specified directory)
+    - `-e, --every-apk` - Install all APK files (from current directory or specified directory); the list is shown first
     - `-f, --filter <words>` - Pick among APKs whose names contain all the words
   - Device Options:
-    - `-m, --all` - Install on all connected devices, in parallel
+    - `-a, --all` - Install on all connected devices, in parallel
     - `-s, --serial <ID>` - Install on this device (repeat for more)
   - ADB Options:
     - `-r` - Replace existing app (always on)
-    - `-t` - Allow test APKs
-    - `-d` - Allow version downgrade
+    - `-t, --test-only` - Allow test-only APKs
+    - `-d, --downgrade` - Allow version downgrade
   - `-y, --yes` - Uninstall and reinstall without asking when recovery needs it
 - `extract [package|filename] [filename|package]` - Extract APK from device (order flexible)
 
@@ -154,20 +156,20 @@ Without a terminal (pipes, CI), ak does not open pickers: it asks for `-s` inste
 - `info [package]` - Display app information (version, SDK, debuggable status, installer)
 - `permissions [package]` - List granted app permissions
 - `signature [package|apk_file]` - Display app signature (supports interactive selection)
-- `activities [-a]` - Display activity stack (`-a, --all-tasks` for all tasks)
+- `activities [-e]` - Display activity stack (`-e, --every-task` for all tasks)
 - `logcat [package] [-l level] [-c]` - Logs of one app only, following it across restarts (new PIDs are picked up; `pkg:remote` processes included)
 
 #### Screen
 
-- `screenshot [file|directory]` - Save a PNG on this computer (nothing left on the device); `--all` saves one per device
-- `record [file|directory] [-t seconds] [--size WxH]` - Record until Ctrl+C or the time limit (max 180 s), then save the MP4 and delete it from the device
+- `screenshot [file|directory]` - Save a PNG on this computer (nothing left on the device); `--all` saves one per device, `-o, --open` opens it
+- `record [file|directory] [-t seconds] [--size WxH]` - Record until Ctrl+C or the time limit (max 180 s), then save the MP4 and delete it from the device; `-o, --open` opens it
 
 #### App Control
 
 **Note:** Omitting `[package]` or `[packages...]` auto-detects the foreground app.
 
 - `launch <package>` - Launch app (main activity)
-- `restart [package] [-n N]` - Force-stop and launch again, showing the launch time (`am start -W`); `-n` repeats and shows min/avg/max
+- `restart [package] [-r N]` - Force-stop and launch again, showing the launch time (`am start -W`); `-r, --repeat` repeats and shows min/avg/max
 - `kill [packages...]` - Force stop app(s)
 - `clear [packages...]` - Clear app data
 - `uninstall [package]` - Uninstall app
@@ -176,9 +178,9 @@ Without a terminal (pipes, CI), ak does not open pickers: it asks for `-s` inste
 
 - `devices` - List connected devices (brand, model, ID, Android version, CPU ABI with 32/64-bit support)
 - `mac [options]` - Show current Wi-Fi MAC (with randomized detection and SSID), factory Wi-Fi MAC, and Bluetooth MAC
-  - `-m, --all` all connected devices
+  - `-a, --all` all connected devices
 - `wifi [off]` - Switch a USB device to Wi-Fi debugging and connect (`adb tcpip` + IP lookup + `adb connect`); `off` switches back to USB
-- `doctor` - Show which adb binary is used and warn about adb version conflicts
+- `doctor` - Check the adb in use, other adb versions, connected devices (unauthorized/offline) and optional tools; exits 1 when a problem is found
 
 ### Interactive UI Features
 
@@ -254,11 +256,21 @@ ak install -f debug /path/to/dir # Specific directory
 
 **Install to all connected devices (in parallel):**
 ```bash
-ak install -m app.apk
-ak install -s 46171FDAP000P8 -s R3CW80E6Y8Z app.apk
+ak install -a app.apk
+ak install -s emulator-5554 -s emulator-5556 app.apk
+ak install -e -a                 # Every APK in the current directory on every device
 ```
 
 With several devices, a status board shows each device's progress. If a device needs confirmation (for example, the signature differs and the app must be uninstalled first), it pauses and ak asks after the others finish (`a` answers yes for the rest). A summary follows.
+
+**Install seems stuck?** When a step takes more than 10 seconds, ak shows `(check the device screen)`: the device is usually waiting for you. Google Play Protect asks whether to scan an app it has not seen (often after an uninstall and reinstall), and some devices ask to allow installs over USB. Answer on the device and the install continues.
+
+On test devices you can stop Play Protect from checking apps installed with adb. This is a device security setting, so ak never changes it for you:
+
+```bash
+adb shell settings put global verifier_verify_adb_installs 0   # 1 turns it back on
+adb -s <serial> shell settings put global verifier_verify_adb_installs 0   # with several devices (see `ak devices`)
+```
 
 **In scripts and CI:**
 ```bash
@@ -372,16 +384,16 @@ ak devices
 **Show MAC addresses:**
 ```bash
 ak mac                # MAC addresses of the selected device
-ak mac -m             # All connected devices
+ak mac -a             # All connected devices
 ak mac --json         # Machine-readable
 ```
 
 Example output:
 ```
-Samsung SM-S928N (R3CW80E6Y8Z) Android 15, API 35
-  Wi-Fi (current)  a2:70:aa:5b:37:f2   (randomized · SSID "ONE-GUEST")
-  Wi-Fi (factory)  6c:ac:c2:75:85:ff
-  Bluetooth        6c:ac:c2:75:85:fe
+Samsung SM-S928N (R5CX00000000) Android 15, API 35
+  Wi-Fi (current)  02:00:5e:00:53:01   (randomized · SSID "MyWiFi")
+  Wi-Fi (factory)  00:00:5e:00:53:10
+  Bluetooth        00:00:5e:00:53:11
 ```
 
 **Note:** Since Android 10, the Wi-Fi MAC is randomized per network by default, so `Wi-Fi (current)` shows the MAC used for the current connection only (`n/a` when Wi-Fi is off or not connected). `Wi-Fi (factory)` is the device's own Wi-Fi MAC and is available even when Wi-Fi is off, but some devices may not expose it; in that case, set the Wi-Fi privacy setting to "Use device MAC" to see it as the current MAC. Bluetooth MAC may show `n/a` on devices that restrict access to it.

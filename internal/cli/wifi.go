@@ -18,7 +18,7 @@ var cmdWifi = &Command{
 		"The connected address is printed to stdout.",
 	ArgHelp:  [][2]string{{"off", "Switch back to USB and disconnect"}},
 	Flags:    []Flag{{"-p", "--port", "PORT", "TCP port (default 5555)"}},
-	Examples: []string{"ak wifi", "ak wifi -s 46171FDAP000P8", "ak wifi off"},
+	Examples: []string{"ak wifi", "ak wifi -s emulator-5554", "ak wifi off"},
 	Device:   oneDevice, Run: runWifi,
 }
 

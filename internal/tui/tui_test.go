@@ -30,7 +30,7 @@ func press(t *testing.T, s *state, input string) action {
 func render(s *state, height int) string {
 	fixed := 0
 	l := s.computeLayout(height, &fixed, false)
-	return plain(s.frame(l, fixed, 40))
+	return plain(s.frame(l, fixed, 40, 100))
 }
 
 func TestParseKeys(t *testing.T) {
@@ -221,5 +221,31 @@ func TestCtrlC(t *testing.T) {
 	s := newState(Options{Items: []string{"a"}})
 	if press(t, s, "\x03") != actInterrupt {
 		t.Error("Ctrl+C must interrupt")
+	}
+}
+
+// Small terminals: the frame never has more lines than the terminal, so the
+// screen never scrolls; items and the filter input are the last to go.
+func TestFrameFitsHeight(t *testing.T) {
+	items := make([]string, 40)
+	for i := range items {
+		items[i] = "app-" + strings.Repeat("x", i%7) + ".apk"
+	}
+	for _, h := range []int{2, 3, 4, 6, 8, 24} {
+		s := newState(Options{Multi: true, Prompt: "Select APK files", Location: []string{"/tmp"}, Items: items})
+		press(t, s, "\x1b[B\x1b[B/app") // move, then filter
+		fixed := 0
+		l := s.computeLayout(h, &fixed, false)
+		lines := s.frame(l, fixed, 40, h)
+		got := plain(lines)
+		if len(lines) > h {
+			t.Errorf("height %d: %d lines\n%s", h, len(lines), got)
+		}
+		if h >= 2 && (!strings.Contains(got, "➤") || !strings.Contains(got, "> app")) {
+			t.Errorf("height %d: focused item or filter input missing\n%s", h, got)
+		}
+		if h >= 24 && !strings.Contains(got, "==> Select APK files") {
+			t.Errorf("height %d: prompt dropped although it fits\n%s", h, got)
+		}
 	}
 }

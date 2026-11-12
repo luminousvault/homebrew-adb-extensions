@@ -149,7 +149,7 @@ func runLogcat(c *Ctx) error {
 	if len(c.Args) == 1 {
 		pkg = c.Args[0]
 		if !validPackageName(pkg) {
-			return failErr("", "Invalid package name: %s", pkg)
+			return failErr("", "Invalid package name: %s", q(pkg))
 		}
 	} else {
 		pkg = foregroundPackage(serial)
@@ -162,9 +162,9 @@ func runLogcat(c *Ctx) error {
 	}
 	t := &tracker{pkg: pkg, pids: appPIDs(serial, pkg)}
 	if len(t.pids) == 0 {
-		ui.Step("Waiting for %s to start on %s (Ctrl+C to stop)", pkg, deviceName(serial))
+		ui.Step("Waiting for %s to start on %s (Ctrl+C to stop)", q(pkg), deviceName(serial))
 	} else {
-		ui.Step("Logs of %s (pid %s) on %s (Ctrl+C to stop)", pkg, pidList(t.pids), deviceName(serial))
+		ui.Step("Logs of %s (pid %s) on %s (Ctrl+C to stop)", q(pkg), pidList(t.pids), deviceName(serial))
 	}
 
 	cmd, out, err := adb.Start("-s", serial, "logcat", "-v", "threadtime")

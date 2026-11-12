@@ -3,4 +3,4 @@
 package tui
 
 // Windows has no SIGWINCH; the size is re-read on every redraw instead.
-func watchResize() (stop func()) { return func() {} }
+func watchResize(func()) (stop func()) { return func() {} }

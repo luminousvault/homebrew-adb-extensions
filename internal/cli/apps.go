@@ -114,7 +114,7 @@ func runInfo(c *Ctx) error {
 	}
 	a := parseAppInfo(adb.Out("-s", serial, "shell", "dumpsys", "package", t.pkg))
 	if a.VersionName == "" || a.VersionCode == "" || a.TargetSdk == "" {
-		return failErr("", "Could not read versionName, versionCode or targetSdk of %s", t.pkg)
+		return failErr("", "Could not read versionName, versionCode or targetSdk of %s", q(t.pkg))
 	}
 	if c.JSON() {
 		return ui.JSON(map[string]any{
@@ -215,11 +215,11 @@ func runLaunch(c *Ctx) error {
 	resolved, _ := adb.Combined("-s", serial, "shell", "cmd", "package", "resolve-activity", "--brief", pkg)
 	result, _ := adb.Combined("-s", serial, "shell", "am", "start", "--user", "0", "-n", lastLine(resolved))
 	if strings.Contains(result, "Exception occurred while executing 'start'") || strings.Contains(result, "Error:") {
-		ui.Errorf("Couldn't launch %s", pkg)
+		ui.Errorf("Couldn't launch %s", q(pkg))
 		ui.Detail("%s", result)
 		return errReported
 	}
-	ui.Success("Launched %s on %s", pkg, deviceName(serial))
+	ui.Success("Launched %s on %s", q(pkg), deviceName(serial))
 	return nil
 }
 
@@ -253,7 +253,7 @@ func forEachPackage(c *Ctx, action func(serial, pkg, label string) bool) error {
 		if err != nil {
 			return err
 		}
-		if !action(serial, t.pkg, t.pkg+" (foreground app)") {
+		if !action(serial, t.pkg, q(t.pkg)+" (foreground app)") {
 			return errReported
 		}
 		return nil
@@ -263,15 +263,15 @@ func forEachPackage(c *Ctx, action func(serial, pkg, label string) bool) error {
 	for _, pkg := range c.Args {
 		switch {
 		case seen[pkg]:
-			ui.Warn("Skipping duplicate package %s", pkg)
+			ui.Warn("Skipping duplicate package %s", q(pkg))
 		case !validPackageName(pkg):
-			ui.Errorf("Invalid package name: %s", pkg)
+			ui.Errorf("Invalid package name: %s", q(pkg))
 			failed = true
 		case !packageInstalled(serial, pkg):
-			ui.Errorf("Package not installed on %s: %s", deviceName(serial), pkg)
+			ui.Errorf("Package not installed on %s: %s", deviceName(serial), q(pkg))
 			failed = true
 		default:
-			if !action(serial, pkg, pkg) {
+			if !action(serial, pkg, q(pkg)) {
 				failed = true
 			}
 		}
@@ -286,7 +286,7 @@ func forEachPackage(c *Ctx, action func(serial, pkg, label string) bool) error {
 func runKill(c *Ctx) error {
 	return forEachPackage(c, func(serial, pkg, label string) bool {
 		if out, err := adb.Combined("-s", serial, "shell", "am", "force-stop", pkg); err != nil {
-			ui.Errorf("Couldn't stop %s", pkg)
+			ui.Errorf("Couldn't stop %s", q(pkg))
 			ui.Detail("%s", out)
 			return false
 		}
@@ -299,7 +299,7 @@ func runClear(c *Ctx) error {
 	return forEachPackage(c, func(serial, pkg, label string) bool {
 		out, _ := adb.Combined("-s", serial, "shell", "pm", "clear", pkg)
 		if !strings.Contains(out, "Success") {
-			ui.Errorf("Couldn't clear data of %s", pkg)
+			ui.Errorf("Couldn't clear data of %s", q(pkg))
 			ui.Detail("%s", out)
 			return false
 		}
@@ -332,7 +332,7 @@ func runUninstall(c *Ctx) error {
 	}
 	out, _ := adb.Combined("-s", serial, "uninstall", t.pkg)
 	if !strings.Contains(out, "Success") {
-		ui.Errorf("Couldn't uninstall %s", t.pkg)
+		ui.Errorf("Couldn't uninstall %s", q(t.pkg))
 		ui.Detail("%s", out)
 		return errReported
 	}
@@ -399,7 +399,7 @@ func runExtract(c *Ctx) error {
 	out, err := adb.Combined("-s", serial, "pull", remote, file)
 	sp.Stop()
 	if err != nil {
-		ui.Errorf("Couldn't pull the APK of %s", t.pkg)
+		ui.Errorf("Couldn't pull the APK of %s", q(t.pkg))
 		ui.Detail("%s", out)
 		return errReported
 	}
@@ -407,7 +407,7 @@ func runExtract(c *Ctx) error {
 	if st, err := os.Stat(file); err == nil {
 		size = humanSize(strconv.FormatInt(st.Size(), 10)) + ", "
 	}
-	ui.Success("Saved %s %s", file, ui.Err.Dim("("+size+elapsed(start)+")"))
+	ui.Success("Saved %s %s", q(file), ui.Err.Dim("("+size+elapsed(start)+")"))
 	return nil
 }
 

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"golang.org/x/term"
 )
@@ -139,15 +138,17 @@ type Cell struct {
 	Color func(string) string
 }
 
-// Table prints rows aligned in columns under dim bold headers (stdout).
+// Table prints rows aligned in columns under bold headers (stdout). On a
+// terminal a dim rule separates the headers from the rows; piped output stays
+// plain columns so tools like awk can read it.
 func Table(headers []string, rows [][]Cell) {
 	widths := make([]int, len(headers))
 	for i, h := range headers {
-		widths[i] = utf8.RuneCountInString(h)
+		widths[i] = textWidth(h)
 	}
 	for _, r := range rows {
 		for i, c := range r {
-			widths[i] = max(widths[i], utf8.RuneCountInString(c.Text))
+			widths[i] = max(widths[i], textWidth(c.Text))
 		}
 	}
 	line := func(cells []string, raw []string) {
@@ -155,16 +156,23 @@ func Table(headers []string, rows [][]Cell) {
 		for i, c := range cells {
 			b.WriteString(c)
 			if i < len(cells)-1 {
-				b.WriteString(strings.Repeat(" ", widths[i]-utf8.RuneCountInString(raw[i])+2))
+				b.WriteString(strings.Repeat(" ", widths[i]-textWidth(raw[i])+2))
 			}
 		}
 		Out.Println(b.String())
 	}
 	hs := make([]string, len(headers))
 	for i, h := range headers {
-		hs[i] = Out.Paint(dim+bold, h)
+		hs[i] = Out.Bold(h)
 	}
 	line(hs, headers)
+	if Out.TTY {
+		total := 2 * (len(widths) - 1)
+		for _, w := range widths {
+			total += w
+		}
+		Out.Println(Out.Dim(strings.Repeat("─", total)))
+	}
 	for _, r := range rows {
 		cells := make([]string, len(r))
 		raw := make([]string, len(r))
@@ -177,6 +185,15 @@ func Table(headers []string, rows [][]Cell) {
 		}
 		line(cells, raw)
 	}
+}
+
+// textWidth is the number of terminal columns s takes (wide runes count 2).
+func textWidth(s string) int {
+	n := 0
+	for _, r := range s {
+		n += runeWidth(r)
+	}
+	return n
 }
 
 // KeyValues prints "  key  value" pairs aligned (stdout).

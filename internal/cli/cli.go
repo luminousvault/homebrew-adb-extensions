@@ -23,7 +23,7 @@ type deviceMode int
 const (
 	noDevice    deviceMode = iota
 	oneDevice              // -s/--serial
-	manyDevices            // -s/--serial (repeatable), -m/--all
+	manyDevices            // -s/--serial (repeatable), -a/--all
 )
 
 // Flag is one option of a command.
@@ -53,6 +53,7 @@ type Command struct {
 	Device   deviceMode
 	JSON     bool // adds --json
 	NoADB    bool
+	Hidden   bool // left out of the global help and the zsh completion
 	Run      func(c *Ctx) error
 }
 
@@ -61,7 +62,7 @@ var (
 	flagJSON   = Flag{"", "--json", "", "Print the result as JSON"}
 	flagSerial = Flag{"-s", "--serial", "ID", "Target device (default: $ANDROID_SERIAL, or ask)"}
 	flagSerals = Flag{"-s", "--serial", "ID", "Target device; repeat for more (default: $ANDROID_SERIAL, or ask)"}
-	flagAll    = Flag{"-m", "--all", "", "All connected devices"}
+	flagAll    = Flag{"-a", "--all", "", "All connected devices"}
 	flagYes    = Flag{"-y", "--yes", "", "Answer yes to confirmations"}
 )
 
@@ -84,7 +85,7 @@ func (cmd *Command) AllFlags() []Flag {
 var Commands = []*Command{
 	cmdInstall, cmdPull, cmdExtract, cmdInfo, cmdPermissions, cmdUninstall, cmdClear,
 	cmdKill, cmdLaunch, cmdRestart, cmdSignature, cmdActivities, cmdLogcat, cmdScreenshot, cmdRecord,
-	cmdDevices, cmdMac, cmdWifi, cmdDoctor,
+	cmdDevices, cmdMac, cmdWifi, cmdDoctor, cmdVerifier,
 }
 
 func find(name string) *Command {
@@ -271,6 +272,15 @@ func parse(cmd *Command, args []string) (*Ctx, bool, error) {
 			c.Args = append(c.Args, a)
 			continue
 		}
+		// Bundled short options, as getopt allows: -ea is -e -a, -tl5 is -t -l=5.
+		if len(a) > 2 && a[1] != '-' && !strings.Contains(a, "=") {
+			split, err := splitShort(cmd, a, lookup)
+			if err != nil {
+				return nil, false, err
+			}
+			args = append(append(append([]string{}, args[:i]...), split...), args[i+1:]...)
+			a = args[i]
+		}
 		name, value, hasValue := strings.Cut(a, "=")
 		f, ok := lookup(name)
 		if !ok {
@@ -297,6 +307,32 @@ func parse(cmd *Command, args []string) (*Ctx, bool, error) {
 	return c, false, nil
 }
 
+// splitShort expands bundled short options: "-ea" -> "-e", "-a". An option
+// that takes a value ends the bundle: the rest is its value ("-lW" -> "-l=W"),
+// or the next argument when nothing is left ("-tl W").
+func splitShort(cmd *Command, a string, lookup func(string) (Flag, bool)) ([]string, error) {
+	var out []string
+	rs := []rune(a[1:])
+	for j, r := range rs {
+		name := "-" + string(r)
+		f, ok := lookup(name)
+		if !ok {
+			if j == 0 {
+				return nil, usageErr(cmd, "Unknown option: %s", a)
+			}
+			return nil, usageErr(cmd, "Unknown option: %s (in %s)", name, a)
+		}
+		if f.Value != "" {
+			if rest := string(rs[j+1:]); rest != "" {
+				name += "=" + rest
+			}
+			return append(out, name), nil
+		}
+		out = append(out, name)
+	}
+	return out, nil
+}
+
 // ── Help ─────────────────────────────────────────────
 
 func showHelp() {
@@ -308,6 +344,9 @@ func showHelp() {
 	o.Println("")
 	o.Println(o.Bold("Commands:"))
 	for _, c := range Commands {
+		if c.Hidden {
+			continue
+		}
 		o.Printf("  %-12s %s\n", c.Name, c.Summary)
 	}
 	o.Println("")
@@ -385,13 +424,14 @@ func showCommandHelp(cmd *Command) {
 }
 
 func showVersion() {
-	adbVersion := "Not found"
-	if p, err := adb.Locate(); err == nil {
-		if v, _ := adb.VersionInfo(p); v != "" {
+	o := ui.Out
+	adbVersion, adbPath := "Not found", "Not found"
+	if c := adb.Candidates(); len(c) > 0 {
+		if v, _ := adb.VersionInfo(c[0].Path); v != "" {
 			adbVersion = v
 		}
+		adbPath = tildeHome(c[0].Path) + " " + o.Dim("("+c[0].Source+")")
 	}
-	o := ui.Out
 	G, Y, R, C, B := o.Green, o.Yellow, o.Red, o.Cyan, func(s string) string { return o.Paint("\033[34m", s) }
 	key := func(s string) string { return o.Paint("\033[1m\033[33m", s) }
 	lines := []string{
@@ -399,18 +439,21 @@ func showVersion() {
 		"                                        " + o.Bold("ak") + " " + G(Version) + " - Released on " + ReleaseDate,
 		"        " + G("::") + "                   " + G(".::") + "        ------------------------------------",
 		"       " + G(":#*+.") + "                " + G(":+*#.") + "       " + key("ADB Version:") + " " + adbVersion,
-		"        " + G(":**+:") + "    " + G("......") + "    " + G("-+**.") + "        " + key("Author:") + " Claude Hwang",
-		"         " + G(".*+=---::::::::---+*+") + "          " + key("License:") + " MIT",
-		"        " + Y(":-=----:--------:---==-.") + "        " + key("Language:") + " Go",
-		"      " + Y(":++=---==============---=+=.") + "      " + key("Supported OS:") + " macOS, Linux, Windows",
-		"    " + R(".+*+=+*%#++++++++++++++##+=+**-") + "     " + key("Dependencies:") + " adb",
+		"        " + G(":**+:") + "    " + G("......") + "    " + G("-+**.") + "        " + key("ADB Path:") + " " + adbPath,
+		"         " + G(".*+=---::::::::---+*+") + "          " + key("Author:") + " Claude Hwang",
+		"        " + Y(":-=----:--------:---==-.") + "        " + key("License:") + " MIT",
+		"      " + Y(":++=---==============---=+=.") + "      " + key("Language:") + " Go",
+		"    " + R(".+*+=+*%#++++++++++++++##+=+**-") + "     " + key("Supported OS:") + " macOS, Linux, Windows",
 		"   " + R(".****+%@@%+++++++++++++*@@@#+**#+") + "    " + key("Repository:") + " https://github.com/luminousvault/homebrew-adb-extensions",
-		"   " + C("*#*****#*+++++++++++++++*##*****#=") + "   ",
-		"  " + B("-%#*****++++++++++++++++++++****##%.") + "  " + key("Purpose:") + " ADB extensions kit - Essential ADB utilities",
-		"                                        " + key("Features:") + " APK install, Device management, App control",
+		"   " + C("*#*****#*+++++++++++++++*##*****#=") + "   " + key("Purpose:") + " ADB extensions kit - Essential ADB utilities",
+		"  " + B("-%#*****++++++++++++++++++++****##%.") + "  " + key("Features:") + " APK install, Device management, App control",
 		"",
 	}
 	for _, l := range lines {
 		o.Println(l)
 	}
 }
+
+// q quotes a package name, file name or path inside a message so it stands
+// apart from the words around it: Installed 'app.apk' on Pixel 7.
+func q(s string) string { return "'" + s + "'" }

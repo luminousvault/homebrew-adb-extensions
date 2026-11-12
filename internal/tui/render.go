@@ -68,34 +68,68 @@ func (s *state) computeLayout(height int, fixedHeight *int, resized bool) layout
 	return l
 }
 
-// frame renders the whole picker as lines (without line terminators).
-func (s *state) frame(l layout, fixedHeight, width int) []string {
-	var lines []string
-	add := func(format string, args ...any) { lines = append(lines, clearLine+fmt.Sprintf(format, args...)) }
+// Line priorities for small terminals: when the frame is taller than the
+// terminal, lines with the highest drop priority go first, so items and the
+// filter input stay visible down to a few rows.
+const (
+	keepLine     = iota // items, filter input
+	dropPrompt          // "==> Select ..."
+	dropCounter         // "3 item(s) | 1 selected"
+	dropRule            // filter box rules
+	dropHelp            // key help
+	dropLocation        // "Location: ..."
+	dropSpacer          // blank lines
+)
 
-	add("%s==> %s%s%s", Blue, Bold, s.opts.Prompt, NC)
-	if len(s.opts.Location) > 0 {
-		add("    %sLocation: %s%s", Dim, strings.Join(s.opts.Location, " • "), NC)
+// frame renders the whole picker as lines (without line terminators), at most
+// height lines.
+func (s *state) frame(l layout, fixedHeight, width, height int) []string {
+	type line struct {
+		text string
+		drop int
 	}
-	add("")
-	add("%s", s.counter(l))
+	var lines []line
+	add := func(drop int, format string, args ...any) {
+		lines = append(lines, line{clearLine + fmt.Sprintf(format, args...), drop})
+	}
+
+	add(dropPrompt, "%s==> %s%s%s", Blue, Bold, s.opts.Prompt, NC)
+	if len(s.opts.Location) > 0 {
+		add(dropLocation, "    %sLocation: %s%s", Dim, strings.Join(s.opts.Location, " • "), NC)
+	}
+	add(dropSpacer, "")
+	add(dropCounter, "%s", s.counter(l))
 	for i := l.windowStart; i < l.windowEnd && i < len(s.filtered); i++ {
-		add("%s", s.row(i))
+		add(keepLine, "%s", s.row(i))
 	}
 	if s.filterMode {
 		for i := l.windowEnd - l.windowStart; i < fixedHeight; i++ {
-			add("")
+			add(dropSpacer, "")
 		}
 	}
-	add("")
-	add("%s", s.help())
+	add(dropSpacer, "")
+	add(dropHelp, "%s", s.help())
 	if s.filterMode {
 		rule := Dim + strings.Repeat("─", max(width-1, 1)) + NC
-		add("%s", rule)
-		add("> %s", s.filterDisplay())
-		add("%s", rule)
+		add(dropRule, "%s", rule)
+		add(keepLine, "> %s", s.filterDisplay())
+		add(dropRule, "%s", rule)
 	}
-	return lines
+	for drop := dropSpacer; len(lines) > height && drop > keepLine; drop-- {
+		for i := len(lines) - 1; i >= 0 && len(lines) > height; i-- {
+			if lines[i].drop == drop {
+				lines = append(lines[:i], lines[i+1:]...)
+			}
+		}
+	}
+	out := make([]string, 0, len(lines))
+	for _, ln := range lines {
+		out = append(out, ln.text)
+	}
+	if height > 0 && len(out) > height {
+		out = out[:height] // even items do not fit; never scroll the screen
+	}
+	return out
 }
 
 func (s *state) counter(l layout) string {

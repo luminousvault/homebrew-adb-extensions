@@ -43,13 +43,14 @@ brew install ak
 git clone https://github.com/luminousvault/homebrew-adb-extensions.git
 cd homebrew-adb-extensions
 
-# 빌드 (Go 1.27+)
-go build -o ak ./cmd/ak
-sudo mv ak /usr/local/bin/
+# 빌드 후 ak와 zsh 자동 완성을 /usr/local에 설치 (Go 1.27+)
+make install
 
-# Zsh 자동 완성 (선택)
-cp completions/_ak "${fpath[1]}/_ak"
+# 제거
+make uninstall
 ```
+
+`make install PREFIX=~/.local`처럼 다른 위치에 설치할 수 있습니다. 자동 완성 파일은 `$PREFIX/share/zsh/site-functions`에 들어가므로 그 경로가 `fpath`에 있어야 합니다.
 
 또는 `go install`로 설치:
 
@@ -108,13 +109,14 @@ ak <command> [options] [arguments...]
 |---|---|
 | `-s, --serial <ID>` | 이 디바이스만 (`install`, `mac`은 여러 번 지정 가능) |
 | `ANDROID_SERIAL` | 기본 대상 디바이스 (adb와 같은 규칙) |
-| `-m, --all` | 연결된 모든 디바이스 (`install`, `mac`) |
+| `-a, --all` | 연결된 모든 디바이스 (`install`, `mac`, `screenshot`) |
 | (없음) | 연결된 디바이스가 하나면 그것, 여러 대면 선택 UI |
 
 터미널이 아니면(파이프, CI) 선택 UI를 띄우지 않고 `-s`를 지정하라고 안내합니다.
 
 ### 출력과 스크립트 사용
 
+- 옵션은 인자 앞뒤 어디에 써도 되고, 짧은 옵션은 묶어 쓸 수 있습니다: `ak install -ea`는 `ak install -e -a`, `ak logcat -clW`는 `ak logcat -c -l W`와 같습니다.
 - 결과는 stdout, 진행·경고·오류·질문은 stderr로 나갑니다. `ak info --json | jq`에는 결과만 전달됩니다.
 - `--json`: `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `doctor`의 결과를 JSON으로 출력합니다.
 - `-y, --yes`: 확인 질문(예: `install`의 제거 후 재설치)에 자동으로 예라고 답합니다. 터미널이 아니고 `-y`도 없으면 임의로 진행하지 않습니다.
@@ -128,15 +130,15 @@ ak <command> [options] [arguments...]
 - `install [apk_files|directories...]` - APK 파일 설치 (APK 파일을 지정하면 바로 설치, 디렉토리나 인자 없음이면 선택 UI)
   - APK 선택:
     - `-l, --latest` - 최신 APK 설치 (현재 디렉토리 또는 지정된 디렉토리)
-    - `-a, --all-apks` - 모든 APK 설치 (현재 디렉토리 또는 지정된 디렉토리)
+    - `-e, --every-apk` - 모든 APK 설치 (현재 디렉토리 또는 지정된 디렉토리). 설치할 목록을 먼저 보여 줌
     - `-f, --filter <words>` - 이름에 모든 단어가 들어간 APK 중에서 선택
   - 디바이스 옵션:
-    - `-m, --all` - 연결된 모든 디바이스에 동시에 설치
+    - `-a, --all` - 연결된 모든 디바이스에 동시에 설치
     - `-s, --serial <ID>` - 지정한 디바이스에 설치 (여러 번 지정 가능)
   - ADB 옵션:
     - `-r` - 기존 앱 교체 (항상 적용)
-    - `-t` - 테스트 APK 허용
-    - `-d` - 버전 다운그레이드 허용
+    - `-t, --test-only` - 테스트 전용 APK 허용
+    - `-d, --downgrade` - 버전 다운그레이드 허용
   - `-y, --yes` - 복구에 제거가 필요할 때 묻지 않고 제거 후 재설치
 - `extract [package|filename] [filename|package]` - 디바이스에서 APK 추출 (순서 무관)
 
@@ -154,20 +156,20 @@ ak <command> [options] [arguments...]
 - `info [package]` - 앱 정보 표시 (버전, SDK, 디버그 가능 여부, 설치자)
 - `permissions [package]` - 허용된 앱 권한 목록
 - `signature [package|apk_file]` - 앱 서명 표시 (인터랙티브 선택 지원)
-- `activities [-a]` - 액티비티 스택 표시 (`-a, --all-tasks` 모든 태스크)
+- `activities [-e]` - 액티비티 스택 표시 (`-e, --every-task` 모든 태스크)
 - `logcat [package] [-l level] [-c]` - 앱 하나의 로그만 표시. 앱이 재시작해도 새 PID를 따라감 (`pkg:remote` 프로세스 포함)
 
 #### 화면
 
-- `screenshot [file|directory]` - PC에 PNG로 저장 (디바이스에 파일을 남기지 않음). `--all`은 디바이스별로 저장
-- `record [file|directory] [-t seconds] [--size WxH]` - Ctrl+C 또는 시간 제한(최대 180초)까지 녹화한 뒤 MP4를 저장하고 디바이스에서 삭제
+- `screenshot [file|directory]` - PC에 PNG로 저장 (디바이스에 파일을 남기지 않음). `--all`은 디바이스별로 저장, `-o, --open`은 저장 후 열기
+- `record [file|directory] [-t seconds] [--size WxH]` - Ctrl+C 또는 시간 제한(최대 180초)까지 녹화한 뒤 MP4를 저장하고 디바이스에서 삭제. `-o, --open`은 저장 후 열기
 
 #### 앱 제어
 
 **참고:** `[package]` 또는 `[packages...]`를 생략하면 포그라운드 앱을 자동으로 감지합니다.
 
 - `launch <package>` - 앱 실행 (메인 액티비티)
-- `restart [package] [-n N]` - 강제 종료 후 다시 실행하고 실행 시간(`am start -W`) 표시. `-n`은 반복 후 최소/평균/최대
+- `restart [package] [-r N]` - 강제 종료 후 다시 실행하고 실행 시간(`am start -W`) 표시. `-r, --repeat`은 반복 후 최소/평균/최대
 - `kill [packages...]` - 앱 강제 종료
 - `clear [packages...]` - 앱 데이터 삭제
 - `uninstall [package]` - 앱 제거
@@ -176,9 +178,9 @@ ak <command> [options] [arguments...]
 
 - `devices` - 연결된 디바이스 목록 (브랜드, 모델, ID, Android 버전, CPU ABI 및 32/64비트 지원 여부)
 - `mac [options]` - 현재 Wi-Fi MAC(랜덤 여부·SSID 포함), 공장 Wi-Fi MAC, Bluetooth MAC 표시
-  - `-m, --all` 연결된 모든 디바이스 표시
+  - `-a, --all` 연결된 모든 디바이스 표시
 - `wifi [off]` - USB로 연결된 디바이스를 Wi-Fi 디버깅으로 전환하고 연결 (`adb tcpip` + IP 확인 + `adb connect`). `off`는 USB로 되돌림
-- `doctor` - 사용 중인 adb 경로를 보여 주고 adb 버전 충돌을 경고
+- `doctor` - 사용 중인 adb, 버전이 다른 adb, 연결된 디바이스(권한 없음·오프라인), 선택 도구를 점검. 문제가 있으면 종료 코드 1
 
 ### 인터랙티브 UI 기능
 
@@ -254,11 +256,21 @@ ak install -f debug /path/to/dir  # 특정 디렉토리
 
 **모든 연결된 디바이스에 설치:**
 ```bash
-ak install -m app.apk
-ak install -s 46171FDAP000P8 -s R3CW80E6Y8Z app.apk
+ak install -a app.apk
+ak install -s emulator-5554 -s emulator-5556 app.apk
+ak install -e -a                 # 현재 디렉토리의 모든 APK를 모든 디바이스에
 ```
 
 디바이스가 여러 대면 상태판에 디바이스별 진행 상황이 표시됩니다. 확인이 필요한 디바이스(예: 서명이 달라 먼저 제거해야 하는 경우)는 멈춰 있다가 다른 디바이스가 끝난 뒤 질문합니다(`a`는 남은 질문에 모두 예). 마지막에 요약이 나옵니다.
+
+**설치가 멈춘 것 같다면:** 한 단계가 10초를 넘기면 `(check the device screen)`이 표시됩니다. 대개 디바이스가 사용자의 응답을 기다리는 중입니다. Google Play 프로텍트는 처음 보는 앱(제거 후 재설치한 앱 포함)을 검사할지 묻고, 일부 디바이스는 USB 설치를 허용할지 묻습니다. 디바이스에서 답하면 설치가 이어집니다.
+
+테스트용 디바이스라면 adb로 설치하는 앱을 Play 프로텍트가 검사하지 않도록 끌 수 있습니다. 디바이스 보안 설정이므로 ak가 대신 바꾸지는 않습니다:
+
+```bash
+adb shell settings put global verifier_verify_adb_installs 0   # 1이면 다시 켜짐
+adb -s <serial> shell settings put global verifier_verify_adb_installs 0   # 디바이스가 여러 대일 때 (`ak devices`로 시리얼 확인)
+```
 
 **스크립트·CI에서:**
 ```bash
@@ -372,16 +384,16 @@ ak devices
 **MAC 주소 조회:**
 ```bash
 ak mac                # 선택한 디바이스의 MAC 주소
-ak mac -m             # 연결된 모든 디바이스 표시
+ak mac -a             # 연결된 모든 디바이스 표시
 ak mac --json         # JSON 출력
 ```
 
 출력 예시:
 ```
-Samsung SM-S928N (R3CW80E6Y8Z) Android 15, API 35
-  Wi-Fi (current)  a2:70:aa:5b:37:f2   (randomized · SSID "ONE-GUEST")
-  Wi-Fi (factory)  6c:ac:c2:75:85:ff
-  Bluetooth        6c:ac:c2:75:85:fe
+Samsung SM-S928N (R5CX00000000) Android 15, API 35
+  Wi-Fi (current)  02:00:5e:00:53:01   (randomized · SSID "MyWiFi")
+  Wi-Fi (factory)  00:00:5e:00:53:10
+  Bluetooth        00:00:5e:00:53:11
 ```
 
 **참고:** Android 10부터 Wi-Fi MAC은 기본적으로 네트워크마다 랜덤으로 사용되므로, `Wi-Fi (current)`는 현재 연결에 쓰이는 MAC만 표시합니다(Wi-Fi가 꺼져 있거나 미연결이면 `n/a`). `Wi-Fi (factory)`는 기기 고유의 Wi-Fi MAC으로 Wi-Fi가 꺼져 있어도 조회되지만, 일부 기기는 노출하지 않을 수 있습니다. 이 경우 Wi-Fi 개인정보 보호 설정을 '기기 MAC 사용'으로 바꾸면 현재 MAC으로 확인할 수 있습니다. Bluetooth MAC 접근을 제한하는 기기에서는 `n/a`로 표시될 수 있습니다.

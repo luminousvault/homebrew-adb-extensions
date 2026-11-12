@@ -14,27 +14,36 @@ All notable changes to this project will be documented in this file.
 ### Changed (Breaking)
 - New output design for every command (`docs/design/cli-output.md`): results on stdout and messages on stderr; `==>`, `✓`, `Warning:`, `Error:`, `Hint:` messages; colors only on terminals (`NO_COLOR`, `--no-color`, `CLICOLOR_FORCE`). Scripts that parsed v1.x output need updating
 - Exit codes: `0` success (including `--help`), `1` failure including partial failure (e.g. one of several packages, failed installs), `2` usage error, `130` interrupted. v1.x exited 1 for `--help` and 0 for several failures
-- Help is generated from command definitions and printed to stdout; options may come before or after arguments; `--opt=value` and `--` are supported
-- `devices` prints a plain table (`SERIAL MODEL ANDROID ABI STATE`); `activities`, `signature`, `mac` and `info` print aligned plain output
-- `activities --all` is now `-a, --all-tasks` (`--all` means all devices)
+- Help is generated from command definitions and printed to stdout; options may come before or after arguments; `--opt=value` and `--` are supported; short options can be combined (`-ea`, `-clW`)
+- `devices` prints a table (`SERIAL MODEL ANDROID ABI STATE`) with bold headers and, on a terminal, a rule under them; piped output is plain columns; `activities`, `signature`, `mac` and `info` print aligned plain output
+- Option names follow one rule (`docs/design/cli-output.md` §5.7): `-a, --all` always means all devices, `-e, --every-…` means every item of the command
+  - All devices: `-m` is now `-a, --all` (`install`, `mac`, `screenshot`)
+  - `install -a, --all-apks` is now `-e, --every-apk`; `activities --all` is now `-e, --every-task`
+  - `restart -n` is now `-r, --repeat`; `install -t`/`-d` gain `--test-only`/`--downgrade`
 - `install` with APK files installs them all; the picker is used for directories or no argument
+- Pickers open on the alternate screen: the terminal's earlier output and scrollback are kept (v1.x cleared them), and the choice is printed as `==> Selected …` after the picker closes
 - `pull` asks before creating a missing directory (`-y` to skip)
 
 ### Added
-- `doctor` command: shows which adb is used, lists other adb binaries and warns when their versions differ (mixed versions restart the adb server and drop connections)
-- Device targeting for all device commands: `-s, --serial`, `ANDROID_SERIAL`, and `-m, --all` for `install` and `mac`. Without a terminal, ak asks for `-s` instead of opening a picker
+- `doctor` command: checks the adb in use, other adb binaries with a different version (mixed versions restart the adb server and drop connections), connected devices (unauthorized, offline, `ANDROID_SERIAL` not connected) and optional tools; exits 1 when a problem is found
+- Device targeting for all device commands: `-s, --serial`, `ANDROID_SERIAL`, and `-a, --all` for `install`, `mac` and `screenshot`. Without a terminal, ak asks for `-s` instead of opening a picker
 - `install` on several devices runs in parallel with a status board; confirmations are collected and asked after the other devices finish (`[Y/n/a]`), followed by a summary
 - `--json` for `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `doctor`
 - `-y, --yes` for `install` and `pull`
 - Spinners for installs and pulls; zsh completion of device serials for `-s`
 - New commands that replace several adb steps each:
-  - `screenshot`: capture with `exec-out screencap` straight to a PNG (no temp file on the device), one file per device with `--all`
-  - `record`: `screenrecord` until Ctrl+C or the time limit; stops it with SIGINT so the MP4 is finalized, waits for the file, pulls it and deletes it from the device
+  - `screenshot`: capture with `exec-out screencap` straight to a PNG (no temp file on the device), one file per device with `--all`; `-o, --open` opens the file
+  - `record`: `screenrecord` until Ctrl+C or the time limit; stops it with SIGINT so the MP4 is finalized, waits for the file, pulls it and deletes it from the device; `-o, --open` opens the video
   - `logcat`: logs of one app only, following new PIDs across restarts and announcing process start/kill/death
   - `restart`: force-stop + launch with `am start -W` timing; `-n` for min/avg/max, `--json`
   - `wifi`: `tcpip` + Wi-Fi IP lookup + `connect` in one step; `wifi off` switches back to USB
+- `install -e` lists the APKs (size and time) before installing them
+- `install` shows `(check the device screen)` when a step takes more than 10 seconds (Play Protect or a USB-install prompt waiting on the device)
+- `make install` / `make uninstall` for local source installs (binary + zsh completion under `/usr/local`), replacing `./build.sh install`
 
 ### Fixed
+- Ctrl+C during `install` stops at once: no further APK, retry or uninstall starts after it (v1.x kept going), and the summary marks the interrupted APK
+- Pickers fit small terminals (never taller than the window) and redraw as soon as the window is resized
 - `install -f <filter> <dir>` no longer installs a non-matching APK when the directory contains exactly one APK
 - `activities` no longer mixes in activities of task 12 when showing task 2 (and similar)
 

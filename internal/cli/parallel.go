@@ -30,6 +30,7 @@ const (
 type jobMsg struct {
 	kind ui.Kind
 	text string
+	apk  int // index into files
 }
 
 type installJob struct {
@@ -46,7 +47,9 @@ type installJob struct {
 	start       time.Time
 	took        time.Duration
 	msgs        []jobMsg
-	results     []int8 // per APK: 0 not run, 1 installed, -1 failed
+	results     []int8   // per APK: 0 not run, 1 installed, -1 failed
+	notes       []string // per APK: why it failed, for the summary
+	stepStart   time.Time
 	interrupted bool
 	skipped     bool // the user declined a confirmation
 }
@@ -68,7 +71,7 @@ type jobReporter struct {
 
 func (r *jobReporter) emit(k ui.Kind, text string) {
 	r.j.with(func() {
-		r.j.msgs = append(r.j.msgs, jobMsg{k, text})
+		r.j.msgs = append(r.j.msgs, jobMsg{k, text, r.j.idx})
 		if k == ui.KindWarn {
 			r.j.reason = text
 		}
@@ -83,7 +86,11 @@ func (r *jobReporter) emit(k ui.Kind, text string) {
 func (r *jobReporter) progress(f string, a ...any) {
 	text := fmt.Sprintf(f, a...)
 	word, _, _ := strings.Cut(text, " ")
-	r.j.with(func() { r.j.activity = word + "..." })
+	r.j.with(func() {
+		r.j.activity = word + "..."
+		r.j.stepStart = time.Now()
+		r.j.msgs = append(r.j.msgs, jobMsg{ui.KindStep, text, r.j.idx})
+	})
 	if r.live {
 		printMu.Lock()
 		ui.Err.Println(ui.Err.Dim("["+r.j.name+"]") + " " + ui.Line(ui.KindStep, text))
@@ -94,6 +101,7 @@ func (r *jobReporter) progress(f string, a ...any) {
 func (r *jobReporter) done() {}
 
 func (r *jobReporter) success(f string, a ...any) {
+	r.j.with(func() { r.j.msgs = append(r.j.msgs, jobMsg{ui.KindSuccess, fmt.Sprintf(f, a...), r.j.idx}) })
 	if r.live {
 		printMu.Lock()
 		ui.Err.Println(ui.Err.Dim("["+r.j.name+"]") + " " + ui.Line(ui.KindSuccess, fmt.Sprintf(f, a...)))
@@ -104,9 +112,18 @@ func (r *jobReporter) success(f string, a ...any) {
 func (r *jobReporter) warn(f string, a ...any) { r.emit(ui.KindWarn, fmt.Sprintf(f, a...)) }
 func (r *jobReporter) fail(f string, a ...any) {
 	text := fmt.Sprintf(f, a...)
-	if strings.HasPrefix(text, "Skipped") {
-		r.j.with(func() { r.j.skipped = true })
-	}
+	r.j.with(func() {
+		// "Couldn't install a.apk on Pixel: INSTALL_FAILED_..." -> "INSTALL_FAILED_..."
+		note := ""
+		if i := strings.LastIndex(text, ": "); i >= 0 {
+			note = text[i+2:]
+		}
+		if strings.HasPrefix(text, "Skipped") {
+			r.j.skipped = true
+			note = strings.TrimSuffix("skipped: "+note, ": ")
+		}
+		r.j.notes[r.j.idx] = note
+	})
 	r.emit(ui.KindError, text)
 }
 func (r *jobReporter) detail(text string) {
@@ -139,6 +156,9 @@ func runJob(j *installJob, opts []string, live bool) {
 	r := &jobReporter{j: j, live: live}
 	failed := false
 	for i, f := range j.files {
+		if installStop.Load() {
+			break // Ctrl+C: do not start the next APK
+		}
 		j.with(func() { j.idx, j.activity = i, "Installing..." })
 		ok := installOne(r, j.serial, opts, f)
 		j.with(func() {
@@ -149,6 +169,12 @@ func runJob(j *installJob, opts []string, live bool) {
 			}
 		})
 		failed = failed || !ok
+		// A declined confirmation stops this device: later APKs may depend on this one.
+		stop := false
+		j.with(func() { stop = j.skipped })
+		if stop {
+			break
+		}
 	}
 	j.with(func() {
 		j.took = time.Since(j.start)
@@ -181,6 +207,9 @@ func boardLines(jobs []*installJob, frame int) []string {
 			icon, status = e.Red("✗"), e.Red("Interrupted")
 		case j.state == jobRunning:
 			icon, status = e.Cyan(string(spinner[frame%len(spinner)])), j.activity
+			if !j.stepStart.IsZero() && time.Since(j.stepStart) > slowStep {
+				status += " " + e.Dim(slowHint)
+			}
 		case j.state == jobWaiting:
 			icon, status = e.Yellow("⏸"), e.Yellow("Needs confirmation")
 		case j.state == jobFailed && j.skipped:
@@ -201,7 +230,7 @@ func installParallel(devices, files []string, opts []string) error {
 	jobs := make([]*installJob, len(devices))
 	for i, d := range devices {
 		jobs[i] = &installJob{serial: d, name: deviceName(d), files: files, answer: make(chan string),
-			results: make([]int8, len(files)), start: time.Now()}
+			results: make([]int8, len(files)), notes: make([]string, len(files)), start: time.Now()}
 	}
 	ui.Step("Installing %d APK(s) on %d devices", len(files), len(devices))
 
@@ -222,9 +251,12 @@ func installParallel(devices, files []string, opts []string) error {
 		ui.HideCursor()
 		defer ui.ShowCursor()
 	}
+	// After questions the board starts again below them, showing only the
+	// devices that were still unfinished; finished ones are already on screen.
+	active := jobs
 	draw := func(frame int) {
 		if board {
-			b.Draw(boardLines(jobs, frame))
+			b.Draw(boardLines(active, frame))
 		}
 	}
 	interrupted, applyAll := false, false
@@ -238,7 +270,9 @@ loop:
 			draw(frame)
 			break loop
 		case <-sig:
-			// The terminal sends SIGINT to adb too, so running installs stop on their own.
+			// The terminal sends SIGINT to adb too, so running installs stop on their
+			// own; installStop keeps jobs from starting the next APK or a retry.
+			installStop.Store(true)
 			interrupted = true
 			for _, j := range jobs {
 				j.with(func() {
@@ -261,6 +295,7 @@ loop:
 			draw(frame)
 			if waiting := waitingJobs(jobs); len(waiting) > 0 && !anyRunning(jobs) {
 				b.Release()
+				active = unfinished(jobs)
 				if !askWaiting(waiting, &applyAll) {
 					interrupted = true
 				}
@@ -280,6 +315,18 @@ func waitingJobs(jobs []*installJob) []*installJob {
 		j.mu.Unlock()
 	}
 	return w
+}
+
+func unfinished(jobs []*installJob) []*installJob {
+	var u []*installJob
+	for _, j := range jobs {
+		j.mu.Lock()
+		if j.state == jobRunning || j.state == jobWaiting {
+			u = append(u, j)
+		}
+		j.mu.Unlock()
+	}
+	return u
 }
 
 func anyRunning(jobs []*installJob) bool {
@@ -333,49 +380,34 @@ func finishParallel(jobs []*installJob, board, interrupted bool) error {
 		state   jobState
 		msgs    []jobMsg
 		results []int8
+		notes   []string
+		skipped bool
 	}
 	snaps := make([]snap, len(jobs))
 	failed := 0
 	for i, j := range jobs {
 		j.with(func() {
-			snaps[i] = snap{j.state, append([]jobMsg(nil), j.msgs...), append([]int8(nil), j.results...)}
+			snaps[i] = snap{j.state, append([]jobMsg(nil), j.msgs...), append([]int8(nil), j.results...),
+				append([]string(nil), j.notes...), j.skipped}
 		})
 		if snaps[i].state != jobDone {
 			failed++
 		}
 	}
-	// Details (warnings, errors, adb output) per device; live mode printed them already.
+	// Details per device; live mode printed them already.
 	if board {
 		for i, j := range jobs {
-			if len(snaps[i].msgs) == 0 {
-				continue
-			}
-			ui.Err.Println("")
-			ui.Err.Println(ui.Err.Bold(j.name) + " " + ui.Err.Dim("("+j.serial+")"))
-			for _, m := range snaps[i].msgs {
-				ui.Err.Println("  " + ui.Line(m.kind, m.text))
+			for _, l := range detailLines(j, snaps[i].msgs) {
+				ui.Err.Println(l)
 			}
 		}
 	}
 	ui.Err.Println("")
 	ui.Err.Println(ui.Err.Bold("Summary"))
-	nameW := 0
-	for _, j := range jobs {
-		nameW = max(nameW, len([]rune(j.name)))
-	}
-	for n, j := range jobs {
-		var cells []string
-		for i, f := range j.files {
-			mark := ui.Err.Dim("-")
-			switch snaps[n].results[i] {
-			case 1:
-				mark = ui.Err.Green("✓")
-			case -1:
-				mark = ui.Err.Red("✗")
-			}
-			cells = append(cells, filepath.Base(f)+" "+mark)
-		}
-		ui.Err.Printf("  %-*s  %s\n", nameW, j.name, strings.Join(cells, "  "))
+	for _, l := range summaryLines(jobs, func(i int) ([]int8, []string, bool) {
+		return snaps[i].results, snaps[i].notes, snaps[i].skipped
+	}) {
+		ui.Err.Println(l)
 	}
 	switch {
 	case interrupted:
@@ -387,4 +419,90 @@ func finishParallel(jobs []*installJob, board, interrupted bool) error {
 	}
 	ui.Success("Installed on %d devices", len(jobs))
 	return nil
+}
+
+// summaryLines prints one line per device ("✓ Pixel 7  5/5 installed") and,
+// under a device that did not finish, the APKs that failed or did not run.
+func summaryLines(jobs []*installJob, get func(int) ([]int8, []string, bool)) []string {
+	e := ui.Err
+	nameW := 0
+	for _, j := range jobs {
+		nameW = max(nameW, len([]rune(j.name)))
+	}
+	var lines []string
+	for n, j := range jobs {
+		results, notes, skipped := get(n)
+		ok := 0
+		for _, r := range results {
+			if r == 1 {
+				ok++
+			}
+		}
+		icon := e.Green("✓")
+		switch {
+		case ok == len(results):
+		case skipped:
+			icon = e.Yellow("–")
+		default:
+			icon = e.Red("✗")
+		}
+		lines = append(lines, fmt.Sprintf("  %s %-*s  %d/%d installed", icon, nameW, j.name, ok, len(results)))
+		if ok == len(results) {
+			continue
+		}
+		for i, f := range j.files {
+			switch results[i] {
+			case -1:
+				if strings.HasPrefix(notes[i], "skipped") {
+					lines = append(lines, "      "+e.Yellow("–")+" "+filepath.Base(f)+"  "+e.Dim(notes[i]))
+					continue
+				}
+				line := "      " + e.Red("✗") + " " + filepath.Base(f)
+				if notes[i] != "" {
+					line += "  " + e.Dim(notes[i])
+				}
+				lines = append(lines, line)
+			case 0:
+				lines = append(lines, "      "+e.Dim("– "+filepath.Base(f)+"  not installed"))
+			}
+		}
+	}
+	return lines
+}
+
+// detailLines tells, for each APK that needed attention (a warning or an
+// error), what happened from the first warning to the outcome:
+//
+//	Google Pixel 9 Pro (SERIAL)
+//	  app.apk
+//	    Warning: app.apk is older than the installed version, retrying with -d
+//	    ==> Uninstalling com.example.app from Google Pixel 9 Pro
+//	    ✓ Installed app.apk on Google Pixel 9 Pro (43.5s)
+//
+// APKs that installed without trouble are left to the summary.
+func detailLines(j *installJob, msgs []jobMsg) []string {
+	eventful := map[int]bool{}
+	for _, m := range msgs {
+		if m.kind == ui.KindWarn || m.kind == ui.KindError {
+			eventful[m.apk] = true
+		}
+	}
+	if len(eventful) == 0 {
+		return nil
+	}
+	lines := []string{"", ui.Err.Bold(j.name) + " " + ui.Err.Dim("("+j.serial+")")}
+	for i, f := range j.files {
+		if !eventful[i] {
+			continue
+		}
+		lines = append(lines, "  "+filepath.Base(f))
+		for _, m := range msgs {
+			// "Installing <apk>" repeats the heading; uninstall/reinstall steps stay.
+			if m.apk != i || (m.kind == ui.KindStep && strings.HasPrefix(m.text, "Installing ")) {
+				continue
+			}
+			lines = append(lines, "    "+ui.Line(m.kind, m.text))
+		}
+	}
+	return lines
 }

@@ -18,14 +18,14 @@
 
 **주요 기능:**
 * **통합 CLI:** 모든 ADB 관련 작업을 `ak <command>` 하나로 실행
-* **멀티 디바이스:** 여러 디바이스에 동시 설치·명령 실행 (`-m` 옵션 등)
+* **멀티 디바이스:** 여러 디바이스에 동시 설치·명령 실행 (`-a/--all` 옵션 등)
 * **인터랙티브 UI:** APK·디바이스 선택용 터미널 UI (키보드 탐색, 필터링, 정렬)
 * **포그라운드 앱 자동 감지:** 패키지명 미지정 시 현재 화면 앱을 자동으로 감지 (`info`, `kill` 등)
 * **자동 복구:** `install` 시 testOnly, 버전 다운그레이드, 서명 충돌을 자동 처리
 * **adb 자동 탐색 + `doctor`:** 여러 설치 경로에서 adb를 찾고 버전 충돌을 경고
 * **Zsh 탭 완성:** 커맨드·옵션 자동 완성
 * **정형화된 출력:** stdout은 결과, stderr은 메시지. `==>`/`✓`/`Warning:`/`Error:`/`Hint:` 다섯 가지 메시지, `--json`, 종료 코드 0/1/2/130 ([docs/design/cli-output.md](docs/design/cli-output.md))
-* **디바이스 지정:** `-s/--serial`, `ANDROID_SERIAL`, `-m/--all`. 터미널이 아니면 선택 UI 대신 `-s`를 요구
+* **디바이스 지정:** `-s/--serial`, `ANDROID_SERIAL`, `-a/--all`. 터미널이 아니면 선택 UI 대신 `-s`를 요구
 * **여러 디바이스 동시 설치:** 상태판 + 확인 질문 모아서 묻기 ([docs/spec/parallel-install.md](docs/spec/parallel-install.md))
 
 **지원 플랫폼:** macOS, Linux, Windows
@@ -43,7 +43,7 @@ cmd/ak/main.go
       → Command.Run(*Ctx) error → report(err)가 메시지·종료 코드 결정
 ```
 
-* **커맨드 정의:** `Command{Name, Summary, Args, Long, ArgHelp, Flags, Examples, Device, JSON, Run}`. 도움말 생성, 옵션 파싱, completion 검증이 모두 이 정의를 씁니다. `Device`(oneDevice/manyDevices)와 `JSON`을 켜면 `-s`, `-m/--all`, `--json`이 자동으로 붙습니다.
+* **커맨드 정의:** `Command{Name, Summary, Args, Long, ArgHelp, Flags, Examples, Device, JSON, Run}`. 도움말 생성, 옵션 파싱, completion 검증이 모두 이 정의를 씁니다. `Device`(oneDevice/manyDevices)와 `JSON`을 켜면 `-s`, `-a/--all`, `--json`이 자동으로 붙습니다. `Hidden: true`면 전체 도움말과 zsh completion에서 빠집니다(개인용 `verifier`).
 * **오류와 종료 코드:** 커맨드는 `error`를 반환합니다. `usageErr`(2), `failErr(hint, …)`(1), `errReported`(이미 출력한 실패, 1), `ui.ErrInterrupted`/`tui.ErrInterrupted`(130). `os.Exit`를 직접 쓰지 않습니다.
 * **출력:** 반드시 `internal/ui`를 통합니다. 결과 데이터는 `ui.Out`(stdout, `ui.Table`, `ui.KeyValues`, `ui.JSON`), 메시지는 `ui.Step/Success/Warn/Errorf/Hint/Detail`(stderr). 색은 `ui.Out.Green(...)`처럼 스트림 메서드로만 칠합니다(색 끔이면 자동으로 빠짐).
 * **adb 호출:** `internal/adb`의 `Out`, `Combined`, `Shell`, `Default.Passthrough`를 통해서만 호출합니다. 테스트는 `adbtest.Fake`를 `adb.Default`에 넣습니다(동시 호출 안전, `Delay`로 느린 명령 흉내).
@@ -82,6 +82,7 @@ adb-extensions/
 ├── .github/formula/ak.rb.tmpl  # Formula 템플릿 (소스 빌드)
 ├── .github/workflows/          # ci.yml (vet/test/lint/snapshot), release.yml (수동 릴리즈)
 ├── .goreleaser.yaml            # 멀티 플랫폼 바이너리
+├── Makefile                    # 로컬 빌드·설치 (make install / uninstall)
 ├── .golangci.yml
 ├── VERSION                     # 버전 단일 소스 (릴리즈 입력값과 일치해야 함)
 ├── CHANGELOG.md, README.md, README.ko.md, CONTRIBUTING.md
@@ -92,6 +93,7 @@ adb-extensions/
 ```bash
 go run ./cmd/ak <command>             # 바로 실행
 go build -o ak ./cmd/ak               # 빌드
+make install                          # build/ak + completions/_ak를 /usr/local에 설치 (make uninstall로 제거)
 go test ./...                         # 단위 테스트
 go vet ./... && golangci-lint run     # 정적 검사 (CI와 동일)
 goreleaser build --snapshot --clean   # 멀티 플랫폼 빌드 확인
@@ -112,6 +114,7 @@ goreleaser build --snapshot --clean   # 멀티 플랫폼 빌드 확인
 ## 코드 스타일 (Go)
 
 * `gofmt`, `go vet`, `golangci-lint` 통과 필수
+* 옵션 이름은 [docs/design/cli-output.md](docs/design/cli-output.md) §5.7 규칙을 따릅니다: 짧은 이름 = 긴 이름 첫 글자, `-s`·`-a`·`-y`·`-h`는 전 커맨드 공통 의미로 예약, 커맨드 항목 전부는 `-e, --every-…`
 * 출력은 [docs/design/cli-output.md](docs/design/cli-output.md)를 따릅니다: 결과는 stdout, 메시지는 stderr, 메시지 기호 다섯 가지, 실패하면 0이 아닌 종료 코드, 고칠 방법을 알면 `Hint`
 * 터미널이 아닐 때(파이프·CI)도 동작해야 합니다: 선택 UI와 확인 질문은 `-s`, `-y`, 인자로 대신할 수 있어야 합니다
 * adb 출력 파싱은 순수 함수(`parse...`)로 분리해 테스트합니다

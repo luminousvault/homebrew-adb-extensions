@@ -52,10 +52,10 @@ func requirePackage(serial, pkg string) error {
 		return failErr("Open the app on the device or pass a package name", "No foreground app found on %s", deviceName(serial))
 	}
 	if !validPackageName(pkg) {
-		return failErr("", "Invalid package name: %s", pkg)
+		return failErr("", "Invalid package name: %s", q(pkg))
 	}
 	if !packageInstalled(serial, pkg) {
-		return failErr(hintPackage, "Package not installed on %s: %s", deviceName(serial), pkg)
+		return failErr(hintPackage, "Package not installed on %s: %s", deviceName(serial), q(pkg))
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func requirePackage(serial, pkg string) error {
 func apkPathForPackage(serial, pkg string) (string, error) {
 	out := adb.Shell(serial, "pm path "+pkg)
 	if strings.TrimSpace(out) == "" {
-		return "", failErr("", "Package not found on %s: %s", deviceName(serial), pkg)
+		return "", failErr("", "Package not found on %s: %s", deviceName(serial), q(pkg))
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	chosen := lines[0]
@@ -87,9 +87,9 @@ type target struct {
 // describe returns "pkg (foreground app on Device)" or "pkg on Device".
 func (t target) describe(serial string) string {
 	if t.foreground {
-		return t.pkg + " (foreground app on " + deviceName(serial) + ")"
+		return q(t.pkg) + " (foreground app on " + deviceName(serial) + ")"
 	}
-	return t.pkg + " on " + deviceName(serial)
+	return q(t.pkg) + " on " + deviceName(serial)
 }
 
 // resolvePackage uses the given package or the foreground app, and checks it.

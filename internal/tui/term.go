@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
-	"sync/atomic"
+	"sync"
 
 	"golang.org/x/term"
 
@@ -20,7 +20,9 @@ var ErrInterrupted = errors.New("interrupted")
 var ErrNoTerminal = errors.New("interactive selection requires a terminal")
 
 const (
-	clearScreen     = "\033[H\033[2J\033[3J"
+	altScreenOn     = "\033[?1049h" // draw on the alternate screen; the shell's screen and scrollback stay intact
+	altScreenOff    = "\033[?1049l"
+	clearScreen     = "\033[H\033[2J"
 	hideCursor      = "\033[?25l"
 	showCursor      = "\033[?25h"
 	pasteModeOn     = "\033[?2004h"
@@ -30,10 +32,35 @@ const (
 	inputBufferSize = 4096
 )
 
-var resized atomic.Bool
+var (
+	screenMu sync.Mutex
+	held     bool // Hold: stay on the alternate screen between pickers
+	onAlt    bool // the alternate screen is open
+)
 
-// Select shows the picker and blocks until the user confirms or presses Ctrl+C.
-// The picker stays on screen afterwards, like the Bash version.
+// Hold keeps the alternate screen open when a picker closes, so pickers shown
+// one after another (APKs, then devices) look like one screen that changes
+// instead of flashing back to the shell between them. Call Release afterwards.
+func Hold() {
+	screenMu.Lock()
+	held = true
+	screenMu.Unlock()
+}
+
+// Release leaves the alternate screen if a held picker left it open.
+func Release() {
+	screenMu.Lock()
+	defer screenMu.Unlock()
+	held = false
+	if onAlt {
+		io.WriteString(os.Stderr, showCursor+altScreenOff)
+		onAlt = false
+	}
+}
+
+// Select shows the picker on the alternate screen and blocks until the user
+// confirms or presses Ctrl+C. Afterwards the terminal shows what it showed
+// before, so earlier output (and scrollback) is kept; callers print the choice.
 func Select(o Options) (Result, error) {
 	inFd, outFd := int(os.Stdin.Fd()), int(os.Stderr.Fd()) // draw on stderr so stdout stays clean
 	if !term.IsTerminal(inFd) || !term.IsTerminal(outFd) {
@@ -43,21 +70,12 @@ func Select(o Options) (Result, error) {
 	if err != nil {
 		return Result{Index: -1}, err
 	}
-	stopResize := watchResize()
 	out := os.Stderr
-	restore := func() {
-		stopResize()
-		io.WriteString(out, "\r\n\r\n"+showCursor+pasteModeOff) // leave one blank line, like tput cup last+1
-		_ = term.Restore(inFd, old)
-	}
-
-	io.WriteString(out, pasteModeOn+clearScreen+hideCursor)
 	s := newState(o)
 	fixedHeight := 0
-	buf := make([]byte, 0, inputBufferSize)
-	chunk := make([]byte, inputBufferSize)
-	for {
-		wasResized := resized.Swap(false)
+	// mu serializes drawing and state changes: a resize redraws from another goroutine.
+	var mu sync.Mutex
+	draw := func(wasResized bool) {
 		if wasResized {
 			io.WriteString(out, clearScreen)
 		}
@@ -66,7 +84,7 @@ func Select(o Options) (Result, error) {
 			width, height = 80, 24 // same defaults tput uses for an unsized terminal
 		}
 		l := s.computeLayout(height, &fixedHeight, wasResized)
-		lines := s.frame(l, fixedHeight, width)
+		lines := s.frame(l, fixedHeight, width, height)
 		for i := range lines {
 			if !ui.Err.Color {
 				lines[i] = ui.Plain(lines[i]) // NO_COLOR / --no-color: ➤ and [✓] still mark focus and selection
@@ -75,7 +93,39 @@ func Select(o Options) (Result, error) {
 		}
 		// Raw mode disables output post-processing, so end lines with \r\n.
 		io.WriteString(out, cursorHome+strings.Join(lines, "\r\n")+clearBelow)
+	}
+	stopResize := watchResize(func() {
+		mu.Lock()
+		draw(true)
+		mu.Unlock()
+	})
+	restore := func() {
+		stopResize()
+		mu.Lock() // let a resize redraw finish before leaving the alternate screen
+		defer mu.Unlock()
+		io.WriteString(out, showCursor+pasteModeOff)
+		screenMu.Lock()
+		if !held {
+			io.WriteString(out, altScreenOff)
+			onAlt = false
+		}
+		screenMu.Unlock()
+		_ = term.Restore(inFd, old)
+	}
 
+	screenMu.Lock()
+	if !onAlt {
+		io.WriteString(out, altScreenOn)
+		onAlt = true
+	}
+	screenMu.Unlock()
+	io.WriteString(out, pasteModeOn+clearScreen+hideCursor)
+	buf := make([]byte, 0, inputBufferSize)
+	chunk := make([]byte, inputBufferSize)
+	mu.Lock()
+	draw(false)
+	mu.Unlock()
+	for {
 		act := actNone
 		for act == actNone {
 			n, err := os.Stdin.Read(chunk)
@@ -89,11 +139,13 @@ func Select(o Options) (Result, error) {
 			if len(buf) == 1 && buf[0] == 0x1b && len(keys) == 0 {
 				buf = buf[:0] // lone ESC: ignored, as in the Bash version
 			}
+			mu.Lock()
 			for _, k := range keys {
 				if act = s.handle(k); act != actNone {
 					break
 				}
 			}
+			mu.Unlock()
 			if len(keys) > 0 {
 				break // redraw after each batch of keys
 			}
@@ -107,5 +159,8 @@ func Select(o Options) (Result, error) {
 			restore()
 			return Result{Index: -1}, ErrInterrupted
 		}
+		mu.Lock()
+		draw(false)
+		mu.Unlock()
 	}
 }

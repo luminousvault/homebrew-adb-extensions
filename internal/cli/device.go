@@ -22,7 +22,66 @@ func pick(o tui.Options, hint string) (tui.Result, error) {
 	if !canPick() {
 		return tui.Result{Index: -1}, failErr(hint, "%s: interactive selection needs a terminal", o.Prompt)
 	}
-	return selectFn(o)
+	r, err := selectFn(o)
+	if err == nil {
+		if pickHeld {
+			pendingPicked = append(pendingPicked, func() { printPicked(o, r) })
+		} else {
+			printPicked(o, r)
+		}
+	}
+	return r, err
+}
+
+var (
+	pickHeld      bool
+	pendingPicked []func()
+)
+
+// holdPickers shows the pickers of one command on a single alternate screen
+// (see tui.Hold). The returned release leaves it and prints the choices; it is
+// safe to call more than once, so callers can release early and also defer it.
+func holdPickers() (release func()) {
+	pickHeld = true
+	tui.Hold()
+	return func() {
+		if !pickHeld {
+			return
+		}
+		pickHeld = false
+		tui.Release()
+		for _, f := range pendingPicked {
+			f()
+		}
+		pendingPicked = nil
+	}
+}
+
+// printPicked leaves the choice on screen: the picker draws on the alternate
+// screen, which disappears when it closes.
+//
+//	==> Selected Google Pixel 9 Pro (SERIAL)
+//	==> Selected devices (2)
+//	      Google Pixel 9 Pro (SERIAL)
+func printPicked(o tui.Options, r tui.Result) {
+	label := func(i int) string {
+		text, suffix, _ := strings.Cut(o.Items[i], "\t")
+		if suffix != "" {
+			text += " " + ui.Err.Dim(suffix)
+		}
+		return text
+	}
+	if !o.Multi {
+		if r.Index >= 0 && r.Index < len(o.Items) {
+			ui.Step("Selected %s", label(r.Index))
+		}
+		return
+	}
+	ui.Step("Selected%s (%d)", strings.TrimPrefix(o.Prompt, "Select"), len(r.Indices))
+	for _, i := range r.Indices {
+		ui.Info("%s", label(i))
+	}
+	ui.Err.Println("") // a list is a block; keep it apart from what follows
 }
 
 var (

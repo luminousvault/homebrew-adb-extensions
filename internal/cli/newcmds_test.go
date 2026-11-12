@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,7 +75,7 @@ func TestScreenshotSavesPNGAndPrintsPath(t *testing.T) {
 	png := string(pngMagic) + "rest-of-image"
 	f.Responses["-s "+serial+" exec-out screencap -p"] = adbtest.Response{Stdout: png}
 	r := ak(t, f, "screenshot", "shot.png")
-	if r.code != 0 || r.out != "shot.png\n" || !strings.HasPrefix(r.err, "==> Capturing Google Pixel 9 Pro\n✓ Saved shot.png") {
+	if r.code != 0 || r.out != "shot.png\n" || !strings.HasPrefix(r.err, "==> Capturing Google Pixel 9 Pro\n✓ Saved 'shot.png'") {
 		t.Fatalf("code %d out %q err %q", r.code, r.out, r.err)
 	}
 	if b, _ := os.ReadFile("shot.png"); string(b) != png {
@@ -106,5 +107,41 @@ func TestWifiArgs(t *testing.T) {
 	}
 	if m := reInet.FindStringSubmatch("3: wlan0: <BROADCAST,MULTICAST,UP>\n    inet 192.168.0.21/24 brd 192.168.0.255 scope global wlan0"); m == nil || m[1] != "192.168.0.21" {
 		t.Errorf("inet %v", m)
+	}
+}
+
+func TestScreenshotOpen(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var opened []string
+	orig := openFn
+	openFn = func(p string) error { opened = append(opened, p); return nil }
+	t.Cleanup(func() { openFn = orig })
+	f := baseFake()
+	f.Responses["-s "+serial+" exec-out screencap -p"] = adbtest.Response{Stdout: string(pngMagic)}
+	if r := ak(t, f, "screenshot", "a.png"); r.code != 0 || len(opened) != 0 {
+		t.Fatalf("opened without -o: %v", opened)
+	}
+	if r := ak(t, f, "screenshot", "b.png", "-o"); r.code != 0 || len(opened) != 1 || opened[0] != "b.png" {
+		t.Errorf("-o: code %d opened %v", r.code, opened)
+	}
+	openFn = func(string) error { return errors.New("no viewer") }
+	if r := ak(t, f, "screenshot", "c.png", "--open"); r.code != 0 || !strings.Contains(r.err, "Warning: Couldn't open 'c.png': no viewer") {
+		t.Errorf("open failure: %d %q", r.code, r.err)
+	}
+}
+
+func TestVerifierHidden(t *testing.T) {
+	if r := ak(t, baseFake(), "--help"); strings.Contains(r.out, "verifier") {
+		t.Error("verifier listed in the global help")
+	}
+	f := baseFake()
+	f.Responses["-s "+serial+" shell settings put global verifier_verify_adb_installs 0"] = adbtest.Response{}
+	f.Responses["-s "+serial+" shell settings get global verifier_verify_adb_installs"] = adbtest.Response{Stdout: "0\n"}
+	r := ak(t, f, "verifier", "off")
+	if r.code != 0 || !strings.Contains(r.out, "Google Pixel 9 Pro  off") {
+		t.Errorf("off: %d %q %q", r.code, r.out, r.err)
+	}
+	if r := ak(t, f, "verifier", "maybe"); r.code != 2 {
+		t.Errorf("bad argument: %d", r.code)
 	}
 }

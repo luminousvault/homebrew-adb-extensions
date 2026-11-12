@@ -19,10 +19,10 @@ var cmdScreenshot = &Command{
 	Long: "Capture the screen and save it as PNG on this computer (nothing is left on the device).\n" +
 		"The default name is screenshot-<model>-<time>.png in the current directory.\n" +
 		"With several devices, one file per device is saved. Saved paths are printed to stdout.",
-	ArgHelp: [][2]string{{"file", "Output .png file (one device)"}, {"directory", "Save into this directory"}},
-	Examples: []string{"ak screenshot", "ak screenshot home.png", "ak screenshot ~/Desktop --all",
-		"open \"$(ak screenshot)\""},
-	Device: manyDevices, Run: runScreenshot,
+	ArgHelp:  [][2]string{{"file", "Output .png file (one device)"}, {"directory", "Save into this directory"}},
+	Flags:    []Flag{flagOpen},
+	Examples: []string{"ak screenshot", "ak screenshot -o", "ak screenshot home.png", "ak screenshot ~/Desktop --all"},
+	Device:   manyDevices, Run: runScreenshot,
 }
 
 var pngMagic = []byte("\x89PNG\r\n\x1a\n")
@@ -49,7 +49,7 @@ func outputPath(arg, serial, prefix, ext string, now time.Time, many bool) (stri
 		return filepath.Join(arg, name), nil
 	}
 	if many {
-		return "", failErr("Pass a directory to save one file per device", "%s is not a directory", arg)
+		return "", failErr("Pass a directory to save one file per device", "%s is not a directory", q(arg))
 	}
 	if filepath.Ext(arg) == "" {
 		arg += ext
@@ -88,12 +88,13 @@ func runScreenshot(c *Ctx) error {
 			continue
 		}
 		if err := os.WriteFile(path, data, 0o644); err != nil {
-			ui.Errorf("Couldn't save %s: %v", path, err)
+			ui.Errorf("Couldn't save %s: %v", q(path), err)
 			failed = true
 			continue
 		}
-		ui.Success("Saved %s %s", path, ui.Err.Dim("("+deviceName(s)+", "+humanSize(strconv.Itoa(len(data)))+")"))
+		ui.Success("Saved %s %s", q(path), ui.Err.Dim("("+deviceName(s)+", "+humanSize(strconv.Itoa(len(data)))+")"))
 		ui.Out.Println(path)
+		openSaved(c, path)
 	}
 	if failed {
 		return errReported

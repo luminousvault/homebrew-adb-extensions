@@ -97,7 +97,7 @@ func TestInfoSplitsStdoutAndStderr(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("code %d: %s", r.code, r.err)
 	}
-	if r.err != "==> com.example.app (foreground app on Google Pixel 9 Pro)\n" {
+	if r.err != "==> 'com.example.app' (foreground app on Google Pixel 9 Pro)\n" {
 		t.Errorf("stderr %q", r.err)
 	}
 	want := "  versionName           1.2.3\n  versionCode           1203\n  minSdk                24\n  targetSdk             36\n" +
@@ -120,7 +120,7 @@ func TestInfoJSON(t *testing.T) {
 
 func TestOptionsAnywhereAndSerial(t *testing.T) {
 	r := ak(t, twoDevices(), "info", "com.example.app", "-s", "SECOND")
-	if r.code != 0 || !strings.Contains(r.err, "com.example.app on Google Pixel 9 Pro") {
+	if r.code != 0 || !strings.Contains(r.err, "'com.example.app' on Google Pixel 9 Pro") {
 		t.Errorf("code %d: %s", r.code, r.err)
 	}
 	r = ak(t, twoDevices(), "info", "--serial=SECOND")
@@ -167,13 +167,18 @@ func TestMultipleDevicesPicker(t *testing.T) {
 		adb.Default = f
 		resetDeviceCache()
 		defer func() { adb.Default = nil; selectFn = tui.Select; ui.InTTY = false }()
-		return result{out.String(), errb.String(), run([]string{"kill"})}
+		code := run([]string{"kill"})
+		return result{out.String(), errb.String(), code}
 	}()
 	if got.Prompt != "Select a device" || got.Items[1] != "Google Pixel 9 Pro (SECOND) Android 16, API 36" {
 		t.Errorf("picker %+v", got)
 	}
 	if r.code != 0 || f.Calls[len(f.Calls)-1] != "-s SECOND shell am force-stop com.example.app" {
 		t.Errorf("code %d calls %v", r.code, f.Calls)
+	}
+	// The picker closes its alternate screen, so the choice is printed.
+	if !strings.HasPrefix(r.err, "==> Selected Google Pixel 9 Pro (SECOND) Android 16, API 36\n") {
+		t.Errorf("choice not shown: %q", r.err)
 	}
 }
 
@@ -214,8 +219,8 @@ func TestKillMultipleExitCode(t *testing.T) {
 	f := baseFake()
 	f.Responses["-s "+serial+" shell am force-stop com.example.app"] = adbtest.Response{}
 	r := ak(t, f, "kill", "com.example.app", "bad", "com.not.installed", "com.example.app")
-	want := "✓ Stopped com.example.app\nError: Invalid package name: bad\n" +
-		"Error: Package not installed on Google Pixel 9 Pro: com.not.installed\nWarning: Skipping duplicate package com.example.app\n"
+	want := "✓ Stopped 'com.example.app'\nError: Invalid package name: 'bad'\n" +
+		"Error: Package not installed on Google Pixel 9 Pro: 'com.not.installed'\nWarning: Skipping duplicate package 'com.example.app'\n"
 	if r.code != 1 || r.err != want {
 		t.Errorf("code %d stderr:\n%s", r.code, r.err)
 	}
@@ -227,7 +232,7 @@ func TestLaunchFailure(t *testing.T) {
 	f.Responses["-s "+serial+" shell am start --user 0 -n com.example.app/.MainActivity"] = adbtest.Response{
 		Stdout: "Starting: Intent { cmp=com.example.app/.MainActivity }\nException occurred while executing 'start':\njava.lang.SecurityException\n"}
 	r := ak(t, f, "launch", "com.example.app")
-	if r.code != 1 || !strings.HasPrefix(r.err, "Error: Couldn't launch com.example.app\n  Starting: Intent") {
+	if r.code != 1 || !strings.HasPrefix(r.err, "Error: Couldn't launch 'com.example.app'\n  Starting: Intent") {
 		t.Errorf("code %d:\n%s", r.code, r.err)
 	}
 	if r := ak(t, f, "launch"); r.code != 2 || !strings.Contains(r.err, "Missing package name\nRun 'ak launch --help' for usage.") {
@@ -250,7 +255,7 @@ func TestHelpAndUsageErrors(t *testing.T) {
 		{[]string{"info", "--json=1"}, 2, "", "Error: Option --json does not take a value"},
 		{[]string{"info", "-s"}, 2, "", "Error: Option -s requires a value (ID)"},
 		{[]string{"devices", "extra"}, 2, "", "Error: Too many arguments: extra"},
-		{[]string{"install", "-l", "-a"}, 2, "", "Error: Use only one of -l, -a and -f"},
+		{[]string{"install", "-l", "-e"}, 2, "", "Error: Use only one of -l, -e and -f"},
 	}
 	for _, c := range cases {
 		r := ak(t, baseFake(), c.args...)
@@ -283,7 +288,7 @@ func TestActivities(t *testing.T) {
 	if r.out != want {
 		t.Errorf("stdout:\n%q\nwant:\n%q", r.out, want)
 	}
-	r = ak(t, baseFake(), "activities", "-a", "--json")
+	r = ak(t, baseFake(), "activities", "-e", "--json")
 	var got []taskJSON
 	if err := json.Unmarshal([]byte(r.out), &got); err != nil || len(got) != 2 || got[1].Task != "2" {
 		t.Errorf("json %v %s", err, r.out)
@@ -323,7 +328,7 @@ func TestInstallSelection(t *testing.T) {
 		t.Errorf("-l picked %v %v", got, err)
 	}
 	if got, _ := selectInstallAPKs(installOptions{all: true}); len(got) != 2 {
-		t.Errorf("-a picked %v", got)
+		t.Errorf("-e picked %v", got)
 	}
 	sub := filepath.Join(dir, "sub")
 	if err := os.Mkdir(sub, 0o755); err != nil {
@@ -336,7 +341,7 @@ func TestInstallSelection(t *testing.T) {
 	}
 	// Several APKs without a terminal: ask for explicit choice.
 	r := ak(t, baseFake(), "install")
-	if r.code != 1 || !strings.Contains(r.err, "Hint: Pass APK files, or use -l (newest) or -a (all)") {
+	if r.code != 1 || !strings.Contains(r.err, "Hint: Pass APK files, or use -l (newest) or -e (every APK)") {
 		t.Errorf("non-interactive: %d %q", r.code, r.err)
 	}
 }
@@ -361,16 +366,16 @@ func TestInstallRecovery(t *testing.T) {
 	})
 	r := ak(t, f, "install", apkFile)
 	// Without a terminal each attempt prints its start line instead of a spinner.
-	if r.code != 0 || !strings.Contains(r.err, "==> Installing app.apk on Google Pixel 9 Pro\n"+
-		"Warning: app.apk is a test-only APK, retrying with -t\n==> Installing app.apk on Google Pixel 9 Pro\n✓ Installed app.apk on Google Pixel 9 Pro (") {
+	if r.code != 0 || !strings.Contains(r.err, "==> Installing 'app.apk' on Google Pixel 9 Pro\n"+
+		"Warning: 'app.apk' is a test-only APK, retrying with -t\n==> Installing 'app.apk' on Google Pixel 9 Pro\n✓ Installed 'app.apk' on Google Pixel 9 Pro (") {
 		t.Errorf("test-only: %d\n%s", r.code, r.err)
 	}
 
 	conflict := "adb: failed to install app.apk: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.example.app signatures do not match newer version; ignoring!]\n"
 	f = installFake(apkFile, map[string]string{"-r": conflict, "uninstall": "Success\n"})
 	r = ak(t, f, "install", apkFile)
-	if r.code != 1 || !strings.Contains(r.err, "Warning: The signature of app.apk differs from com.example.app installed on Google Pixel 9 Pro\n"+
-		"Error: Skipped app.apk on Google Pixel 9 Pro: uninstalling needs confirmation (pass -y)") {
+	if r.code != 1 || !strings.Contains(r.err, "Warning: The signature of 'app.apk' differs from 'com.example.app' installed on Google Pixel 9 Pro\n"+
+		"Error: Skipped 'app.apk' on Google Pixel 9 Pro: uninstalling needs confirmation (pass -y)") {
 		t.Errorf("conflict without input: %d\n%s", r.code, r.err)
 	}
 
@@ -389,7 +394,7 @@ func TestInstallRecovery(t *testing.T) {
 
 	f = installFake(apkFile, map[string]string{"-r": "Failure [INSTALL_FAILED_INSUFFICIENT_STORAGE]\n"})
 	r = ak(t, f, "install", apkFile)
-	if r.code != 1 || !strings.Contains(r.err, "Error: Couldn't install app.apk on Google Pixel 9 Pro: INSTALL_FAILED_INSUFFICIENT_STORAGE\n  Failure [") {
+	if r.code != 1 || !strings.Contains(r.err, "Error: Couldn't install 'app.apk' on Google Pixel 9 Pro: INSTALL_FAILED_INSUFFICIENT_STORAGE\n  Failure [") {
 		t.Errorf("failure: %d\n%s", r.code, r.err)
 	}
 }
@@ -397,7 +402,7 @@ func TestInstallRecovery(t *testing.T) {
 func TestPullNeedsYesForNewDirWithoutTerminal(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "new")
 	r := ak(t, baseFake(), "pull", dest)
-	if r.code != 1 || !strings.Contains(r.err, "Error: Directory does not exist: "+dest+"\nHint: Pass -y to create it") {
+	if r.code != 1 || !strings.Contains(r.err, "Error: Directory does not exist: '"+dest+"'\nHint: Pass -y to create it") {
 		t.Errorf("%d %q", r.code, r.err)
 	}
 }
@@ -529,5 +534,129 @@ func TestInstallExplicitFilesSkipPicker(t *testing.T) {
 	got, err := apksFromArgs([]string{a, b}, "")
 	if err != nil || len(got) != 2 {
 		t.Errorf("explicit files should all be installed without asking: %v %v", got, err)
+	}
+}
+
+func TestInstallLongFlags(t *testing.T) {
+	apkFile := writeAPK(t, t.TempDir(), "app.apk", 0)
+	f := installFake(apkFile, map[string]string{"-r -t -d": "Performing Streamed Install\nSuccess\n"})
+	if r := ak(t, f, "install", apkFile, "--test-only", "--downgrade"); r.code != 0 {
+		t.Errorf("--test-only --downgrade: %d\n%s", r.code, r.err)
+	}
+}
+
+func TestInstallEveryAPKListsThemFirst(t *testing.T) {
+	dir := t.TempDir()
+	older := writeAPK(t, dir, "app-release.apk", time.Hour)
+	newer := writeAPK(t, dir, "app-debug.apk", 0)
+	f := baseFake()
+	for _, p := range []string{newer, older} {
+		f.Responses["-s "+serial+" install -r "+p] = adbtest.Response{Stdout: "Success\n"}
+	}
+	r := ak(t, f, "install", "-e", dir)
+	want := "==> Found 2 APK(s) in '" + dir + "'\n  1. app-debug.apk    1 B · "
+	if r.code != 0 || !strings.HasPrefix(r.err, want) || !strings.Contains(r.err, "\n  2. app-release.apk  1 B · ") {
+		t.Errorf("code %d\n%s", r.code, r.err)
+	}
+}
+
+// The device picker clears the screen, so the -e list must come after it.
+func TestInstallEveryAPKListAfterDevicePicker(t *testing.T) {
+	dir := t.TempDir()
+	apk := writeAPK(t, dir, "app.apk", 0)
+	f := twoDevices()
+	f.Responses["-s SECOND install -r "+apk] = adbtest.Response{Stdout: "Success\n"}
+	var errb bytes.Buffer
+	before := -1
+	selectFn = func(o tui.Options) (tui.Result, error) {
+		before = errb.Len()
+		return tui.Result{Index: 1, Indices: []int{1}}, nil
+	}
+	ui.InTTY = true
+	ui.Out, ui.Err = &ui.Stream{W: &bytes.Buffer{}}, &ui.Stream{W: &errb, TTY: true}
+	adb.Default = f
+	resetDeviceCache()
+	t.Setenv("ANDROID_SERIAL", "")
+	defer func() {
+		adb.Default = nil
+		selectFn = tui.Select
+		ui.InTTY = false
+		ui.Out, ui.Err = &ui.Stream{W: os.Stdout}, &ui.Stream{W: os.Stderr}
+	}()
+	code := run([]string{"install", "-e", dir})
+	if code != 0 || before != 0 || !strings.Contains(errb.String(), "1. app.apk") ||
+		!strings.HasPrefix(errb.String(), "==> Selected devices (1)\n  Google Pixel 9 Pro (SECOND)") {
+		t.Errorf("code %d, %d bytes before the picker\n%s", code, before, errb.String())
+	}
+}
+
+// APK picker then device picker share one screen: nothing is printed between
+// them, and both choices are printed afterwards, in order.
+func TestChainedPickersPrintChoicesAfterBoth(t *testing.T) {
+	dir := t.TempDir()
+	writeAPK(t, dir, "app-release.apk", time.Hour)
+	apk := writeAPK(t, dir, "app-debug.apk", 0)
+	f := twoDevices()
+	f.Responses["-s SECOND install -r "+apk] = adbtest.Response{Stdout: "Success\n"}
+	var errb bytes.Buffer
+	var at []int
+	selectFn = func(o tui.Options) (tui.Result, error) {
+		at = append(at, errb.Len())
+		if strings.HasPrefix(o.Prompt, "Select APK") {
+			return tui.Result{Indices: []int{0}}, nil
+		}
+		return tui.Result{Indices: []int{1}}, nil
+	}
+	ui.InTTY = true
+	ui.Out, ui.Err = &ui.Stream{W: &bytes.Buffer{}}, &ui.Stream{W: &errb, TTY: true}
+	adb.Default = f
+	resetDeviceCache()
+	t.Setenv("ANDROID_SERIAL", "")
+	defer func() {
+		adb.Default = nil
+		selectFn = tui.Select
+		ui.InTTY = false
+		ui.Out, ui.Err = &ui.Stream{W: os.Stdout}, &ui.Stream{W: os.Stderr}
+	}()
+	code := run([]string{"install", dir})
+	want := "==> Selected APK files to install (1)\n  app-debug.apk\n\n==> Selected devices (1)\n  Google Pixel 9 Pro (SECOND)"
+	if code != 0 || len(at) != 2 || at[0] != 0 || at[1] != 0 || !strings.HasPrefix(errb.String(), want) {
+		t.Errorf("code %d, output before pickers %v\n%s", code, at, errb.String())
+	}
+}
+
+func TestBundledShortOptions(t *testing.T) {
+	cases := []struct {
+		cmd   *Command
+		args  []string
+		want  map[string]string // option -> value ("" for a switch)
+		args2 []string
+	}{
+		{cmdInstall, []string{"-ea", "dir"}, map[string]string{"--every-apk": "", "--all": ""}, []string{"dir"}},
+		{cmdInstall, []string{"app.apk", "-tdy"}, map[string]string{"--test-only": "", "--downgrade": "", "--yes": ""}, []string{"app.apk"}},
+		{cmdLogcat, []string{"-cl", "W"}, map[string]string{"--clear": "", "--level": "W"}, nil},
+		{cmdLogcat, []string{"-clW", "com.example.app"}, map[string]string{"--clear": "", "--level": "W"}, []string{"com.example.app"}},
+		{cmdRestart, []string{"-r5"}, map[string]string{"--repeat": "5"}, nil},
+	}
+	for _, tc := range cases {
+		c, help, err := parse(tc.cmd, tc.args)
+		if err != nil || help {
+			t.Errorf("%v: %v", tc.args, err)
+			continue
+		}
+		for opt, v := range tc.want {
+			if !c.Bool(opt) || c.String(opt) != v {
+				t.Errorf("%v: %s = %q (set %v)", tc.args, opt, c.String(opt), c.Bool(opt))
+			}
+		}
+		if strings.Join(c.Args, " ") != strings.Join(tc.args2, " ") {
+			t.Errorf("%v: args %v", tc.args, c.Args)
+		}
+	}
+	if _, _, err := parse(cmdInstall, []string{"-ez"}); err == nil || !strings.Contains(err.Error(), "Unknown option: -z (in -ez)") {
+		t.Errorf("unknown in bundle: %v", err)
+	}
+	if _, help, _ := parse(cmdInstall, []string{"-eh"}); !help {
+		t.Error("-h in a bundle shows help")
 	}
 }

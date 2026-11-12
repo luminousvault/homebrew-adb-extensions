@@ -65,16 +65,17 @@ v2.0.0의 Go 전환은 v1.x(Bash) 출력을 바이트 단위로 그대로 옮기
 
 | 레벨 | 형식 | 색 | 예 |
 |---|---|---|---|
-| 단계 | `==> 내용` | `==>` 파랑, 내용 굵게 | `==> Installing app-debug.apk on Pixel 9 Pro` |
-| 성공 | `✓ 내용` | 초록 | `✓ Installed app-debug.apk` |
+| 단계 | `==> 내용` | `==>` 파랑, 내용 굵게 | `==> Installing 'app-debug.apk' on Pixel 9 Pro` |
+| 성공 | `✓ 내용` | 초록 | `✓ Installed 'app-debug.apk'` |
 | 정보 | `  내용` (들여쓰기) | 기본 | `  Package: com.example.app (auto-detected)` |
 | 부가 | `  내용` | 흐림 | adb 원본 출력, 경로, 소요 시간 |
-| 경고 | `Warning: 내용` | `Warning:` 노랑 | `Warning: Skipping duplicate package com.example.app` |
-| 오류 | `Error: 내용` | `Error:` 빨강 | `Error: Package not installed: com.example.app` |
+| 경고 | `Warning: 내용` | `Warning:` 노랑 | `Warning: Skipping duplicate package 'com.example.app'` |
+| 오류 | `Error: 내용` | `Error:` 빨강 | `Error: Package not installed: 'com.example.app'` |
 | 힌트 | `Hint: 내용` | `Hint:` 흐림 | `Hint: Run 'ak devices' to see connected devices` |
 
 - 기호는 `==>`, `✓`, `Warning:`, `Error:`, `Hint:` 다섯 가지만 쓴다. 색을 끄면 기호만 남는다(텍스트로 의미가 전달됨).
-- 빈 줄 규칙: 커맨드 시작과 끝에 빈 줄을 넣지 않는다. 블록(디바이스 하나, 표 하나) 사이에만 빈 줄 하나를 둔다.
+- 메시지 안의 패키지 이름, 파일 이름, 경로는 작은따옴표로 감싼다(`q()`): `Installed 'app.apk' on Pixel 9 Pro`. 문장과 이름의 경계가 보이게 하기 위해서다. 디바이스 이름은 사람이 읽는 이름이라 감싸지 않는다. stdout으로 내보내는 결과(저장한 경로 등)는 스크립트가 쓰므로 감싸지 않는다.
+- 빈 줄 규칙: 커맨드 시작과 끝에 빈 줄을 넣지 않는다. 블록(디바이스 하나, 표 하나, `==>` 제목과 그 아래 목록) 사이에 빈 줄 하나를 둔다. 예: `==> Selected devices (2)` + 목록 → 빈 줄 → `==> Found 5 APK(s)` + 목록 → 빈 줄 → 설치 진행. 한 줄짜리 `==>` 단계끼리는 붙인다.
 
 ### 5.4 오류
 
@@ -127,19 +128,37 @@ Examples:
 |---|---|
 | `-s, --serial <ID>` | 그 디바이스만 |
 | `ANDROID_SERIAL` 환경 변수 | adb와 같은 규칙 |
-| `-a, --all` (`install`·`mac`의 `-m`은 별칭으로 유지) | 연결된 모든 디바이스 |
+| `-a, --all` (`install`·`mac`·`screenshot`) | 연결된 모든 디바이스 |
 | 지정 없음 + 1대 | 그 디바이스 |
 | 지정 없음 + 여러 대 + 터미널 | 선택 UI |
 | 지정 없음 + 여러 대 + 터미널 아님 | `Error: Multiple devices connected` + 시리얼 목록 + `Hint: Use -s <serial> or ANDROID_SERIAL` (exit 1) |
 
+#### 옵션 이름 규칙
+
+1. 짧은 이름은 긴 이름 첫 단어의 첫 글자다 (`-l, --latest`, `-r, --repeat`). 대문자 짧은 이름은 쓰지 않는다 (Shift가 필요하고 소문자와 헷갈림).
+2. 다음 짧은 이름은 모든 커맨드에서 뜻이 같고, 다른 뜻으로 쓰지 않는다.
+
+   | 옵션 | 뜻 |
+   |---|---|
+   | `-s, --serial` | 디바이스 지정 |
+   | `-a, --all` | 연결된 모든 디바이스 |
+   | `-y, --yes` | 확인 질문에 예 |
+   | `-h, --help` | 도움말 |
+
+3. 커맨드가 다루는 항목 전부는 `all`이 아니라 `-e, --every-<항목>`이다 (`install -e, --every-apk`, `activities -e, --every-task`). `ak install -e -a` = 모든 APK를 모든 디바이스에.
+4. 짧은 이름이 있는 옵션은 긴 이름도 갖는다 (`install -t, --test-only`, `-d, --downgrade`). 예외: 항상 켜져 있어 효과가 없는 v1 호환 옵션 `install -r`.
+5. 서로 다른 커맨드에서는 같은 짧은 이름이 다른 뜻일 수 있다 (`install -l, --latest` / `logcat -l, --level`). 단, 2번의 예약 이름은 예외 없이 지킨다.
+6. 짧은 옵션은 묶어 쓸 수 있다(getopt 규칙): `-ea` = `-e -a`, `-tdy` = `-t -d -y`. 값을 받는 옵션은 묶음의 마지막에 오고, 남은 글자가 값이 된다: `-clW` = `-c -l W`, `-cl W`도 같다. 옵션은 인자 앞뒤 어디에 와도 되고 `--opt=value`, `--`를 지원한다.
+
 ### 5.8 비대화형 실행
 
 - 선택 UI: 터미널이 아니면 띄우지 않는다. 기본값이 있으면 쓰고(APK가 1개면 그것), 없으면 오류와 힌트를 출력한다.
+- 선택 UI는 대체 화면(`\033[?1049h`)에 그린다. 닫으면 실행 전 화면과 스크롤백이 그대로 돌아오므로, 고른 결과는 `==> Selected …` 한 줄(여러 개면 아래에 목록)로 남긴다. 화면을 지우지 않고(v1은 스크롤백까지 지웠음), 터미널보다 높게 그리지 않으며(작은 터미널에서는 빈 줄 → 위치 → 도움말 → 개수 순으로 덜어냄), 크기가 바뀌면 바로 다시 그린다. 한 커맨드에서 선택 UI가 이어지면(`install`: APK → 디바이스, `pull`: 디바이스 → 파일) 대체 화면을 한 번만 열고 그 안에서 이어서 보여 준 뒤, 닫고 나서 고른 결과를 차례로 남긴다.
 - 확인 질문: 형식을 `Question? [Y/n]`(Enter = 기본값)로 통일한다. `-y, --yes`면 묻지 않고 승인한다. 터미널이 아닌데 `-y`가 없으면 거절로 처리하고 힌트를 출력한다.
 
 ### 5.9 데이터 출력과 `--json`
 
-- 사람용 출력: 표는 머리글만 흐린 굵게, 테두리 없이 열을 정렬, 값에는 색을 쓰지 않는다(상태 열 제외).
+- 사람용 출력: 표는 머리글을 굵게(흐리게 하지 않음), 터미널이면 머리글 아래에 흐린 구분선(`─`)을 긋고, 세로 테두리 없이 열을 정렬한다. 파이프로 나갈 때는 구분선 없이 머리글과 열만 출력한다(awk 등으로 읽기 쉽게). 값에는 색을 쓰지 않는다(상태 열 제외). 한글·이모지는 2칸으로 계산해 정렬한다. 여러 단어인 머리글은 밑줄로 잇는다(`PLAY_PROTECT_SCAN`). 띄어 쓰면 열이 나뉜 것처럼 보이기 때문이다.
 - `--json` 지원 대상: `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `doctor`. stdout에 JSON만 출력하고, 메시지는 stderr로 보내거나 출력하지 않는다.
 - JSON 키는 camelCase, 키 이름과 구조는 문서화하고 버전 사이에 유지한다.
 
@@ -198,7 +217,7 @@ APK Detailed Info:
 
 **`ak info` (디바이스 2대, 파이프)**
 ```
-Error: Multiple devices connected: 46171FDAP000P8, R3CW80E6Y8Z
+Error: Multiple devices connected: emulator-5554, emulator-5556
 Hint: Use -s <serial> or set ANDROID_SERIAL
 ```
 
@@ -213,7 +232,7 @@ Hint: Use -s <serial> or set ANDROID_SERIAL
 ## 8. 호환성
 
 - v2.0.0에서 바꾸면 **출력 형식, 종료 코드, 도움말 위치(stdout)가 v1.x와 달라진다.** 사람이 읽는 출력이 바뀌는 것은 메이저 버전에서 허용되는 범위로 본다. 다만 v1.x 출력을 grep하던 스크립트는 깨질 수 있으므로 CHANGELOG에 "Breaking"으로 적는다.
-- 커맨드 이름, 기존 옵션(`-m`, `-l`, `-a`, `-f`, `-t`, `-d`, `-r`)은 그대로 유지한다. zsh completion에는 새 옵션만 추가한다.
+- 커맨드 이름과 `-l`, `-f`, `-t`, `-d`, `-r`은 그대로 유지한다. §5.7 옵션 이름 규칙에 맞춰 `-m` → `-a, --all`, `install -a` → `-e, --every-apk`, `restart -n` → `-r`로 바꾸고 CHANGELOG에 "Breaking"으로 적는다.
 - `docs/spec/commands.md`의 "Bash와 바이트 단위 동일" 목표는 이 가이드로 대체한다.
 
 ## 9. 진행 순서 (제안)

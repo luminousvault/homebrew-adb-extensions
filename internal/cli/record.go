@@ -25,8 +25,9 @@ var cmdRecord = &Command{
 	Flags: []Flag{
 		{"-t", "--time-limit", "SECONDS", "Stop after this many seconds (1-180, default 180)"},
 		{"", "--size", "WxH", "Video size, e.g. 1280x720 (default: screen size)"},
+		flagOpen,
 	},
-	Examples: []string{"ak record", "ak record bug.mp4", "ak record -t 30 --size 720x1600"},
+	Examples: []string{"ak record", "ak record -o", "ak record bug.mp4", "ak record -t 30 --size 720x1600"},
 	Device:   oneDevice, Run: runRecord,
 }
 
@@ -143,6 +144,9 @@ wait:
 		ui.Errorf("The recording on %s was not saved", deviceName(serial))
 		if s := strings.TrimSpace(log.String()); s != "" {
 			ui.Detail("%s", s)
+			if strings.Contains(s, "UNASSIGNED_LAYER_STACK") {
+				ui.Hint("Turn on the device screen and try again")
+			}
 		}
 		_, _ = adb.Combined("-s", serial, "shell", "rm", "-f", remote)
 		return errReported
@@ -155,7 +159,8 @@ wait:
 		ui.Detail("%s", pullOut)
 		return errReported
 	}
-	ui.Success("Saved %s %s", local, ui.Err.Dim(fmt.Sprintf("(%s, %ds, %s)", deviceName(serial), int(duration.Seconds()), humanSize(strconv.FormatInt(n, 10)))))
+	ui.Success("Saved %s %s", q(local), ui.Err.Dim(fmt.Sprintf("(%s, %ds, %s)", deviceName(serial), int(duration.Seconds()), humanSize(strconv.FormatInt(n, 10)))))
 	ui.Out.Println(local)
+	openSaved(c, local)
 	return nil
 }

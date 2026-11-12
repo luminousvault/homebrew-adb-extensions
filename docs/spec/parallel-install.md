@@ -12,7 +12,7 @@
 | 대상 단말 2대 이상, stdout이 터미널 | 상태판 + 결과 블록 + 요약 |
 | 대상 단말 2대 이상, stdout이 터미널 아님 (파이프, CI) | 줄 앞에 `[단말]` 접두사를 붙여 실시간 출력 + 요약 |
 
-단말 선택 UI(`-m` 또는 다중 선택)는 바뀌지 않는다.
+단말 선택 UI(`-a, --all` 또는 다중 선택)는 바뀌지 않는다.
 
 ## 2. 실행 모델
 
@@ -48,20 +48,29 @@ Google Pixel 9 Pro — app-debug.apk
 ```
 
 - `Y`/Enter: 이 단말만 제거 후 재설치. `n`: 이 단말은 중단. `a`: 같은 종류의 남은 확인에 모두 `Y` 적용.
-- 확인에 답하면 그 단말의 재설치와 남은 APK를 이어서 진행하고(이 단계도 단말 사이 병렬), 상태판을 다시 갱신한다.
+- 확인에 답하면 그 단말의 재설치와 남은 APK를 이어서 진행하고(이 단계도 단말 사이 병렬), 질문 아래에 상태판을 새로 그린다. 새 상태판에는 **이어서 진행하는 단말만** 넣는다. 이미 끝난 단말은 위 상태판에 남아 있으므로 다시 그리지 않는다.
 - 비터미널(파이프, CI)에서는 물을 수 없으므로 확인이 필요한 항목을 실패로 처리하고 요약에 표시한다.
 
 ## 5. 결과 출력
 
 상태판이 끝나면:
 
-1. 단말별 결과 블록을 **상태판 순서대로** 출력 (지금 출력과 같은 형식, 단말 1대일 때와 동일한 내용)
-2. 요약
+1. 상세: 경고나 오류가 있었던 APK만, 단말별·APK별로 묶어 **경고 → 조치 → 결과** 순서로 출력한다. 경고만 덩그러니 남아 왜 나왔는지 헤매지 않도록, 그 뒤에 한 일(제거, 재설치)과 결과(`✓`/`Error:`)를 함께 보여 준다. 문제없이 설치된 APK는 요약에만 나온다.
+2. 요약: 단말당 한 줄(`n/m installed`). 다 설치되지 않은 단말 아래에만 실패하거나 실행되지 않은 APK를 적는다. APK 이름을 한 줄에 늘어놓으면 터미널 폭을 넘어 줄이 깨지기 때문.
 
 ```
+Google Pixel 9 Pro (SERIAL)
+  com.example.app.apk
+    Warning: 'com.example.app.apk' is older than the installed version, retrying with -d
+    Warning: Google Pixel 9 Pro does not allow downgrading 'com.example.app' without uninstalling it
+    ==> Uninstalling 'com.example.app' from Google Pixel 9 Pro
+    ==> Reinstalling 'com.example.app.apk' on Google Pixel 9 Pro
+    ✓ Installed 'com.example.app.apk' on Google Pixel 9 Pro (43.5s)
+
 Summary
-  Google Pixel 9 Pro   app-debug.apk ✓  feature.apk ✓
-  Samsung SM-S928N     app-debug.apk ✓  feature.apk ✗ INSTALL_FAILED_INSUFFICIENT_STORAGE
+  ✓ Google Pixel 9 Pro  5/5 installed
+  ✗ Samsung SM-S928N    4/5 installed
+      ✗ feature.apk  INSTALL_FAILED_INSUFFICIENT_STORAGE
 ```
 
 - 실패가 하나라도 있으면 종료 코드 1 (지금은 설치 실패여도 0 — 단말 1대일 때는 호환을 위해 그대로 둔다).
