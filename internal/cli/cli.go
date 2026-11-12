@@ -31,7 +31,8 @@ type Command struct {
 
 // Commands lists every subcommand in global-help order.
 var Commands = []*Command{
-	cmdDoctor,
+	cmdInstall, cmdPull, cmdExtract, cmdInfo, cmdPermissions, cmdUninstall, cmdClear,
+	cmdKill, cmdLaunch, cmdSignature, cmdActivities, cmdDevices, cmdMac, cmdDoctor,
 }
 
 func find(name string) *Command {
@@ -204,3 +205,5 @@ func parseLeading(name string, args []string, help func(), flags map[string]*boo
 	}
 	return args
 }
+
+func sayErr(format string, args ...any) { fmt.Fprintf(stderr, format+"\n", args...) }

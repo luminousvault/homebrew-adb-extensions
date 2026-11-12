@@ -61,8 +61,8 @@ func Select(o Options) (Result, error) {
 			io.WriteString(out, clearScreen)
 		}
 		width, height, err := term.GetSize(outFd)
-		if err != nil {
-			width, height = 80, 24
+		if err != nil || width <= 0 || height <= 0 {
+			width, height = 80, 24 // same defaults tput uses for an unsized terminal
 		}
 		l := s.computeLayout(height, &fixedHeight, wasResized)
 		lines := s.frame(l, fixedHeight, width)

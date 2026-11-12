@@ -98,3 +98,23 @@ Go 이식의 대조 기준. Bash 소스(`src/`)에서 추출했다. "→"는 출
 - APK 목록은 수정 시간 최신순. 1개면 자동 선택(`Only one APK file found:`), 여러 개면 다중 선택. 여러 출처면 suffix `(폴더명)`.
 - 설치: `adb -s <serial> install -r [-t] [-d] [--no-incremental(.idsig 존재 시)] <apk>`.
 - 자동 복구: `INSTALL_FAILED_TEST_ONLY` → `-t` 붙여 재시도. `INSTALL_FAILED_VERSION_DOWNGRADE` → `-d` 재시도, 그래도 실패하면 `[Y/n]` 확인 후 패키지 삭제·재설치(패키지명은 APK에서 읽음). `INSTALL_FAILED_UPDATE_INCOMPATIBLE` → `[Y/n]` 확인 후 오류 메시지의 패키지 삭제·재설치.
+
+## Go 버전에서 의도적으로 바꾼 점
+
+Bash v1.4.0 대비 동작이 달라지는 부분만 적는다. 나머지는 ANSI 색상 코드까지 같은 출력을 목표로 한다.
+
+| 항목 | Bash | Go |
+|---|---|---|
+| 새 커맨드 | — | `ak doctor`: 사용하는 adb 경로·버전, 다른 adb 목록, 버전 충돌 경고 |
+| adb 탐색 | `PATH`의 `adb`만 | `AK_ADB` → `ANDROID_HOME` → `ANDROID_SDK_ROOT` → `PATH` → Android Studio 기본 SDK → `~/.ak/platform-tools` |
+| adb 설치 안내 | `brew install android-platform-tools` | `brew install --cask android-platform-tools` (+ `AK_ADB` 안내) |
+| `signature` | apksigner 필요, 출력 형식이 apksigner 버전에 따라 다름 | SDK 없이 Go로 추출, `Signer #N certificate ...` 형식 고정. 파싱 실패 시 apksigner 폴백. Source Stamp 서명자는 표시하지 않고 안내 문구 출력 |
+| `signature` 임시 파일 | 현재 폴더에 `tmp_signature_<pkg>.apk` | OS 임시 폴더 |
+| `signature x.apk` (파일 없음) | 디바이스 선택 후 오류 | 디바이스 선택 없이 오류 |
+| `install` 다운그레이드 복구 | aapt로 패키지명 추출 (aapt 필요) | Go로 매니페스트에서 추출 |
+| `install -f <filter> <dir>` | 디렉터리에 APK가 1개면 필터와 무관하게 설치 | 필터를 먼저 적용 |
+| `activities` 태스크 필터 | `t2}` 검색이라 태스크 12도 섞임 | ` t2}`로 정확히 일치 |
+| 다중 선택 필터 고정 | 이름 정렬 후 선택 항목 고정이 엇갈릴 수 있음 | 원본 인덱스 기준으로 고정 |
+| 크기 0 터미널 | `tput` 기본 24행 | 80×24로 간주 |
+| 디버그 로그 | 개발 모드에서만 `build/debug.log` | `AK_DEBUG=1`이면 `$TMPDIR/ak-debug.log` (또는 `AK_DEBUG_LOG`) |
+| adb 자식 프로세스 stdin | 상속 (프롬프트 입력을 adb가 가져갈 수 있음) | 연결하지 않음 |
