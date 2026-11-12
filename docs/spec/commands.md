@@ -1,5 +1,8 @@
 # ak 커맨드 동작 사양 (Bash v1.4.0 기준)
 
+> **참고:** 이 문서는 v1.4.0(Bash)의 동작 기록이며, Go 이식 초기에 대조 기준으로 썼다. v2.0.0의 출력·종료 코드·옵션은
+> [`docs/design/cli-output.md`](../design/cli-output.md)를 따르며 이 문서와 다르다. 명령별 v2 동작은 `ak <command> --help`와 테스트(`internal/cli/*_test.go`)가 기준이다.
+
 Go 이식의 대조 기준. Bash 소스(`src/`)에서 추출했다. "→"는 출력/동작, `exit N`은 종료 코드.
 
 ## 공통

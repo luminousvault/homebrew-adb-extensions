@@ -102,28 +102,49 @@ ak <command> [options] [arguments...]
 
 **참고:** 많은 명령어가 패키지를 지정하지 않으면 포그라운드 앱을 자동으로 감지합니다. 자세한 사용 시나리오는 [사용 예시](#사용-예시)를 참조하세요.
 
+### 디바이스 지정
+
+| 옵션 | 동작 |
+|---|---|
+| `-s, --serial <ID>` | 이 디바이스만 (`install`, `mac`은 여러 번 지정 가능) |
+| `ANDROID_SERIAL` | 기본 대상 디바이스 (adb와 같은 규칙) |
+| `-m, --all` | 연결된 모든 디바이스 (`install`, `mac`) |
+| (없음) | 연결된 디바이스가 하나면 그것, 여러 대면 선택 UI |
+
+터미널이 아니면(파이프, CI) 선택 UI를 띄우지 않고 `-s`를 지정하라고 안내합니다.
+
+### 출력과 스크립트 사용
+
+- 결과는 stdout, 진행·경고·오류·질문은 stderr로 나갑니다. `ak info --json | jq`에는 결과만 전달됩니다.
+- `--json`: `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `doctor`의 결과를 JSON으로 출력합니다.
+- `-y, --yes`: 확인 질문(예: `install`의 제거 후 재설치)에 자동으로 예라고 답합니다. 터미널이 아니고 `-y`도 없으면 임의로 진행하지 않습니다.
+- 색상은 터미널에서만 씁니다. `NO_COLOR=1` 또는 `--no-color`로 끄고, `CLICOLOR_FORCE=1`로 강제로 켭니다.
+- 종료 코드: `0` 성공, `1` 실패(일부 실패 포함), `2` 사용법 오류, `130` 중단.
+
 ### 사용 가능한 명령어
 
 #### APK 관리
 
-- `install [apk_files|directories...]` - APK 파일 설치 (인터랙티브 선택 지원)
+- `install [apk_files|directories...]` - APK 파일 설치 (APK 파일을 지정하면 바로 설치, 디렉토리나 인자 없음이면 선택 UI)
   - APK 선택:
-    - `-l` - 최신 APK 파일 설치 (현재 디렉토리 또는 지정된 디렉토리)
-    - `-a` - 모든 APK 파일 설치 (현재 디렉토리 또는 지정된 디렉토리)
-    - `-f <filter>` - 패턴으로 APK 필터링
+    - `-l, --latest` - 최신 APK 설치 (현재 디렉토리 또는 지정된 디렉토리)
+    - `-a, --all-apks` - 모든 APK 설치 (현재 디렉토리 또는 지정된 디렉토리)
+    - `-f, --filter <words>` - 이름에 모든 단어가 들어간 APK 중에서 선택
   - 디바이스 옵션:
-    - `-m` - 연결된 모든 디바이스에 설치
+    - `-m, --all` - 연결된 모든 디바이스에 동시에 설치
+    - `-s, --serial <ID>` - 지정한 디바이스에 설치 (여러 번 지정 가능)
   - ADB 옵션:
-    - `-r` - 기존 앱 교체 (기본값)
+    - `-r` - 기존 앱 교체 (항상 적용)
     - `-t` - 테스트 APK 허용
     - `-d` - 버전 다운그레이드 허용
+  - `-y, --yes` - 복구에 제거가 필요할 때 묻지 않고 제거 후 재설치
 - `extract [package|filename] [filename|package]` - 디바이스에서 APK 추출 (순서 무관)
 
 #### 파일 관리
 
 - `pull [directory]` - 디바이스 최근 파일 가져오기 (MediaStore '최근 파일', 인터랙티브 다중 선택)
   - 인자 없음: 현재 폴더에 저장
-  - 디렉터리 인자: 해당 폴더에 저장 (없으면 생성)
+  - 디렉터리 인자: 해당 폴더에 저장 (없으면 확인 후 생성, `-y`면 바로 생성)
   - 파일은 원본 이름으로 저장 (이름이 겹치면 ' (N)' 접미사 부여)
 
 #### 앱 정보
@@ -133,7 +154,7 @@ ak <command> [options] [arguments...]
 - `info [package]` - 앱 정보 표시 (버전, SDK, 디버그 가능 여부, 설치자)
 - `permissions [package]` - 허용된 앱 권한 목록
 - `signature [package|apk_file]` - 앱 서명 표시 (인터랙티브 선택 지원)
-- `activities [--all]` - 액티비티 스택 표시 (`--all` 모든 태스크)
+- `activities [-a]` - 액티비티 스택 표시 (`-a, --all-tasks` 모든 태스크)
 
 #### 앱 제어
 
@@ -148,7 +169,7 @@ ak <command> [options] [arguments...]
 
 - `devices` - 연결된 디바이스 목록 (브랜드, 모델, ID, Android 버전, CPU ABI 및 32/64비트 지원 여부)
 - `mac [options]` - 현재 Wi-Fi MAC(랜덤 여부·SSID 포함), 공장 Wi-Fi MAC, Bluetooth MAC 표시
-  - `-m` 연결된 모든 디바이스 표시
+  - `-m, --all` 연결된 모든 디바이스 표시
 - `doctor` - 사용 중인 adb 경로를 보여 주고 adb 버전 충돌을 경고
 
 ### 인터랙티브 UI 기능
@@ -158,6 +179,8 @@ ak <command> [options] [arguments...]
 - **방향키** (위/아래) - APK 탐색
 - **Space** - 선택 토글
 - **A** - 전체 선택/해제
+- **S** - 시간순/이름순 정렬 전환
+- **/** - 이름 일부를 입력해 필터링
 - **숫자키** (1-9) - 빠른 선택 (단일 항목, 9개 이하 APK)
 - **Enter** - 선택 확정
 - **Ctrl+C** - 취소
@@ -175,6 +198,7 @@ ak <command> [options] [arguments...]
 ```bash
 ak --version, -v                # 버전 정보 표시
 ak --help, -h                   # 도움말 표시
+ak --no-color <command>         # 색상 끄기
 ak <command> --help             # 명령어별 도움말
 ```
 
@@ -203,11 +227,6 @@ ak install -l /path/to/dir
 ak install /path/to/dir -l  # 위와 동일
 ```
 
-**최신 디버그 APK 설치:**
-```bash
-ak install -l -f debug
-```
-
 **모든 APK 설치:**
 ```bash
 ak install -a
@@ -228,6 +247,14 @@ ak install -f debug /path/to/dir  # 특정 디렉토리
 **모든 연결된 디바이스에 설치:**
 ```bash
 ak install -m app.apk
+ak install -s 46171FDAP000P8 -s R3CW80E6Y8Z app.apk
+```
+
+디바이스가 여러 대면 상태판에 디바이스별 진행 상황이 표시됩니다. 확인이 필요한 디바이스(예: 서명이 달라 먼저 제거해야 하는 경우)는 멈춰 있다가 다른 디바이스가 끝난 뒤 질문합니다(`a`는 남은 질문에 모두 예). 마지막에 요약이 나옵니다.
+
+**스크립트·CI에서:**
+```bash
+ak install -s "$SERIAL" -y app.apk   # 질문 없음, 하나라도 실패하면 종료 코드 1
 ```
 
 **디렉토리에서 인터랙티브 선택:**
@@ -299,7 +326,7 @@ ak signature app.apk           # 로컬 APK 파일
 **액티비티 스택 조회:**
 ```bash
 ak activities                   # 포그라운드 태스크
-ak activities --all             # 모든 태스크
+ak activities -a               # 모든 태스크
 ```
 
 ### 앱 제어
@@ -338,6 +365,7 @@ ak devices
 ```bash
 ak mac                # 선택한 디바이스의 MAC 주소
 ak mac -m             # 연결된 모든 디바이스 표시
+ak mac --json         # JSON 출력
 ```
 
 출력 예시:

@@ -11,8 +11,22 @@ All notable changes to this project will be documented in this file.
 - adb is looked up in `AK_ADB`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `PATH`, the Android Studio default SDK and `~/.ak/platform-tools`, so Android Studio users no longer need adb on `PATH`
 - Prebuilt binaries for macOS, Linux and Windows (amd64/arm64) are attached to each GitHub release; the Homebrew formula builds from source
 
+### Changed (Breaking)
+- New output design for every command (`docs/design/cli-output.md`): results on stdout and messages on stderr; `==>`, `✓`, `Warning:`, `Error:`, `Hint:` messages; colors only on terminals (`NO_COLOR`, `--no-color`, `CLICOLOR_FORCE`). Scripts that parsed v1.x output need updating
+- Exit codes: `0` success (including `--help`), `1` failure including partial failure (e.g. one of several packages, failed installs), `2` usage error, `130` interrupted. v1.x exited 1 for `--help` and 0 for several failures
+- Help is generated from command definitions and printed to stdout; options may come before or after arguments; `--opt=value` and `--` are supported
+- `devices` prints a plain table (`SERIAL MODEL ANDROID ABI STATE`); `activities`, `signature`, `mac` and `info` print aligned plain output
+- `activities --all` is now `-a, --all-tasks` (`--all` means all devices)
+- `install` with APK files installs them all; the picker is used for directories or no argument
+- `pull` asks before creating a missing directory (`-y` to skip)
+
 ### Added
 - `doctor` command: shows which adb is used, lists other adb binaries and warns when their versions differ (mixed versions restart the adb server and drop connections)
+- Device targeting for all device commands: `-s, --serial`, `ANDROID_SERIAL`, and `-m, --all` for `install` and `mac`. Without a terminal, ak asks for `-s` instead of opening a picker
+- `install` on several devices runs in parallel with a status board; confirmations are collected and asked after the other devices finish (`[Y/n/a]`), followed by a summary
+- `--json` for `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `doctor`
+- `-y, --yes` for `install` and `pull`
+- Spinners for installs and pulls; zsh completion of device serials for `-s`
 
 ### Fixed
 - `install -f <filter> <dir>` no longer installs a non-matching APK when the directory contains exactly one APK

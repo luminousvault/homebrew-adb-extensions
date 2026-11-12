@@ -24,7 +24,9 @@
 * **자동 복구:** `install` 시 testOnly, 버전 다운그레이드, 서명 충돌을 자동 처리
 * **adb 자동 탐색 + `doctor`:** 여러 설치 경로에서 adb를 찾고 버전 충돌을 경고
 * **Zsh 탭 완성:** 커맨드·옵션 자동 완성
-* **구조화된 출력:** 색상·표 형식으로 정보 표시 (v1.x Bash 버전과 바이트 단위로 같은 출력이 목표)
+* **정형화된 출력:** stdout은 결과, stderr은 메시지. `==>`/`✓`/`Warning:`/`Error:`/`Hint:` 다섯 가지 메시지, `--json`, 종료 코드 0/1/2/130 ([docs/design/cli-output.md](docs/design/cli-output.md))
+* **디바이스 지정:** `-s/--serial`, `ANDROID_SERIAL`, `-m/--all`. 터미널이 아니면 선택 UI 대신 `-s`를 요구
+* **여러 디바이스 동시 설치:** 상태판 + 확인 질문 모아서 묻기 ([docs/spec/parallel-install.md](docs/spec/parallel-install.md))
 
 **지원 플랫폼:** macOS, Linux, Windows
 
@@ -34,16 +36,17 @@
 cmd/ak/main.go
   → enableVT() (Windows 콘솔 ANSI 활성화), debuglog.Init()
   → cli.Main(args)
+      → --no-color 제거, ui.Setup() (터미널·색상 판단)
       → 글로벌 옵션(-v, -h) 처리
-      → Commands 테이블에서 커맨드 찾기
+      → Commands 테이블에서 커맨드 찾기 → parse() (옵션 위치 무관, --opt=value, --)
       → ensureADB() (doctor 제외) → adb.Default = adb.Exec{Path}
-      → Command.Run(args)
+      → Command.Run(*Ctx) error → report(err)가 메시지·종료 코드 결정
 ```
 
-* **커맨드 테이블:** `internal/cli/cli.go`의 `Commands` 슬라이스. 순서가 곧 전체 도움말 순서입니다.
-* **종료 처리:** 커맨드는 `exit(code)`로 종료합니다. panic으로 전달되어 `Main`이 복구하므로 defer(터미널 복원, 임시 파일 삭제)가 실행되고 테스트에서 종료 코드를 확인할 수 있습니다. `os.Exit`를 직접 쓰지 않습니다.
-* **출력:** `say`/`sayf`(stdout), `sayErr`(stderr)를 씁니다. 테스트가 버퍼로 바꿔 끼웁니다.
-* **adb 호출:** `internal/adb`의 `Out`, `Combined`, `Shell`, `Default.Passthrough`를 통해서만 호출합니다. 테스트는 `adbtest.Fake`를 `adb.Default`에 넣습니다.
+* **커맨드 정의:** `Command{Name, Summary, Args, Long, ArgHelp, Flags, Examples, Device, JSON, Run}`. 도움말 생성, 옵션 파싱, completion 검증이 모두 이 정의를 씁니다. `Device`(oneDevice/manyDevices)와 `JSON`을 켜면 `-s`, `-m/--all`, `--json`이 자동으로 붙습니다.
+* **오류와 종료 코드:** 커맨드는 `error`를 반환합니다. `usageErr`(2), `failErr(hint, …)`(1), `errReported`(이미 출력한 실패, 1), `ui.ErrInterrupted`/`tui.ErrInterrupted`(130). `os.Exit`를 직접 쓰지 않습니다.
+* **출력:** 반드시 `internal/ui`를 통합니다. 결과 데이터는 `ui.Out`(stdout, `ui.Table`, `ui.KeyValues`, `ui.JSON`), 메시지는 `ui.Step/Success/Warn/Errorf/Hint/Detail`(stderr). 색은 `ui.Out.Green(...)`처럼 스트림 메서드로만 칠합니다(색 끔이면 자동으로 빠짐).
+* **adb 호출:** `internal/adb`의 `Out`, `Combined`, `Shell`, `Default.Passthrough`를 통해서만 호출합니다. 테스트는 `adbtest.Fake`를 `adb.Default`에 넣습니다(동시 호출 안전, `Delay`로 느린 명령 흉내).
 
 ## 디렉터리 구조
 
@@ -52,25 +55,28 @@ adb-extensions/
 ├── cmd/ak/                     # 진입점 (ldflags로 version, date 주입)
 ├── internal/
 │   ├── cli/                    # 커맨드 구현
-│   │   ├── cli.go              # 라우터, Commands 테이블, 도움말·버전, parseLeading
-│   │   ├── device.go           # 디바이스 선택(selectDevice, selectDevicesMulti), prettyDevice, pick
-│   │   ├── pkg.go              # 포그라운드 앱, 패키지 검증, APK 목록 등 공통 헬퍼
+│   │   ├── cli.go              # 커맨드 정의·파서·도움말·버전·오류/종료 코드
+│   │   ├── device.go           # Ctx.Device()/Devices(): -s, ANDROID_SERIAL, --all, 선택 UI; deviceName
+│   │   ├── pkg.go              # 포그라운드 앱, 패키지 검증(resolvePackage), APK 목록 등 공통 헬퍼
 │   │   ├── apps.go             # info, permissions, launch, kill, clear, uninstall, extract
-│   │   ├── install.go          # install + 자동 복구
+│   │   ├── install.go          # install + 자동 복구 (reporter 인터페이스로 출력)
+│   │   ├── parallel.go         # 여러 디바이스 동시 설치 (상태판, 확인 질문 큐)
 │   │   ├── activities.go, devices.go, mac.go, pull.go, signature.go, doctor.go
-│   │   ├── readkey.go          # [Y/n] 한 글자 입력
-│   │   ├── cli_test.go         # 가짜 adb로 커맨드 흐름 테스트
-│   │   └── completion_test.go  # completions/_ak ↔ Commands 일치 검사
+│   │   ├── cli_test.go, parallel_test.go  # 가짜 adb로 커맨드 흐름 테스트
+│   │   └── completion_test.go  # completions/_ak ↔ 커맨드 정의 일치 검사
+│   ├── ui/                     # 출력 규칙 구현: 스트림·색상 판단, 메시지, 표, JSON, 확인 질문, 스피너, 상태판, Fit
 │   ├── adb/                    # adb 실행·탐색(locate.go)·SDK build-tools 탐색(sdk.go)·파싱
 │   │   └── adbtest/            # 가짜 adb Runner
 │   ├── tui/                    # 인터랙티브 선택 UI (state.go 로직, render.go 화면, keys.go 키 파싱, term.go 터미널)
 │   ├── apk/                    # APK 패키지명·서명 인증서 (aapt/apksigner 대체), testdata/aktest.apk
-│   ├── style/                  # 색상 상수 (dot import)
+│   ├── style/                  # 선택 UI(tui) 내부 색상 상수
 │   └── debuglog/               # AK_DEBUG=1 로그
 ├── completions/_ak             # Zsh completion (수동 관리, 테스트로 동기화 검증)
 ├── docs/
 │   ├── go-migration-plan.md    # Go 전환 계획
-│   └── spec/commands.md        # 커맨드 동작 사양 + Bash 대비 의도적 변경점
+│   ├── design/cli-output.md    # CLI 출력 설계 가이드 (출력·오류·종료 코드·옵션 규칙)
+│   ├── spec/commands.md        # v1.4.0(Bash) 동작 기록
+│   └── spec/parallel-install.md # 동시 설치 설계
 ├── Formula/ak.rb               # Homebrew formula (릴리즈 워크플로가 생성, 직접 수정 금지)
 ├── .github/formula/ak.rb.tmpl  # Formula 템플릿 (소스 빌드)
 ├── .github/workflows/          # ci.yml (vet/test/lint/snapshot), release.yml (수동 릴리즈)
@@ -94,9 +100,9 @@ goreleaser build --snapshot --clean   # 멀티 플랫폼 빌드 확인
 
 ## 신규 커맨드 추가 체크리스트
 
-1. `internal/cli/<name>.go`에 `var cmd<Name> = &Command{...}`와 도움말 함수 작성
-   - `Name`, `Desc`(completion 설명), `Usage`/`Help`(전체 도움말 열), `Flags`(허용 옵션), `Run`
-   - 일반적인 옵션 처리는 `parseLeading` 사용 (첫 위치 인자에서 멈춤, `-h`는 도움말 후 exit 1)
+1. `internal/cli/<name>.go`에 `var cmd<Name> = &Command{...}` 작성
+   - `Summary`(전체 도움말·completion 설명), `Args`, `Long`, `ArgHelp`, `Flags`, `Examples`, `Device`, `JSON`, `Run func(*Ctx) error`
+   - 도움말은 정의에서 자동 생성됩니다. 디바이스는 `c.Device()`/`c.Devices()`, 옵션은 `c.Bool/String/Strings`, 인자 개수는 `tooMany(c, n)`
 2. `internal/cli/cli.go`의 `Commands`에 추가
 3. `completions/_ak`에 커맨드와 옵션 추가 (`TestCompletionMatchesCommands`가 불일치를 잡음)
 4. `cli_test.go`에 가짜 adb 기반 테스트 추가
@@ -105,22 +111,23 @@ goreleaser build --snapshot --clean   # 멀티 플랫폼 빌드 확인
 ## 코드 스타일 (Go)
 
 * `gofmt`, `go vet`, `golangci-lint` 통과 필수
-* 색상은 `internal/style`을 dot import해서 `Red`, `Green`, `NC`, `Error`, `BArrow` 등으로 씁니다 (ST1001 예외 설정됨)
-* 출력 문자열은 v1.x Bash 버전과 같게 유지합니다. 바꿀 때는 `docs/spec/commands.md`의 "의도적으로 바꾼 점"에 기록합니다
+* 출력은 [docs/design/cli-output.md](docs/design/cli-output.md)를 따릅니다: 결과는 stdout, 메시지는 stderr, 메시지 기호 다섯 가지, 실패하면 0이 아닌 종료 코드, 고칠 방법을 알면 `Hint`
+* 터미널이 아닐 때(파이프·CI)도 동작해야 합니다: 선택 UI와 확인 질문은 `-s`, `-y`, 인자로 대신할 수 있어야 합니다
 * adb 출력 파싱은 순수 함수(`parse...`)로 분리해 테스트합니다
 * 테스트 fixture에 실제 시리얼·MAC·SSID 등 기기 식별 정보를 넣지 않습니다 (공개 저장소)
 
-### 색상 상수 (`internal/style`)
+### 메시지 (`internal/ui`, stderr)
 
-| 상수 | 용도 |
+| 함수 | 출력 |
 |------|------|
-| `Cyan` | 정보·Usage 표시 |
-| `Green` | 성공 메시지 |
-| `Yellow` | 경고 |
-| `Red` | 오류 텍스트 |
-| `Error` | `Red + "==>" + NC + " " + Bold + "Error:" + NC` 형식의 오류 접두사 |
-| `BArrow`, `GArrow` | 파랑/초록 `==>` |
-| `Bold`, `Dim`, `NC` | 스타일·리셋 |
+| `ui.Step` | `==> 내용` (단계) |
+| `ui.Success` | `✓ 내용` |
+| `ui.Warn` | `Warning: 내용` |
+| `ui.Errorf` | `Error: 내용` (보통은 `failErr`를 반환해 `report`가 출력) |
+| `ui.Hint` | `Hint: 내용` |
+| `ui.Detail` | 흐린 들여쓰기 (adb 원본 출력 등) |
+| `ui.Spin` | 터미널이면 스피너, 아니면 `==>` 한 줄 |
+| `ui.Confirm` / `ui.Choose` | `[Y/n]` / `[Y/n/a]` 한 글자 질문 (`-y`면 묻지 않음, 터미널 아니면 `ErrNoInput`) |
 
 ## 핵심 함수·타입 레퍼런스
 
@@ -131,12 +138,12 @@ goreleaser build --snapshot --clean   # 멀티 플랫폼 빌드 확인
 * `ListDevices()`, `ReadySerials()`, `ParseGetprop()`
 
 ### `internal/cli`
-* `selectDevice()` / `selectDevicesMulti(all)` — 단일/다중 디바이스 선택
-* `prettyDevice(serial, level)` — `minimal` | `short` | `normal`
-* `foregroundPackage(serial)`, `requirePackage(serial, pkg)`, `packageArgOrForeground(serial, args)`
+* `Ctx.Device()` / `Ctx.Devices()` — 대상 디바이스 결정 (-s, ANDROID_SERIAL, --all, 1대, 선택 UI 또는 오류)
+* `deviceName(serial)` — "Google Pixel 9 Pro" (getprop 캐시)
+* `foregroundPackage(serial)`, `requirePackage(serial, pkg)`, `resolvePackage(serial, args)`
 * `apkPathForPackage(serial, pkg)` — base.apk 우선
 * `listAPKs(dir, sortByName|sortNewest)`
-* `pick(tui.Options)` — 선택 UI 실행, Ctrl+C면 exit 130
+* `pick(tui.Options, hint)` — 선택 UI, 터미널이 아니면 hint와 함께 실패
 
 ### `internal/tui`
 * `Select(Options) (Result, error)` — `Multi`, `NoFilter`, `Prompt`, `Location`, `Items`(탭 뒤는 흐린 접미사)
@@ -146,7 +153,7 @@ goreleaser build --snapshot --clean   # 멀티 플랫폼 빌드 확인
 * `PackageName(path)`, `Signers(path)` (DN·SHA-256·SHA-1·MD5, apksigner와 같은 값), `HasSourceStamp(path)`
 
 ### `install` 자동 복구
-`installWithRecovery` → `INSTALL_FAILED_TEST_ONLY`면 `-t` 재시도, `INSTALL_FAILED_VERSION_DOWNGRADE`면 `-d` 재시도 후 `resolveDowngrade`(확인 후 제거·재설치), `INSTALL_FAILED_UPDATE_INCOMPATIBLE`면 `resolveConflict`. `install` 관련 수정 시 이 파일을 우선 참고합니다.
+`installOne(reporter, …)` → `INSTALL_FAILED_TEST_ONLY`면 `-t` 재시도, `INSTALL_FAILED_VERSION_DOWNGRADE`면 `-d` 재시도 후 확인을 받아 제거·재설치, `INSTALL_FAILED_UPDATE_INCOMPATIBLE`면 확인 후 제거·재설치. 출력은 `reporter`로만 합니다: 1대면 `directReporter`(바로 출력), 여러 대면 `jobReporter`(버퍼 + 상태판, `parallel.go`).
 
 ## 디버깅
 

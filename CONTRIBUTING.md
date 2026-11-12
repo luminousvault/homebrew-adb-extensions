@@ -35,11 +35,13 @@ internal/cli/        Commands: one file per command or group, router in cli.go
 internal/adb/        Runs adb, finds it (AK_ADB, ANDROID_HOME, PATH, ...), parses common output
 internal/adb/adbtest Fake adb runner for tests
 internal/tui/        Interactive picker (single/multi select, filter, sort)
+internal/ui/         All user-facing output: streams, colors, messages, tables, JSON, prompts, spinner, status board
 internal/apk/        Package name and signer certificates from an APK (no SDK tools)
 internal/style/      ANSI color constants
 internal/debuglog/   AK_DEBUG=1 logging
 completions/_ak      Zsh completion (hand-maintained, checked by a test)
-docs/spec/           Command behavior spec
+docs/design/         CLI output design guide (read this before changing output)
+docs/spec/           v1 behavior record, parallel install design
 .goreleaser.yaml     Release builds
 .github/formula/     Homebrew formula template used at release time
 ```
@@ -56,9 +58,10 @@ goreleaser build --snapshot --clean   # optional: cross-platform build
 
 ## Adding a New Command
 
-1. Create `internal/cli/<name>.go` with a `*Command` (name, completion description,
-   global-help usage/description, accepted flags, run function) and a help function.
-   Use `parseLeading` for the usual `-h|--help` and option handling.
+1. Create `internal/cli/<name>.go` with a `*Command` (summary, arguments, description,
+   flags, examples, `Device`, `JSON`, and `Run func(*Ctx) error`). Help is generated
+   from it; use `c.Device()` / `c.Devices()` for targets and return errors
+   (`usageErr`, `failErr`) instead of printing them.
 2. Add it to `Commands` in `internal/cli/cli.go` (order = global help order).
 3. Add the command and its options to `completions/_ak`.
    `TestCompletionMatchesCommands` fails if the completion and the command table differ.
@@ -68,10 +71,10 @@ goreleaser build --snapshot --clean   # optional: cross-platform build
 ## Code Style
 
 - `gofmt`, `go vet` and `golangci-lint` must pass (CI runs them).
-- Output goes through `say`/`sayf` so tests can capture it; exit with `exit(code)`
-  so deferred cleanups (terminal restore, temp files) still run.
-- Colors come from `internal/style` (dot-imported: `Red`, `Green`, `NC`, `Error`, ...).
-- Keep output identical across platforms; Windows consoles get ANSI enabled at startup.
+- Follow `docs/design/cli-output.md`: results on stdout (`ui.Out`, `ui.Table`, `ui.JSON`),
+  messages on stderr (`ui.Step`, `ui.Success`, `ui.Warn`, `ui.Errorf`, `ui.Hint`), and exit codes 0/1/2/130.
+- Never print colors directly; use `ui.Out.Green(...)` etc. so `NO_COLOR` and pipes work.
+- Commands must work without a terminal: offer `-s`, `-y` or arguments for every picker and prompt.
 
 ## Testing
 

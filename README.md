@@ -102,28 +102,49 @@ ak <command> [options] [arguments...]
 
 **Note:** Many commands support auto-detection of the foreground app when no package is specified. See [Examples](#examples) for detailed usage scenarios.
 
+### Choosing Devices
+
+| Option | Effect |
+|---|---|
+| `-s, --serial <ID>` | Target this device (`install` and `mac` accept it more than once) |
+| `ANDROID_SERIAL` | Default target device, same as adb |
+| `-m, --all` | All connected devices (`install`, `mac`) |
+| (none) | The only connected device, or a picker when several are connected |
+
+Without a terminal (pipes, CI), ak does not open pickers: it asks for `-s` instead.
+
+### Output and Scripting
+
+- Results go to stdout; progress, warnings, errors and prompts go to stderr. `ak info --json | jq` gets only the result.
+- `--json` prints machine-readable output for `devices`, `info`, `permissions`, `signature`, `mac`, `activities` and `doctor`.
+- `-y, --yes` answers confirmations (e.g. uninstall-and-reinstall in `install`); without a terminal and without `-y`, ak does not guess.
+- Colors are used only on terminals. `NO_COLOR=1` or `--no-color` turns them off; `CLICOLOR_FORCE=1` forces them on.
+- Exit codes: `0` success, `1` failure (including partial failure), `2` usage error, `130` interrupted.
+
 ### Available Commands
 
 #### APK Management
 
-- `install [apk_files|directories...]` - Install APK files with interactive selection
+- `install [apk_files|directories...]` - Install APK files (named APKs directly; directories or no argument open a picker)
   - APK Selection:
-    - `-l` - Install latest APK file (from current directory or specified directory)
-    - `-a` - Install all APK files (from current directory or specified directory)
-    - `-f <filter>` - Filter APKs by pattern
+    - `-l, --latest` - Install the newest APK (from current directory or specified directory)
+    - `-a, --all-apks` - Install all APK files (from current directory or specified directory)
+    - `-f, --filter <words>` - Pick among APKs whose names contain all the words
   - Device Options:
-    - `-m` - Install to all connected devices
+    - `-m, --all` - Install on all connected devices, in parallel
+    - `-s, --serial <ID>` - Install on this device (repeat for more)
   - ADB Options:
-    - `-r` - Replace existing app (default)
+    - `-r` - Replace existing app (always on)
     - `-t` - Allow test APKs
     - `-d` - Allow version downgrade
+  - `-y, --yes` - Uninstall and reinstall without asking when recovery needs it
 - `extract [package|filename] [filename|package]` - Extract APK from device (order flexible)
 
 #### File Management
 
 - `pull [directory]` - Pull recent device files (MediaStore 'Recents', interactive multi-select)
   - No argument: pull into the current directory
-  - Directory argument: pull into it (created if needed)
+  - Directory argument: pull into it (a missing directory is created after confirmation, or with `-y`)
   - Files are saved with their original names (duplicates get a ' (N)' suffix)
 
 #### App Information
@@ -133,7 +154,7 @@ ak <command> [options] [arguments...]
 - `info [package]` - Display app information (version, SDK, debuggable status, installer)
 - `permissions [package]` - List granted app permissions
 - `signature [package|apk_file]` - Display app signature (supports interactive selection)
-- `activities [--all]` - Display activity stack (`--all` for all tasks)
+- `activities [-a]` - Display activity stack (`-a, --all-tasks` for all tasks)
 
 #### App Control
 
@@ -148,7 +169,7 @@ ak <command> [options] [arguments...]
 
 - `devices` - List connected devices (brand, model, ID, Android version, CPU ABI with 32/64-bit support)
 - `mac [options]` - Show current Wi-Fi MAC (with randomized detection and SSID), factory Wi-Fi MAC, and Bluetooth MAC
-  - `-m` all connected devices
+  - `-m, --all` all connected devices
 - `doctor` - Show which adb binary is used and warn about adb version conflicts
 
 ### Interactive UI Features
@@ -158,6 +179,8 @@ ak <command> [options] [arguments...]
 - **Arrow keys** (Up/Down) - Navigate through APKs
 - **Space** - Toggle selection
 - **A** - Select/deselect all
+- **S** - Sort by time or by name
+- **/** - Filter by typing part of the name
 - **Number keys** (1-9) - Quick select (single item, 9 or fewer APKs)
 - **Enter** - Confirm selection
 - **Ctrl+C** - Cancel
@@ -176,6 +199,7 @@ ak <command> [options] [arguments...]
 ak --version, -v                # Show version information
 ak --help, -h                   # Show help message
 ak <command> --help             # Show command-specific help
+ak --no-color <command>         # Disable colors
 ```
 
 ## Examples
@@ -203,11 +227,6 @@ ak install -l /path/to/dir
 ak install /path/to/dir -l  # Same as above
 ```
 
-**Install latest debug APK:**
-```bash
-ak install -l -f debug
-```
-
 **Install all APKs:**
 ```bash
 ak install -a
@@ -225,9 +244,17 @@ ak install -f debug              # Current directory
 ak install -f debug /path/to/dir # Specific directory
 ```
 
-**Install to all connected devices:**
+**Install to all connected devices (in parallel):**
 ```bash
 ak install -m app.apk
+ak install -s 46171FDAP000P8 -s R3CW80E6Y8Z app.apk
+```
+
+With several devices, a status board shows each device's progress. If a device needs confirmation (for example, the signature differs and the app must be uninstalled first), it pauses and ak asks after the others finish (`a` answers yes for the rest). A summary follows.
+
+**In scripts and CI:**
+```bash
+ak install -s "$SERIAL" -y app.apk   # no prompts; exit code 1 if anything failed
 ```
 
 **Interactive selection from directory:**
@@ -299,7 +326,7 @@ ak signature app.apk           # Local APK file
 **View activity stack:**
 ```bash
 ak activities                   # Foreground task
-ak activities --all             # All tasks
+ak activities -a               # All tasks
 ```
 
 ### App Control
@@ -338,6 +365,7 @@ ak devices
 ```bash
 ak mac                # MAC addresses of the selected device
 ak mac -m             # All connected devices
+ak mac --json         # Machine-readable
 ```
 
 Example output:
