@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 - `signature` no longer needs Android SDK build-tools: certificates are read directly from the APK, printed as `Signer #N certificate ...` regardless of apksigner version (apksigner is used only as a fallback)
 - `install` reads the package name for downgrade recovery from the APK itself, so `aapt` is no longer required
 - adb is looked up in `AK_ADB`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `PATH`, the Android Studio default SDK and `~/.ak/platform-tools`, so Android Studio users no longer need adb on `PATH`
-- Prebuilt binaries for macOS, Linux and Windows (amd64/arm64) are attached to each GitHub release; the Homebrew formula builds from source
+- Prebuilt binaries for macOS, Linux and Windows (amd64/arm64) are attached to each GitHub release; the Homebrew formula installs them, so no Go toolchain is needed
 
 ### Changed (Breaking)
 - New output design for every command (`docs/design/cli-output.md`): results on stdout and messages on stderr; `==>`, `✓`, `Warning:`, `Error:`, `Hint:` messages; colors only on terminals (`NO_COLOR`, `--no-color`, `CLICOLOR_FORCE`). Scripts that parsed v1.x output need updating

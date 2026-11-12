@@ -84,7 +84,7 @@ adb-extensions/
 ├── .goreleaser.yaml            # 멀티 플랫폼 바이너리
 ├── Makefile                    # 로컬 빌드·설치 (make install / uninstall)
 ├── .golangci.yml
-├── VERSION                     # 버전 단일 소스 (릴리즈 입력값과 일치해야 함)
+├── VERSION                     # 버전 단일 소스 (릴리즈 워크플로가 이 값을 씀)
 ├── CHANGELOG.md, README.md, README.ko.md, CONTRIBUTING.md
 ```
 
@@ -174,8 +174,8 @@ tail -f "${TMPDIR:-/tmp}/ak-debug.log"    # AK_DEBUG_LOG로 경로 변경 가능
 
 * 버전: 루트 `VERSION` (단일 소스)
 * `CHANGELOG.md`에 `## [x.y.z]` 항목이 있어야 릴리즈됩니다
-* GitHub Actions `release.yml` — `workflow_dispatch`로 수동 실행. 테스트 → 소스 아카이브 → `Formula/ak.rb`를 템플릿에서 생성·커밋 → 태그 → GoReleaser로 바이너리와 소스 아카이브를 GitHub Release에 업로드
-* Homebrew formula는 소스에서 `go build`합니다 (`depends_on "go" => :build`). `Formula/ak.rb`는 직접 고치지 말고 `.github/formula/ak.rb.tmpl`을 고칩니다
+* GitHub Actions `release.yml` — main에서 수동 실행: `gh workflow run release.yml --ref main` (버전은 `VERSION` 파일, `-f version=x.y.z`는 확인용). 테스트 → 소스 아카이브 → 태그 → GoReleaser가 바이너리·소스 아카이브를 GitHub Release에 업로드 → `dist/checksums.txt`로 `Formula/ak.rb`를 생성해 main에 커밋. main이 아니면 실패합니다(tap은 main의 formula를 읽음)
+* Homebrew formula는 GitHub Release의 플랫폼별 바이너리(tar.gz)를 내려받습니다. 사용자 Mac에 Go가 필요 없습니다. cask가 아니라 formula라서 quarantine이 붙지 않습니다. `Formula/ak.rb`는 직접 고치지 말고 `.github/formula/ak.rb.tmpl`(렌더링은 `.github/formula/render.sh`)을 고칩니다
 
 ## 사전 요구사항
 

@@ -1,5 +1,6 @@
 # GoReleaser config: prebuilt binaries attached to the GitHub release.
-# Homebrew users build from source via Formula/ak.rb (see .github/formula/ak.rb.tmpl).
+# Formula/ak.rb downloads these archives (rendered from .github/formula/ak.rb.tmpl
+# with dist/checksums.txt by the release workflow).
 version: 2
 
 before:
@@ -37,8 +38,8 @@ changelog:
   disable: true
 
 release:
-  # The release workflow passes notes from CHANGELOG.md (--release-notes) and the
-  # source archive used by the Homebrew formula (SOURCE_ARCHIVE).
+  # The release workflow passes notes from CHANGELOG.md (--release-notes) and a
+  # source archive for building from source (SOURCE_ARCHIVE).
   mode: replace
   extra_files:
     - glob: "{{ .Env.SOURCE_ARCHIVE }}"

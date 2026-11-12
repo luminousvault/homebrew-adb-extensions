@@ -1,16 +1,36 @@
+# Rendered by .github/formula/render.sh during the release workflow.
+# Edit this template, not Formula/ak.rb.
 class Ak < Formula
   desc "ADB extensions kit - Essential ADB utilities for Android development"
   homepage "https://github.com/luminousvault/homebrew-adb-extensions"
-  url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v__VERSION__/adb-extensions-v__VERSION__.tar.gz"
-  sha256 "__SHA256__"
+  version "@VERSION@"
   license "MIT"
-  version "__VERSION__"
 
-  depends_on "go" => :build
+  # Prebuilt binaries from the GitHub release: no Go toolchain on the user's machine.
+  on_macos do
+    on_arm do
+      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v@VERSION@/ak_@VERSION@_darwin_arm64.tar.gz"
+      sha256 "@SHA256_DARWIN_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v@VERSION@/ak_@VERSION@_darwin_amd64.tar.gz"
+      sha256 "@SHA256_DARWIN_AMD64@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v@VERSION@/ak_@VERSION@_linux_arm64.tar.gz"
+      sha256 "@SHA256_LINUX_ARM64@"
+    end
+    on_intel do
+      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v@VERSION@/ak_@VERSION@_linux_amd64.tar.gz"
+      sha256 "@SHA256_LINUX_AMD64@"
+    end
+  end
 
   def install
-    ldflags = "-s -w -X main.version=#{version} -X main.date=__DATE__"
-    system "go", "build", *std_go_args(ldflags:), "./cmd/ak"
+    bin.install "ak"
     zsh_completion.install "completions/_ak"
   end
 

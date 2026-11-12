@@ -1,11 +1,14 @@
 name: Release Build
 
+# Run from the terminal:  gh workflow run release.yml --ref main
+# The version comes from the VERSION file; pass -f version=x.y.z only to
+# double-check it (the run fails if they differ).
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: '릴리즈 버전 (예: 2.0.0, v 접두사 제외)'
-        required: true
+        description: '릴리즈 버전 (비우면 VERSION 파일 값, 예: 2.0.0)'
+        required: false
         type: string
 
 permissions:
@@ -26,10 +29,17 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Release only from main
+        if: github.ref_name != 'main'
+        run: |
+          echo "Error: run the release on main (the tap reads Formula/ak.rb from main), not '${{ github.ref_name }}'"
+          exit 1
+
       - name: Validate version format
         id: version
         run: |
           VERSION="${{ github.event.inputs.version }}"
+          VERSION=${VERSION:-$(cat VERSION)}
           VERSION=${VERSION#v}
           if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "Error: Invalid version format '$VERSION'. Expected format: x.y.z (e.g., 2.0.0)"
@@ -86,28 +96,15 @@ jobs:
           echo "path=$ARCHIVE" >> $GITHUB_OUTPUT
           echo "sha256=$(sha256sum "$ARCHIVE" | awk '{print $1}')" >> $GITHUB_OUTPUT
 
-      - name: Update Homebrew Formula
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          sed -e "s|__VERSION__|${VERSION}|g" \
-              -e "s|__SHA256__|${{ steps.archive.outputs.sha256 }}|g" \
-              -e "s|__DATE__|$(date +%Y-%m-%d)|g" \
-              .github/formula/ak.rb.tmpl > Formula/ak.rb
-          cat Formula/ak.rb
-
-      - name: Commit Formula and tag
+      - name: Tag
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
-          git add Formula/ak.rb
-          if ! git diff --cached --quiet; then
-            git commit -m "Release: update Homebrew Formula for v${VERSION}"
-            git push origin "HEAD:${{ github.ref_name }}"
-          fi
           git tag -a "v${VERSION}" -m "Release v${VERSION}"
           git push origin "v${VERSION}"
 
+      # Binaries first: the formula needs the SHA-256 of each uploaded archive.
       - name: Release with GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -116,6 +113,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SOURCE_ARCHIVE: ${{ steps.archive.outputs.path }}
+
+      - name: Update Homebrew Formula
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          .github/formula/render.sh "$VERSION" dist/checksums.txt > Formula/ak.rb
+          cat Formula/ak.rb
+          git add Formula/ak.rb
+          if ! git diff --cached --quiet; then
+            git commit -m "Release: update Homebrew Formula for v${VERSION}"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
 
       - name: Build summary
         run: |
@@ -126,6 +134,7 @@ jobs:
             echo "- **Source SHA256:** ${{ steps.archive.outputs.sha256 }}"
             echo '```bash'
             echo "brew tap luminousvault/adb-extensions"
+            echo "brew trust luminousvault/adb-extensions"
             echo "brew install ak"
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
