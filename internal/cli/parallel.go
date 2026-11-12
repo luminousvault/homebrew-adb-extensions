@@ -28,9 +28,10 @@ const (
 )
 
 type jobMsg struct {
-	kind ui.Kind
-	text string
-	apk  int // index into files
+	kind  ui.Kind
+	text  string // full form, for "[device]" lines
+	short string // inside the device's block, under the APK name
+	apk   int    // index into files
 }
 
 type installJob struct {
@@ -43,7 +44,7 @@ type installJob struct {
 	activity    string
 	state       jobState
 	question    string
-	reason      string // last warning, shown with the question
+	reason      string // the current APK's warnings (short), shown with the question
 	start       time.Time
 	took        time.Duration
 	msgs        []jobMsg
@@ -70,82 +71,91 @@ type jobReporter struct {
 	live bool
 }
 
-func (r *jobReporter) emit(k ui.Kind, text string) {
+func (r *jobReporter) emit(k ui.Kind, m say) {
 	r.j.with(func() {
-		r.j.msgs = append(r.j.msgs, jobMsg{k, text, r.j.idx})
+		r.j.msgs = append(r.j.msgs, jobMsg{k, m.full, m.short, r.j.idx})
 		if k == ui.KindWarn {
-			r.j.reason = text
+			r.j.reason = joinWarnings(r.j.reason, m.short)
 		}
 	})
 	if r.live {
 		printMu.Lock()
-		ui.Err.Println(ui.Err.Dim("["+r.j.name+"]") + " " + ui.Line(k, text))
+		ui.Err.Println(ui.Err.Dim("["+r.j.name+"]") + " " + ui.Line(k, m.full))
 		printMu.Unlock()
 	}
 }
 
-func (r *jobReporter) progress(f string, a ...any) {
-	text := fmt.Sprintf(f, a...)
-	word, _, _ := strings.Cut(text, " ")
+// joinWarnings puts warnings about one APK on one line:
+// "Older than the installed version, retrying with -d; downgrade not allowed ...".
+func joinWarnings(a, b string) string {
+	if a == "" {
+		return b
+	}
+	if b != "" {
+		b = strings.ToLower(b[:1]) + b[1:]
+	}
+	return a + "; " + b
+}
+
+func (r *jobReporter) progress(m say) {
+	word, _, _ := strings.Cut(m.full, " ")
 	r.j.with(func() {
 		r.j.activity = word + "..."
 		r.j.stepStart = time.Now()
-		r.j.msgs = append(r.j.msgs, jobMsg{ui.KindStep, text, r.j.idx})
 	})
 	if r.live {
 		printMu.Lock()
-		ui.Err.Println(ui.Err.Dim("["+r.j.name+"]") + " " + ui.Line(ui.KindStep, text))
+		ui.Err.Println(ui.Err.Dim("["+r.j.name+"]") + " " + ui.Line(ui.KindStep, m.full))
 		printMu.Unlock()
 	}
 }
 
 func (r *jobReporter) done() {}
 
-func (r *jobReporter) success(f string, a ...any) {
-	r.j.with(func() { r.j.msgs = append(r.j.msgs, jobMsg{ui.KindSuccess, fmt.Sprintf(f, a...), r.j.idx}) })
+func (r *jobReporter) success(m say) {
+	r.j.with(func() { r.j.msgs = append(r.j.msgs, jobMsg{ui.KindSuccess, m.full, m.short, r.j.idx}) })
 	if r.live {
 		printMu.Lock()
-		ui.Err.Println(ui.Err.Dim("["+r.j.name+"]") + " " + ui.Line(ui.KindSuccess, fmt.Sprintf(f, a...)))
+		ui.Err.Println(ui.Err.Dim("["+r.j.name+"]") + " " + ui.Line(ui.KindSuccess, m.full))
 		printMu.Unlock()
 	}
 }
 
-func (r *jobReporter) warn(f string, a ...any) { r.emit(ui.KindWarn, fmt.Sprintf(f, a...)) }
-func (r *jobReporter) fail(f string, a ...any) {
-	text := fmt.Sprintf(f, a...)
+func (r *jobReporter) warn(m say) { r.emit(ui.KindWarn, m) }
+func (r *jobReporter) fail(m say) {
 	r.j.with(func() {
-		// "Couldn't install a.apk on Pixel: INSTALL_FAILED_..." -> "INSTALL_FAILED_..."
+		// "Couldn't install: INSTALL_FAILED_..." -> "INSTALL_FAILED_..."
 		note := ""
-		if i := strings.LastIndex(text, ": "); i >= 0 {
-			note = text[i+2:]
+		if i := strings.LastIndex(m.short, ": "); i >= 0 {
+			note = m.short[i+2:]
 		}
-		if strings.HasPrefix(text, "Skipped") {
+		if strings.HasPrefix(m.short, "Skipped") {
 			r.j.skipped = true
 			note = strings.TrimSuffix("skipped: "+note, ": ")
 			// Declined by the user (or interrupted): stop this device, as later
 			// APKs may depend on this one. Without a terminal nobody declined,
 			// so the other APKs still install.
-			r.j.stopped = !strings.Contains(text, "(pass -y)")
+			r.j.stopped = !strings.Contains(m.short, "(pass -y)")
 		}
 		r.j.notes[r.j.idx] = note
 	})
-	r.emit(ui.KindError, text)
+	r.emit(ui.KindError, m)
 }
 func (r *jobReporter) detail(text string) {
 	for _, l := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
-		r.emit(ui.KindDetail, l)
+		r.emit(ui.KindDetail, say{l, l})
 	}
 }
 
 // confirm waits for the main loop to ask the question (board mode).
-func (r *jobReporter) confirm(q string) (bool, error) {
+func (r *jobReporter) confirm(q say) (bool, error) {
 	if ui.AssumeYes {
 		return true, nil
 	}
 	if r.live {
 		return false, ui.ErrNoInput
 	}
-	r.j.with(func() { r.j.state, r.j.question = jobWaiting, q })
+	r.j.with(func() { r.j.state, r.j.question = jobWaiting, q.short })
 	ans := <-r.j.answer
 	r.j.with(func() { r.j.state, r.j.question = jobRunning, "" })
 	switch ans {
@@ -164,7 +174,7 @@ func runJob(j *installJob, opts []string, live bool) {
 		if installStop.Load() {
 			break // Ctrl+C: do not start the next APK
 		}
-		j.with(func() { j.idx, j.activity = i, "Installing..." })
+		j.with(func() { j.idx, j.activity, j.reason = i, "Installing...", "" })
 		ok := installOne(r, j.serial, opts, f)
 		j.with(func() {
 			if ok {
@@ -491,13 +501,13 @@ func summaryLines(jobs []*installJob, get func(int) ([]int8, []string, bool)) []
 }
 
 // detailLines tells, for each APK that needed attention (a warning or an
-// error), what happened from the first warning to the outcome:
+// error), what happened, in the short form since the device and the APK are
+// the headings. Warnings about one APK share a line; the outcome follows:
 //
-//	Google Pixel 9 Pro (SERIAL)
+//	Samsung SM-S928N (SERIAL)
 //	  app.apk
-//	    Warning: app.apk is older than the installed version, retrying with -d
-//	    ==> Uninstalling com.example.app from Google Pixel 9 Pro
-//	    ✓ Installed app.apk on Google Pixel 9 Pro (43.5s)
+//	    Warning: Older than the installed version, retrying with -d; downgrade not allowed without uninstalling
+//	    ✓ Uninstalled 'com.example.app' (data removed) and reinstalled (24.9s)
 //
 // APKs that installed without trouble are left to the summary.
 func detailLines(j *installJob, msgs []jobMsg) []string {
@@ -516,13 +526,25 @@ func detailLines(j *installJob, msgs []jobMsg) []string {
 			continue
 		}
 		lines = append(lines, "  "+filepath.Base(f))
+		warning := ""
+		flush := func() {
+			if warning != "" {
+				lines = append(lines, "    "+ui.Line(ui.KindWarn, warning))
+				warning = ""
+			}
+		}
 		for _, m := range msgs {
-			// "Installing <apk>" repeats the heading; uninstall/reinstall steps stay.
-			if m.apk != i || (m.kind == ui.KindStep && strings.HasPrefix(m.text, "Installing ")) {
+			if m.apk != i {
 				continue
 			}
-			lines = append(lines, "    "+ui.Line(m.kind, m.text))
+			if m.kind == ui.KindWarn {
+				warning = joinWarnings(warning, m.short)
+				continue
+			}
+			flush()
+			lines = append(lines, "    "+ui.Line(m.kind, m.short))
 		}
+		flush()
 	}
 	return lines
 }

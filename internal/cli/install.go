@@ -311,14 +311,26 @@ func runInstall(c *Ctx) error {
 // reporter receives the messages of one device's installs. The single-device
 // reporter prints immediately; the parallel one buffers and drives the status board.
 type reporter interface {
-	progress(format string, args ...any) // current activity (spinner text)
-	done()                               // activity finished
-	success(format string, args ...any)
-	warn(format string, args ...any)
-	fail(format string, args ...any)
+	progress(m say) // current activity (spinner text)
+	done()          // activity finished
+	success(m say)
+	warn(m say)
+	fail(m say)
 	detail(text string)
-	confirm(question string) (bool, error)
+	confirm(question say) (bool, error)
 }
+
+// say is one message in two forms. full stands on a line of its own (one
+// device, or "[device]" lines without a terminal), so it names the APK and
+// the device. short goes inside a device's block under the APK name, where
+// both are already on screen:
+//
+//	Samsung SM-S928N (SERIAL)
+//	  app.apk
+//	    Warning: Older than the installed version, retrying with -d
+type say struct{ full, short string }
+
+func sayf(short, format string, args ...any) say { return say{fmt.Sprintf(format, args...), short} }
 
 // A step that takes longer than this is usually waiting for the user on the
 // device: Play Protect asking to scan the app, or an "install via USB" prompt.
@@ -331,9 +343,9 @@ type directReporter struct {
 	slow *time.Timer
 }
 
-func (r *directReporter) progress(f string, a ...any) {
+func (r *directReporter) progress(m say) {
 	r.done()
-	text := fmt.Sprintf(f, a...)
+	text := m.full
 	sp := ui.Spin("%s", text)
 	r.sp = sp
 	r.slow = time.AfterFunc(slowStep, func() { sp.SetText("%s %s", text, ui.Err.Dim(slowHint)) })
@@ -348,11 +360,11 @@ func (r *directReporter) done() {
 		r.sp = nil
 	}
 }
-func (r *directReporter) success(f string, a ...any)     { r.done(); ui.Success(f, a...) }
-func (r *directReporter) warn(f string, a ...any)        { r.done(); ui.Warn(f, a...) }
-func (r *directReporter) fail(f string, a ...any)        { r.done(); ui.Errorf(f, a...) }
-func (r *directReporter) detail(t string)                { ui.Detail("%s", t) }
-func (r *directReporter) confirm(q string) (bool, error) { r.done(); return ui.Confirm(q, true) }
+func (r *directReporter) success(m say)               { r.done(); ui.Success("%s", m.full) }
+func (r *directReporter) warn(m say)                  { r.done(); ui.Warn("%s", m.full) }
+func (r *directReporter) fail(m say)                  { r.done(); ui.Errorf("%s", m.full) }
+func (r *directReporter) detail(t string)             { ui.Detail("%s", t) }
+func (r *directReporter) confirm(m say) (bool, error) { r.done(); return ui.Confirm(m.full, true) }
 
 var reFailure = regexp.MustCompile(`\[?(INSTALL_[A-Z_]+|DELETE_[A-Z_]+)`)
 
@@ -409,20 +421,29 @@ func installOne(r reporter, serial string, opts []string, apkFile string) bool {
 		opts = append(opts, "--no-incremental")
 	}
 	start := time.Now()
+	dev := deviceName(serial)
 	attempt := func(o []string) string {
-		r.progress("Installing %s on %s", q(base), deviceName(serial))
+		r.progress(sayf("Installing", "Installing %s on %s", q(base), dev))
 		return adbInstall(serial, o, apkFile)
 	}
-	finish := func(result string) bool {
+	// finish reports the last attempt; reinstalled names the package that
+	// was uninstalled first, if any.
+	finish := func(result, reinstalled string) bool {
 		if result == resultStopped {
-			r.fail("Stopped installing %s on %s: interrupted", q(base), deviceName(serial))
+			r.fail(sayf("Stopped: interrupted", "Stopped installing %s on %s: interrupted", q(base), dev))
 			return false
 		}
 		if strings.Contains(result, "Success") {
-			r.success("Installed %s on %s %s", q(base), deviceName(serial), ui.Err.Dim("("+elapsed(start)+")"))
+			took := ui.Err.Dim("(" + elapsed(start) + ")")
+			short := "Installed " + took
+			if reinstalled != "" {
+				short = "Uninstalled " + q(reinstalled) + " (data removed) and reinstalled " + took
+			}
+			r.success(sayf(short, "Installed %s on %s %s", q(base), dev, took))
 			return true
 		}
-		r.fail("Couldn't install %s on %s: %s", q(base), deviceName(serial), failureCode(result))
+		code := failureCode(result)
+		r.fail(sayf("Couldn't install: "+code, "Couldn't install %s on %s: %s", q(base), dev, code))
 		r.detail(result)
 		return false
 	}
@@ -430,19 +451,20 @@ func installOne(r reporter, serial string, opts []string, apkFile string) bool {
 	result := attempt(opts)
 	switch {
 	case strings.Contains(result, "INSTALL_FAILED_TEST_ONLY"):
-		r.warn("%s is a test-only APK, retrying with -t", q(base))
+		r.warn(sayf("Test-only APK, retrying with -t", "%s is a test-only APK, retrying with -t", q(base)))
 		opts = append(opts, "-t")
 		result = attempt(opts)
 		if strings.Contains(result, "INSTALL_FAILED_VERSION_DOWNGRADE") {
 			return reinstallAfterDowngrade(r, serial, opts, apkFile, finish)
 		}
-		return finish(result)
+		return finish(result, "")
 	case strings.Contains(result, "INSTALL_FAILED_VERSION_DOWNGRADE"):
 		if !hasOpt(opts, "-d") {
-			r.warn("%s is older than the installed version, retrying with -d", q(base))
+			r.warn(sayf("Older than the installed version, retrying with -d",
+				"%s is older than the installed version, retrying with -d", q(base)))
 			result = attempt(append(opts, "-d"))
 			if !strings.Contains(result, "INSTALL_FAILED_VERSION_DOWNGRADE") {
-				return finish(result)
+				return finish(result, "")
 			}
 		}
 		return reinstallAfterDowngrade(r, serial, opts, apkFile, finish)
@@ -451,19 +473,22 @@ func installOne(r reporter, serial string, opts []string, apkFile string) bool {
 		if pkg == "" {
 			pkg, _ = apk.PackageName(apkFile)
 		}
-		r.warn("The signature of %s differs from %s installed on %s", q(base), q(pkg), deviceName(serial))
+		r.warn(sayf("Signature differs from the installed app",
+			"The signature of %s differs from %s installed on %s", q(base), q(pkg), dev))
 		return uninstallThenInstall(r, serial, pkg, opts, apkFile, finish)
 	}
-	return finish(result)
+	return finish(result, "")
 }
 
-func reinstallAfterDowngrade(r reporter, serial string, opts []string, apkFile string, finish func(string) bool) bool {
+func reinstallAfterDowngrade(r reporter, serial string, opts []string, apkFile string, finish func(string, string) bool) bool {
 	pkg, err := apk.PackageName(apkFile)
 	if err != nil {
-		r.fail("Couldn't read the package name of %s: %v", q(filepath.Base(apkFile)), err)
+		r.fail(sayf(fmt.Sprintf("Couldn't read the package name: %v", err),
+			"Couldn't read the package name of %s: %v", q(filepath.Base(apkFile)), err))
 		return false
 	}
-	r.warn("%s does not allow downgrading %s without uninstalling it", deviceName(serial), q(pkg))
+	r.warn(sayf("Downgrade not allowed without uninstalling",
+		"%s does not allow downgrading %s without uninstalling it", deviceName(serial), q(pkg)))
 	return uninstallThenInstall(r, serial, pkg, opts, apkFile, finish)
 }
 
@@ -478,30 +503,34 @@ func conflictPackage(result string) string {
 	return ""
 }
 
-func uninstallThenInstall(r reporter, serial, pkg string, opts []string, apkFile string, finish func(string) bool) bool {
-	ok, err := r.confirm("Uninstall " + q(pkg) + " from " + deviceName(serial) + " (removes its data) and reinstall?")
+func uninstallThenInstall(r reporter, serial, pkg string, opts []string, apkFile string, finish func(string, string) bool) bool {
+	base, dev := q(filepath.Base(apkFile)), deviceName(serial)
+	ok, err := r.confirm(say{
+		"Uninstall " + q(pkg) + " from " + dev + " (removes its data) and reinstall?",
+		"Uninstall " + q(pkg) + " (removes its data) and reinstall?"})
 	switch {
 	case errors.Is(err, ui.ErrNoInput):
-		r.fail("Skipped %s on %s: uninstalling needs confirmation (pass -y)", q(filepath.Base(apkFile)), deviceName(serial))
+		r.fail(sayf("Skipped: uninstalling needs confirmation (pass -y)",
+			"Skipped %s on %s: uninstalling needs confirmation (pass -y)", base, dev))
 		return false
 	case errors.Is(err, ui.ErrInterrupted):
-		r.fail("Skipped %s on %s: interrupted", q(filepath.Base(apkFile)), deviceName(serial))
+		r.fail(sayf("Skipped: interrupted", "Skipped %s on %s: interrupted", base, dev))
 		return false
 	case err != nil || !ok:
-		r.fail("Skipped %s on %s", q(filepath.Base(apkFile)), deviceName(serial))
+		r.fail(sayf("Skipped", "Skipped %s on %s", base, dev))
 		return false
 	}
 	if installStop.Load() {
-		return finish(resultStopped)
+		return finish(resultStopped, "")
 	}
-	r.progress("Uninstalling %s from %s", q(pkg), deviceName(serial))
+	r.progress(sayf("Uninstalling "+q(pkg), "Uninstalling %s from %s", q(pkg), dev))
 	if out, err := adb.Combined("-s", serial, "uninstall", pkg); err != nil || !strings.Contains(out, "Success") {
-		r.fail("Couldn't uninstall %s from %s", q(pkg), deviceName(serial))
+		r.fail(sayf("Couldn't uninstall "+q(pkg), "Couldn't uninstall %s from %s", q(pkg), dev))
 		r.detail(out)
 		return false
 	}
-	r.progress("Reinstalling %s on %s", q(filepath.Base(apkFile)), deviceName(serial))
-	return finish(adbInstall(serial, opts, apkFile))
+	r.progress(sayf("Reinstalling", "Reinstalling %s on %s", base, dev))
+	return finish(adbInstall(serial, opts, apkFile), pkg)
 }
 
 // apkListLines numbers APKs in install order with their size and time:
