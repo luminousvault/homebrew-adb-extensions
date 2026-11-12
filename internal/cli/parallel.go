@@ -298,11 +298,18 @@ loop:
 			break loop
 		case <-tick.C:
 			draw(frame)
-			if waiting := waitingJobs(jobs); len(waiting) > 0 && !anyRunning(jobs) {
+			// Ask as soon as a device needs confirmation; the other devices keep
+			// installing meanwhile, and the board resumes below the questions.
+			if len(waitingJobs(jobs)) > 0 {
 				b.Release()
 				active = unfinished(jobs)
-				if !askWaiting(waiting, &applyAll) {
+				if !askWaiting(jobs, &applyAll) {
+					// Ctrl+C at a question reached ak as a key, not as SIGINT, so
+					// the installs still running would go on: stop them like a
+					// Ctrl+C during the board (the sig case below finishes up).
 					interrupted = true
+					installStop.Store(true)
+					interruptGroup()
 				}
 			}
 		}
@@ -334,25 +341,30 @@ func unfinished(jobs []*installJob) []*installJob {
 	return u
 }
 
-func anyRunning(jobs []*installJob) bool {
-	for _, j := range jobs {
-		j.mu.Lock()
-		running := j.state == jobRunning
-		j.mu.Unlock()
-		if running {
-			return true
-		}
-	}
-	return false
-}
-
-// askWaiting asks each paused device in turn. It returns false on Ctrl+C.
-func askWaiting(waiting []*installJob, applyAll *bool) bool {
+// askWaiting asks paused devices one at a time, in board order, until none is
+// waiting: a device that pauses while a question is on screen is asked next
+// (a queue), so nobody waits for the other devices to finish. It returns false
+// on Ctrl+C.
+func askWaiting(jobs []*installJob, applyAll *bool) bool {
 	ui.ShowCursor()
 	defer ui.HideCursor()
-	for i, j := range waiting {
+	// answer resumes the job; its state changes here, before the send, so the
+	// next scan cannot ask the same device twice.
+	answer := func(j *installJob, a string) {
+		j.with(func() { j.state, j.question = jobRunning, "" })
+		j.answer <- a
+	}
+	for asked := 0; ; asked++ {
+		waiting := waitingJobs(jobs)
+		if len(waiting) == 0 {
+			if asked > 0 {
+				ui.Err.Println("") // keep the questions apart from the board below
+			}
+			return true
+		}
+		j := waiting[0]
 		if *applyAll {
-			j.answer <- "y"
+			answer(j, "y")
 			continue
 		}
 		j.mu.Lock()
@@ -365,18 +377,17 @@ func askWaiting(waiting []*installJob, applyAll *bool) bool {
 		}
 		k, err := ui.Choose("  "+q, "y", "n", "a")
 		if err != nil {
-			for _, rest := range waiting[i:] {
-				rest.answer <- "interrupt"
+			for _, rest := range waitingJobs(jobs) {
+				answer(rest, "interrupt")
 			}
+			ui.Err.Println("")
 			return false
 		}
 		if k == "a" {
 			*applyAll = true
 		}
-		j.answer <- k
+		answer(j, k)
 	}
-	ui.Err.Println("")
-	return true
 }
 
 func finishParallel(jobs []*installJob, board, interrupted bool) error {

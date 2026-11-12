@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -221,5 +223,46 @@ func TestListsAlignWideNames(t *testing.T) {
 	board := boardLines(jobs, 0)
 	if a, b := ui.TextWidth(strings.Split(board[0], "[1/1]")[0]), ui.TextWidth(strings.Split(board[1], "[1/1]")[0]); a != b {
 		t.Errorf("board not aligned:\n%s", strings.Join(board, "\n"))
+	}
+}
+
+type timedReader struct {
+	r  io.Reader
+	at time.Time
+}
+
+func (t *timedReader) Read(p []byte) (int, error) {
+	if t.at.IsZero() {
+		t.at = time.Now()
+	}
+	return t.r.Read(p)
+}
+
+// A device that needs confirmation is asked right away, while the other
+// device is still installing (it used to wait for every device to finish).
+func TestParallelAsksWhileOthersInstall(t *testing.T) {
+	apkFile := writeAPK(t, t.TempDir(), "app.apk", 0)
+	conflict := adbtest.Response{Stdout: "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.example.app signatures do not match newer version; ignoring!]\n"}
+	slow := adbtest.Response{Stdout: "Success\n", Delay: 800 * time.Millisecond}
+	f := parallelFake(apkFile, map[string]adbtest.Response{serial: conflict, "SECOND": slow})
+	f.Responses["-s "+serial+" uninstall com.example.app"] = adbtest.Response{Stdout: "Success\n"}
+	in := &timedReader{r: strings.NewReader("y\n")}
+	var errb bytes.Buffer
+	ui.Out, ui.Err = &ui.Stream{W: &bytes.Buffer{}}, &ui.Stream{W: &errb, TTY: true}
+	ui.In, ui.InTTY, ui.AssumeYes = bufio.NewReader(in), true, false
+	adb.Default = f
+	resetDeviceCache()
+	t.Setenv("ANDROID_SERIAL", "")
+	defer func() {
+		adb.Default = nil
+		ui.InTTY = false
+		ui.In = bufio.NewReader(os.Stdin)
+		ui.Out, ui.Err = &ui.Stream{W: os.Stdout}, &ui.Stream{W: os.Stderr}
+	}()
+	start := time.Now()
+	// (The fake answers the reinstall with the same conflict; only the timing matters here.)
+	run([]string{"install", apkFile, "-a"})
+	if in.at.IsZero() || in.at.Sub(start) > 600*time.Millisecond || !strings.Contains(errb.String(), "[Y/n/a] y") {
+		t.Errorf("asked after %v\n%s", in.at.Sub(start), errb.String())
 	}
 }

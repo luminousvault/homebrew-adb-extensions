@@ -27,7 +27,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 - `doctor` command: checks the adb in use, other adb binaries with a different version (mixed versions restart the adb server and drop connections), connected devices (unauthorized, offline, `ANDROID_SERIAL` not connected) and optional tools; exits 1 when a problem is found
 - Device targeting for all device commands: `-s, --serial`, `ANDROID_SERIAL`, and `-a, --all` for `install`, `mac` and `screenshot`. Without a terminal, ak asks for `-s` instead of opening a picker
-- `install` on several devices runs in parallel with a status board; confirmations are collected and asked after the other devices finish (`[Y/n/a]`), followed by a summary
+- `install` on several devices runs in parallel with a status board; a device that needs confirmation is asked right away (`[Y/n/a]`) while the others keep installing, further questions queue up, and a summary follows
 - `--json` for `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `doctor`
 - `-y, --yes` for `install` and `pull`
 - Spinners for installs and pulls; zsh completion of device serials for `-s`
