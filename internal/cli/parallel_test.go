@@ -266,7 +266,7 @@ func TestParallelAsksWhileOthersInstall(t *testing.T) {
 	start := time.Now()
 	// (The fake answers the reinstall with the same conflict; only the timing matters here.)
 	run([]string{"install", apkFile, "-a"})
-	if in.at.IsZero() || in.at.Sub(start) > 600*time.Millisecond || !strings.Contains(errb.String(), "[Y/n/a] y") {
+	if in.at.IsZero() || in.at.Sub(start) > 600*time.Millisecond || !strings.Contains(errb.String(), "[Y/n/a] (a: yes for every device) y") {
 		t.Errorf("asked after %v\n%s", in.at.Sub(start), errb.String())
 	}
 }

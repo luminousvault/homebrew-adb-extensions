@@ -208,8 +208,9 @@ func JSON(v any) error {
 
 // Choose asks a question answered by one key. choices are lowercase keys; the
 // first is the default for Enter and is shown uppercase, e.g. "[Y/n/a]".
-// It returns the chosen key. With -y it returns the first choice.
-func Choose(question string, choices ...string) (string, error) {
+// note, if not empty, follows dimmed to explain a key, e.g. "(a: yes for every
+// device)". It returns the chosen key. With -y it returns the first choice.
+func Choose(question, note string, choices ...string) (string, error) {
 	if AssumeYes {
 		return choices[0], nil
 	}
@@ -224,7 +225,11 @@ func Choose(question string, choices ...string) (string, error) {
 		}
 	}
 	for {
-		Err.Printf("%s [%s] ", question, strings.Join(shown, "/"))
+		if note != "" {
+			Err.Printf("%s [%s] %s ", question, strings.Join(shown, "/"), Err.Dim(note))
+		} else {
+			Err.Printf("%s [%s] ", question, strings.Join(shown, "/"))
+		}
 		k, err := ReadKey()
 		if err != nil {
 			Err.Println("")

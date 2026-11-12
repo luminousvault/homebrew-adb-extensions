@@ -261,7 +261,7 @@ ak install -s emulator-5554 -s emulator-5556 app.apk
 ak install -e -a                 # Every APK in the current directory on every device
 ```
 
-With several devices, a status board shows each device's progress. If a device needs confirmation (for example, the signature differs and the app must be uninstalled first), ak asks right away while the other devices keep installing; further questions follow one after another (`a` answers yes for the rest). A summary follows.
+With several devices, a status board shows each device's progress. If a device needs confirmation (for example, the signature differs and the app must be uninstalled first), ak asks right away while the other devices keep installing; further questions follow one after another (`a` answers yes for every device for the rest of the run). A summary follows.
 
 **Install seems stuck?** When a step takes more than 10 seconds, ak shows `(check the device screen)`: the device is usually waiting for you. Google Play Protect asks whether to scan an app it has not seen (often after an uninstall and reinstall), and some devices ask to allow installs over USB. Answer on the device and the install continues.
 

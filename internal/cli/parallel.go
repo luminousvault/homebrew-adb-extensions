@@ -385,7 +385,7 @@ func askWaiting(jobs []*installJob, applyAll *bool) bool {
 		if reason != "" {
 			ui.Err.Println("  " + ui.Line(ui.KindWarn, reason))
 		}
-		k, err := ui.Choose("  "+q, "y", "n", "a")
+		k, err := ui.Choose("  "+q, "(a: yes for every device)", "y", "n", "a")
 		if err != nil {
 			for _, rest := range waitingJobs(jobs) {
 				answer(rest, "interrupt")
