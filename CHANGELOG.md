@@ -2,10 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## [2.0.0] - Unreleased
+## [2.0.0] - 2026-11-12
 
 ### Changed
-- Rewritten in Go as a single binary; no Bash, `awk`, `sed`, `tput` or `stty` needed. Commands, options, output and Zsh completion stay the same (see `docs/spec/commands.md` for the few intentional differences)
+- Rewritten in Go as a single binary; no Bash, `awk`, `sed`, `tput` or `stty` needed. Command names and Zsh completion stay; options and output changed as listed under "Changed (Breaking)"
 - `signature` no longer needs Android SDK build-tools: certificates are read directly from the APK, printed as `Signer #N certificate ...` regardless of apksigner version (apksigner is used only as a fallback)
 - `install` reads the package name for downgrade recovery from the APK itself, so `aapt` is no longer required
 - adb is looked up in `AK_ADB`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `PATH`, the Android Studio default SDK and `~/.ak/platform-tools`, so Android Studio users no longer need adb on `PATH`
