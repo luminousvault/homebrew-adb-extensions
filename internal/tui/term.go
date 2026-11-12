@@ -66,6 +66,9 @@ func Select(o Options) (Result, error) {
 		}
 		l := s.computeLayout(height, &fixedHeight, wasResized)
 		lines := s.frame(l, fixedHeight, width)
+		for i := range lines {
+			lines[i] = fit(lines[i], width)
+		}
 		// Raw mode disables output post-processing, so end lines with \r\n.
 		io.WriteString(out, cursorHome+strings.Join(lines, "\r\n")+clearBelow)
 
