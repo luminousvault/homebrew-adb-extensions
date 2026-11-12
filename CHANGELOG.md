@@ -27,6 +27,12 @@ All notable changes to this project will be documented in this file.
 - `--json` for `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `doctor`
 - `-y, --yes` for `install` and `pull`
 - Spinners for installs and pulls; zsh completion of device serials for `-s`
+- New commands that replace several adb steps each:
+  - `screenshot`: capture with `exec-out screencap` straight to a PNG (no temp file on the device), one file per device with `--all`
+  - `record`: `screenrecord` until Ctrl+C or the time limit; stops it with SIGINT so the MP4 is finalized, waits for the file, pulls it and deletes it from the device
+  - `logcat`: logs of one app only, following new PIDs across restarts and announcing process start/kill/death
+  - `restart`: force-stop + launch with `am start -W` timing; `-n` for min/avg/max, `--json`
+  - `wifi`: `tcpip` + Wi-Fi IP lookup + `connect` in one step; `wifi off` switches back to USB
 
 ### Fixed
 - `install -f <filter> <dir>` no longer installs a non-matching APK when the directory contains exactly one APK

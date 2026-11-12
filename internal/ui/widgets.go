@@ -76,9 +76,23 @@ var spinFrames = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 
 // Spinner shows "⠋ text" on stderr while work runs (terminals only).
 type Spinner struct {
+	mu   sync.Mutex
 	text string
 	stop chan struct{}
 	done sync.WaitGroup
+}
+
+// SetText changes the spinner text (e.g. an elapsed timer).
+func (s *Spinner) SetText(format string, args ...any) {
+	s.mu.Lock()
+	s.text = fmt.Sprintf(format, args...)
+	s.mu.Unlock()
+}
+
+func (s *Spinner) current() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.text
 }
 
 // Spin starts a spinner. Without a terminal it prints "==> text" once.
@@ -95,7 +109,7 @@ func Spin(format string, args ...any) *Spinner {
 		t := time.NewTicker(80 * time.Millisecond)
 		defer t.Stop()
 		for i := 0; ; i++ {
-			Err.Printf("\r\033[K%s %s", Err.Cyan(string(spinFrames[i%len(spinFrames)])), s.text)
+			Err.Printf("\r\033[K%s %s", Err.Cyan(string(spinFrames[i%len(spinFrames)])), s.current())
 			select {
 			case <-s.stop:
 				Err.Printf("\r\033[K")

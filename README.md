@@ -155,12 +155,19 @@ Without a terminal (pipes, CI), ak does not open pickers: it asks for `-s` inste
 - `permissions [package]` - List granted app permissions
 - `signature [package|apk_file]` - Display app signature (supports interactive selection)
 - `activities [-a]` - Display activity stack (`-a, --all-tasks` for all tasks)
+- `logcat [package] [-l level] [-c]` - Logs of one app only, following it across restarts (new PIDs are picked up; `pkg:remote` processes included)
+
+#### Screen
+
+- `screenshot [file|directory]` - Save a PNG on this computer (nothing left on the device); `--all` saves one per device
+- `record [file|directory] [-t seconds] [--size WxH]` - Record until Ctrl+C or the time limit (max 180 s), then save the MP4 and delete it from the device
 
 #### App Control
 
 **Note:** Omitting `[package]` or `[packages...]` auto-detects the foreground app.
 
 - `launch <package>` - Launch app (main activity)
+- `restart [package] [-n N]` - Force-stop and launch again, showing the launch time (`am start -W`); `-n` repeats and shows min/avg/max
 - `kill [packages...]` - Force stop app(s)
 - `clear [packages...]` - Clear app data
 - `uninstall [package]` - Uninstall app
@@ -170,6 +177,7 @@ Without a terminal (pipes, CI), ak does not open pickers: it asks for `-s` inste
 - `devices` - List connected devices (brand, model, ID, Android version, CPU ABI with 32/64-bit support)
 - `mac [options]` - Show current Wi-Fi MAC (with randomized detection and SSID), factory Wi-Fi MAC, and Bluetooth MAC
   - `-m, --all` all connected devices
+- `wifi [off]` - Switch a USB device to Wi-Fi debugging and connect (`adb tcpip` + IP lookup + `adb connect`); `off` switches back to USB
 - `doctor` - Show which adb binary is used and warn about adb version conflicts
 
 ### Interactive UI Features

@@ -62,6 +62,7 @@ adb-extensions/
 │   │   ├── install.go          # install + 자동 복구 (reporter 인터페이스로 출력)
 │   │   ├── parallel.go         # 여러 디바이스 동시 설치 (상태판, 확인 질문 큐)
 │   │   ├── activities.go, devices.go, mac.go, pull.go, signature.go, doctor.go
+│   │   ├── screenshot.go, record.go, logcat.go, restart.go, wifi.go  # adb 여러 단계를 묶은 커맨드
 │   │   ├── cli_test.go, parallel_test.go  # 가짜 adb로 커맨드 흐름 테스트
 │   │   └── completion_test.go  # completions/_ak ↔ 커맨드 정의 일치 검사
 │   ├── ui/                     # 출력 규칙 구현: 스트림·색상 판단, 메시지, 표, JSON, 확인 질문, 스피너, 상태판, Fit
@@ -136,6 +137,8 @@ goreleaser build --snapshot --clean   # 멀티 플랫폼 빌드 확인
 * `VersionInfo(path)` — 프로토콜·빌드 버전
 * `FindBuildTool(name)` — SDK build-tools 최신 버전에서 도구 탐색 (apksigner 폴백용)
 * `ListDevices()`, `ReadySerials()`, `ParseGetprop()`
+* `Start(args)` — 오래 도는 명령(logcat, screenrecord). 별도 프로세스 그룹이라 터미널 Ctrl+C를 받지 않으므로 호출자가 직접 멈춘다
+* `Output(args)` — 바이너리 stdout (screencap)
 
 ### `internal/cli`
 * `Ctx.Device()` / `Ctx.Devices()` — 대상 디바이스 결정 (-s, ANDROID_SERIAL, --all, 1대, 선택 UI 또는 오류)

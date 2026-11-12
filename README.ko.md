@@ -155,12 +155,19 @@ ak <command> [options] [arguments...]
 - `permissions [package]` - 허용된 앱 권한 목록
 - `signature [package|apk_file]` - 앱 서명 표시 (인터랙티브 선택 지원)
 - `activities [-a]` - 액티비티 스택 표시 (`-a, --all-tasks` 모든 태스크)
+- `logcat [package] [-l level] [-c]` - 앱 하나의 로그만 표시. 앱이 재시작해도 새 PID를 따라감 (`pkg:remote` 프로세스 포함)
+
+#### 화면
+
+- `screenshot [file|directory]` - PC에 PNG로 저장 (디바이스에 파일을 남기지 않음). `--all`은 디바이스별로 저장
+- `record [file|directory] [-t seconds] [--size WxH]` - Ctrl+C 또는 시간 제한(최대 180초)까지 녹화한 뒤 MP4를 저장하고 디바이스에서 삭제
 
 #### 앱 제어
 
 **참고:** `[package]` 또는 `[packages...]`를 생략하면 포그라운드 앱을 자동으로 감지합니다.
 
 - `launch <package>` - 앱 실행 (메인 액티비티)
+- `restart [package] [-n N]` - 강제 종료 후 다시 실행하고 실행 시간(`am start -W`) 표시. `-n`은 반복 후 최소/평균/최대
 - `kill [packages...]` - 앱 강제 종료
 - `clear [packages...]` - 앱 데이터 삭제
 - `uninstall [package]` - 앱 제거
@@ -170,6 +177,7 @@ ak <command> [options] [arguments...]
 - `devices` - 연결된 디바이스 목록 (브랜드, 모델, ID, Android 버전, CPU ABI 및 32/64비트 지원 여부)
 - `mac [options]` - 현재 Wi-Fi MAC(랜덤 여부·SSID 포함), 공장 Wi-Fi MAC, Bluetooth MAC 표시
   - `-m, --all` 연결된 모든 디바이스 표시
+- `wifi [off]` - USB로 연결된 디바이스를 Wi-Fi 디버깅으로 전환하고 연결 (`adb tcpip` + IP 확인 + `adb connect`). `off`는 USB로 되돌림
 - `doctor` - 사용 중인 adb 경로를 보여 주고 adb 버전 충돌을 경고
 
 ### 인터랙티브 UI 기능

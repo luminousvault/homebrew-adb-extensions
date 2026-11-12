@@ -92,7 +92,9 @@ func (s *Stream) Println(line string) { fmt.Fprintln(s.W, line) }
 func Step(format string, args ...any) { Err.Println(Line(KindStep, fmt.Sprintf(format, args...))) }
 
 // Success prints "✓ text".
-func Success(format string, args ...any) { Err.Println(Line(KindSuccess, fmt.Sprintf(format, args...))) }
+func Success(format string, args ...any) {
+	Err.Println(Line(KindSuccess, fmt.Sprintf(format, args...)))
+}
 
 // Info prints an indented line.
 func Info(format string, args ...any) { Err.Println("  " + fmt.Sprintf(format, args...)) }
