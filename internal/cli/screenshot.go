@@ -18,11 +18,14 @@ var cmdScreenshot = &Command{
 	Name: "screenshot", Summary: "Save a screenshot", Args: "[file|directory]",
 	Long: "Capture the screen and save it as PNG on this computer (nothing is left on the device).\n" +
 		"The default name is screenshot-<model>-<time>.png in the current directory.\n" +
-		"With several devices, one file per device is saved. Saved paths are printed to stdout.",
-	ArgHelp:  [][2]string{{"file", "Output .png file (one device)"}, {"directory", "Save into this directory"}},
-	Flags:    []Flag{flagOpen},
-	Examples: []string{"ak screenshot", "ak screenshot -o", "ak screenshot home.png", "ak screenshot ~/Desktop --all"},
-	Device:   manyDevices, Run: runScreenshot,
+		"With several devices, one file per device is saved. Saved paths are printed to stdout.\n" +
+		"-c copies the image to the clipboard instead of saving it; give a file or directory\n" +
+		"(or -o) to save it as well.",
+	ArgHelp: [][2]string{{"file", "Output .png file (one device)"}, {"directory", "Save into this directory"}},
+	Flags:   []Flag{flagCopy, flagOpen},
+	Examples: []string{"ak screenshot", "ak screenshot -o", "ak screenshot -c", "ak screenshot -c ~/Desktop",
+		"ak screenshot home.png", "ak screenshot ~/Desktop --all"},
+	Device: manyDevices, Run: runScreenshot,
 }
 
 var pngMagic = []byte("\x89PNG\r\n\x1a\n")
@@ -69,6 +72,13 @@ func runScreenshot(c *Ctx) error {
 	if len(c.Args) == 1 {
 		arg = c.Args[0]
 	}
+	// -c alone copies without saving; a path or -o (which opens the saved file)
+	// asks for the file too.
+	copyImg := c.Bool("--copy")
+	save := !copyImg || arg != "" || c.Bool("--open")
+	if copyImg && len(serials) > 1 {
+		return usageErr(c.Cmd, "-c copies one screenshot; choose one device with -s")
+	}
 	now := time.Now()
 	failed := false
 	for _, s := range serials {
@@ -87,17 +97,53 @@ func runScreenshot(c *Ctx) error {
 			failed = true
 			continue
 		}
-		if err := os.WriteFile(path, data, 0o644); err != nil {
-			ui.Errorf("Couldn't save %s: %v", q(path), err)
-			failed = true
-			continue
+		meta := ui.Err.Dim("(" + deviceName(s) + ", " + humanSize(strconv.Itoa(len(data))) + ")")
+		if save {
+			if err := os.WriteFile(path, data, 0o644); err != nil {
+				ui.Errorf("Couldn't save %s: %v", q(path), err)
+				failed = true
+				continue
+			}
+			ui.Success("Saved %s %s", q(path), meta)
+			ui.Out.Println(path)
 		}
-		ui.Success("Saved %s %s", q(path), ui.Err.Dim("("+deviceName(s)+", "+humanSize(strconv.Itoa(len(data)))+")"))
-		ui.Out.Println(path)
-		openSaved(c, path)
+		if copyImg {
+			if err := copyScreenshot(path, data, save); err != nil {
+				ui.Errorf("Couldn't copy the screenshot to the clipboard: %v", err)
+				failed = true
+			} else if save {
+				ui.Success("Copied to the clipboard")
+			} else {
+				ui.Success("Copied the screenshot to the clipboard %s", meta)
+			}
+		}
+		if save {
+			openSaved(c, path)
+		}
 	}
 	if failed {
 		return errReported
 	}
 	return nil
+}
+
+// copyScreenshot copies the PNG to the clipboard. The clipboard tools read a
+// file, so without a saved file a temporary one is used and removed.
+func copyScreenshot(path string, data []byte, saved bool) error {
+	if saved {
+		return copyImageFn(path)
+	}
+	f, err := os.CreateTemp("", "ak-screenshot-*.png")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(f.Name()) }()
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return copyImageFn(f.Name())
 }

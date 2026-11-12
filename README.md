@@ -161,7 +161,7 @@ Without a terminal (pipes, CI), ak does not open pickers: it asks for `-s` inste
 
 #### Screen
 
-- `screenshot [file|directory]` - Save a PNG on this computer (nothing left on the device); `--all` saves one per device, `-o, --open` opens it
+- `screenshot [file|directory]` - Save a PNG on this computer (nothing left on the device); `--all` saves one per device, `-o, --open` opens it, `-c, --copy` copies it to the clipboard (alone: no file; with a path or `-o`: saved too)
 - `record [file|directory] [-t seconds] [--size WxH]` - Record until Ctrl+C or the time limit (max 180 s), then save the MP4 and delete it from the device; `-o, --open` opens it
 
 #### App Control

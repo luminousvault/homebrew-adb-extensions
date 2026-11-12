@@ -161,7 +161,7 @@ ak <command> [options] [arguments...]
 
 #### 화면
 
-- `screenshot [file|directory]` - PC에 PNG로 저장 (디바이스에 파일을 남기지 않음). `--all`은 디바이스별로 저장, `-o, --open`은 저장 후 열기
+- `screenshot [file|directory]` - PC에 PNG로 저장 (디바이스에 파일을 남기지 않음). `--all`은 디바이스별로 저장, `-o, --open`은 저장 후 열기, `-c, --copy`는 클립보드에 복사(단독이면 파일 저장 안 함, 경로나 `-o`를 함께 주면 저장도)
 - `record [file|directory] [-t seconds] [--size WxH]` - Ctrl+C 또는 시간 제한(최대 180초)까지 녹화한 뒤 MP4를 저장하고 디바이스에서 삭제. `-o, --open`은 저장 후 열기
 
 #### 앱 제어

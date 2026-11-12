@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- `screenshot -c, --copy` copies the image to the clipboard. Alone it saves no file; with a file or directory argument, or with `-o`, the file is saved too. One device at a time (macOS `osascript`, Linux `wl-copy` or `xclip`, Windows PowerShell)
+
 ## [2.0.0] - 2026-11-12
 
 ### Changed

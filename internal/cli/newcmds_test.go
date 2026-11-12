@@ -145,3 +145,53 @@ func TestVerifierHidden(t *testing.T) {
 		t.Errorf("bad argument: %d", r.code)
 	}
 }
+
+// -c alone copies without saving; a path or -o saves too; one device only.
+func TestScreenshotCopy(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var copied []string
+	var copiedData []byte
+	origCopy, origOpen := copyImageFn, openFn
+	copyImageFn = func(p string) error {
+		copied = append(copied, p)
+		copiedData, _ = os.ReadFile(p)
+		return nil
+	}
+	var opened []string
+	openFn = func(p string) error { opened = append(opened, p); return nil }
+	t.Cleanup(func() { copyImageFn, openFn = origCopy, origOpen })
+	png := string(pngMagic) + "image"
+	f := baseFake()
+	f.Responses["-s "+serial+" exec-out screencap -p"] = adbtest.Response{Stdout: png}
+
+	r := ak(t, f, "screenshot", "-c")
+	files, _ := filepath.Glob("*.png")
+	if r.code != 0 || r.out != "" || len(files) != 0 || len(copied) != 1 || string(copiedData) != png ||
+		!strings.Contains(r.err, "✓ Copied the screenshot to the clipboard") {
+		t.Fatalf("-c: code %d out %q files %v copied %v\n%s", r.code, r.out, files, copied, r.err)
+	}
+	if _, err := os.Stat(copied[0]); !os.IsNotExist(err) {
+		t.Errorf("temporary file left: %s", copied[0])
+	}
+
+	copied = nil
+	r = ak(t, f, "screenshot", "-c", "shot.png")
+	if r.code != 0 || r.out != "shot.png\n" || len(copied) != 1 || copied[0] != "shot.png" || !strings.Contains(r.err, "✓ Copied to the clipboard") {
+		t.Errorf("-c with a file: code %d out %q copied %v\n%s", r.code, r.out, copied, r.err)
+	}
+
+	copied, opened = nil, nil
+	r = ak(t, f, "screenshot", "-co")
+	if r.code != 0 || len(copied) != 1 || len(opened) != 1 || copied[0] != opened[0] || strings.TrimSpace(r.out) != opened[0] {
+		t.Errorf("-c -o: code %d out %q copied %v opened %v", r.code, r.out, copied, opened)
+	}
+
+	copyImageFn = func(string) error { return errors.New("no clipboard tool found") }
+	if r := ak(t, f, "screenshot", "-c"); r.code != 1 || !strings.Contains(r.err, "Error: Couldn't copy the screenshot to the clipboard: no clipboard tool found") {
+		t.Errorf("copy failure: %d %q", r.code, r.err)
+	}
+
+	if r := ak(t, twoDevices(), "screenshot", "-c", "-a"); r.code != 2 || !strings.Contains(r.err, "choose one device") {
+		t.Errorf("-c with several devices: %d %q", r.code, r.err)
+	}
+}

@@ -160,6 +160,7 @@ _ak() {
             '(- *)'{-h,--help}'[Show help for this command]' \
             '*'{-s,--serial}'[Target device]:serial:_ak_serials' \
             {-a,--all}'[All connected devices]' \
+            {-c,--copy}'[Copy the image to the clipboard]' \
             {-o,--open}'[Open the saved file]' \
             '1:output file or directory:_files'
           ;;
