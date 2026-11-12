@@ -10,12 +10,13 @@ import (
 	"golang.org/x/term"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/debuglog"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 // ErrInterrupted is returned when the user presses Ctrl+C (callers exit 130).
 var ErrInterrupted = errors.New("interrupted")
 
-// ErrNoTerminal is returned when stdin/stdout is not a terminal.
+// ErrNoTerminal is returned when stdin/stderr is not a terminal.
 var ErrNoTerminal = errors.New("interactive selection requires a terminal")
 
 const (
@@ -34,7 +35,7 @@ var resized atomic.Bool
 // Select shows the picker and blocks until the user confirms or presses Ctrl+C.
 // The picker stays on screen afterwards, like the Bash version.
 func Select(o Options) (Result, error) {
-	inFd, outFd := int(os.Stdin.Fd()), int(os.Stdout.Fd())
+	inFd, outFd := int(os.Stdin.Fd()), int(os.Stderr.Fd()) // draw on stderr so stdout stays clean
 	if !term.IsTerminal(inFd) || !term.IsTerminal(outFd) {
 		return Result{Index: -1}, ErrNoTerminal
 	}
@@ -43,7 +44,7 @@ func Select(o Options) (Result, error) {
 		return Result{Index: -1}, err
 	}
 	stopResize := watchResize()
-	out := os.Stdout
+	out := os.Stderr
 	restore := func() {
 		stopResize()
 		io.WriteString(out, "\r\n\r\n"+showCursor+pasteModeOff) // leave one blank line, like tput cup last+1
@@ -67,7 +68,10 @@ func Select(o Options) (Result, error) {
 		l := s.computeLayout(height, &fixedHeight, wasResized)
 		lines := s.frame(l, fixedHeight, width)
 		for i := range lines {
-			lines[i] = fit(lines[i], width)
+			if !ui.Err.Color {
+				lines[i] = ui.Plain(lines[i]) // NO_COLOR / --no-color: ➤ and [✓] still mark focus and selection
+			}
+			lines[i] = ui.Fit(lines[i], width)
 		}
 		// Raw mode disables output post-processing, so end lines with \r\n.
 		io.WriteString(out, cursorHome+strings.Join(lines, "\r\n")+clearBelow)

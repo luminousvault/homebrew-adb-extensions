@@ -7,27 +7,17 @@ import (
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/debuglog"
-	. "github.com/luminousvault/homebrew-adb-extensions/internal/style"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 var cmdMac = &Command{
-	Name: "mac", Desc: "Show device MAC addresses",
-	Usage: "mac [options]", Help: "Show device MAC addresses",
-	Flags: []string{"-h", "--help", "-m"}, Run: runMac,
-}
-
-func showHelpMac() {
-	say("%s%sUsage:%s ak mac [-m] [-h|--help]", Cyan, Bold, NC)
-	say("")
-	say("Description: Show MAC addresses of the device.")
-	say("  Wi-Fi (current)  MAC used for the current connection (per-network, may be randomized)")
-	say("  Wi-Fi (factory)  Device's own Wi-Fi MAC (available even when Wi-Fi is off, if exposed)")
-	say("  Bluetooth        Bluetooth MAC")
-	say("")
-	say("Options:")
-	say("  -m          Show all connected devices")
-	say("  -h, --help  Show this help message")
-	say("")
+	Name: "mac", Summary: "Show device MAC addresses",
+	Long: "Show the MAC addresses of a device.\n" +
+		"  Wi-Fi (current)  MAC of the current connection (per network, may be randomized)\n" +
+		"  Wi-Fi (factory)  The device's own Wi-Fi MAC, if exposed (also when Wi-Fi is off)\n" +
+		"  Bluetooth        Bluetooth MAC",
+	Examples: []string{"ak mac", "ak mac --all", "ak mac --json"},
+	Device:   manyDevices, JSON: true, Run: runMac,
 }
 
 var (
@@ -151,49 +141,78 @@ func randomizedMAC(mac string) bool {
 	return err == nil && b&0x02 != 0
 }
 
-func printMACDetail(serial, wifi, ssid, factory, bt string) {
-	say("")
-	say("%s%s%s", Bold, prettyDevice(serial, "normal"), NC)
-	if wifi != "" {
+type macInfo struct {
+	Serial      string `json:"serial"`
+	Device      string `json:"device"`
+	Wifi        any    `json:"wifi"`
+	WifiSSID    any    `json:"wifiSsid"`
+	Randomized  bool   `json:"wifiRandomized"`
+	WifiFactory any    `json:"wifiFactory"`
+	Bluetooth   any    `json:"bluetooth"`
+}
+
+func collectMAC(serial string) macInfo {
+	wifi, raw := wifiMAC(serial)
+	m := macInfo{Serial: serial, Device: deviceName(serial), Wifi: strOrNil(wifi),
+		WifiSSID: strOrNil(wifiSSID(raw, wifi)), WifiFactory: strOrNil(factoryMAC(serial)), Bluetooth: strOrNil(btMAC(serial))}
+	m.Randomized = wifi != "" && randomizedMAC(wifi)
+	return m
+}
+
+func str(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func printMAC(m macInfo) {
+	o := ui.Out
+	o.Println(o.Bold(m.Device) + " " + o.Dim("("+m.Serial+")"))
+	wifi := str(m.Wifi)
+	if wifi == "" {
+		o.Printf("  %-16s n/a %s\n", "Wi-Fi (current)", o.Dim("(Wi-Fi is off or not connected)"))
+	} else {
 		var notes []string
-		if randomizedMAC(wifi) {
+		if m.Randomized {
 			notes = append(notes, "randomized")
 		}
-		if ssid != "" {
+		if ssid := str(m.WifiSSID); ssid != "" {
 			notes = append(notes, `SSID "`+ssid+`"`)
 		}
-		sayf("  %-16s %s", "Wi-Fi (current)", wifi)
+		note := ""
 		if len(notes) > 0 {
-			sayf("   %s(%s)%s", Dim, strings.Join(notes, " · "), NC)
+			note = " " + o.Dim("("+strings.Join(notes, ", ")+")")
 		}
-		say("")
-	} else {
-		sayf("  %-16s %s", "Wi-Fi (current)", "n/a")
-		say("   %s(Wi-Fi is off or not connected)%s", Dim, NC)
+		o.Printf("  %-16s %s%s\n", "Wi-Fi (current)", wifi, note)
 	}
-	say("  %-16s %s", "Wi-Fi (factory)", orDefault(factory, "n/a"))
-	say("  %-16s %s", "Bluetooth", orDefault(bt, "n/a"))
-	if factory == "" && wifi != "" && randomizedMAC(wifi) {
-		say("  %s↳ Factory MAC: set Wi-Fi privacy to 'Use device MAC' and run again%s", Dim, NC)
+	o.Printf("  %-16s %s\n", "Wi-Fi (factory)", orDefault(str(m.WifiFactory), "n/a"))
+	o.Printf("  %-16s %s\n", "Bluetooth", orDefault(str(m.Bluetooth), "n/a"))
+	if str(m.WifiFactory) == "" && m.Randomized {
+		ui.Hint("To see the factory MAC of %s, set Wi-Fi privacy to 'Use device MAC' and run again", m.Device)
 	}
 }
 
-func runMac(args []string) {
-	multi := false
-	parseLeading("mac", args, showHelpMac, map[string]*bool{"-m": &multi}, false)
-	var serials []string
-	if multi {
-		serials = adb.ReadySerials()
-		if len(serials) == 0 {
-			say("%s No connected devices found.", Error)
-			exit(1)
+func runMac(c *Ctx) error {
+	if err := tooMany(c, 0); err != nil {
+		return err
+	}
+	serials, err := c.Devices()
+	if err != nil {
+		return err
+	}
+	infos := make([]macInfo, len(serials))
+	for i, s := range serials {
+		infos[i] = collectMAC(s)
+	}
+	if c.JSON() {
+		return ui.JSON(infos)
+	}
+	for i, m := range infos {
+		if i > 0 {
+			ui.Out.Println("")
 		}
-	} else {
-		serials = []string{selectDevice()}
+		printMAC(m)
 	}
-	for _, s := range serials {
-		wifi, raw := wifiMAC(s)
-		printMACDetail(s, wifi, wifiSSID(raw, wifi), factoryMAC(s), btMAC(s))
-	}
-	say("")
+	return nil
 }

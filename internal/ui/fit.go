@@ -1,4 +1,4 @@
-package tui
+package ui
 
 import (
 	"strings"
@@ -20,10 +20,10 @@ func runeWidth(r rune) int {
 	return 1
 }
 
-// fit cuts line to at most cols visible columns. ANSI escape sequences are kept
+// Fit cuts line to at most cols visible columns. ANSI escape sequences are kept
 // and do not count; a cut line ends with a style reset. Without this, a line
 // wider than the terminal wraps, shifts every row below it and breaks redraws.
-func fit(line string, cols int) string {
+func Fit(line string, cols int) string {
 	var b strings.Builder
 	used := 0
 	for i := 0; i < len(line); {

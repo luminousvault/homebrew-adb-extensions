@@ -10,79 +10,67 @@ import (
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/apk"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/debuglog"
-	. "github.com/luminousvault/homebrew-adb-extensions/internal/style"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/tui"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 var cmdSignature = &Command{
-	Name: "signature", Desc: "Extract signature hash",
-	Usage: "signature [package|apk]", Help: "Show signature",
-	Flags: helpFlags, Run: runSignature,
+	Name: "signature", Summary: "Extract signature hash", Args: "[package|file.apk]",
+	Long: "Show the signing certificate (DN, SHA-256, SHA-1, MD5) of an installed package or a local APK.\n" +
+		"No Android SDK is needed; apksigner is used only if the APK cannot be parsed.\n" +
+		"Without an argument, pick from the foreground apps of connected devices and APKs in the current directory.",
+	ArgHelp: [][2]string{{"package", "Package installed on the device"}, {"file.apk", "Local APK file"}},
+	Examples: []string{"ak signature", "ak signature com.example.app", "ak signature app-release.apk",
+		"ak signature app.apk --json | jq -r '.signers[0].sha256'"},
+	Device: oneDevice, JSON: true, Run: runSignature,
 }
 
-func showHelpSignature() {
-	say("%s%sUsage:%s ak signature [-h|--help] [packageName|/path/to/app.apk]", Cyan, Bold, NC)
-	say("")
-	say("Description: Extract the SHA-256 certificate digest of an APK.")
-	say("You can provide either a package name or a local APK file path.")
-	say("")
-	say("Options:")
-	say("  -h, --help       Show this help message")
-	say("")
-	say("Arguments:")
-	say("  packageName      - Package name installed on the device (e.g., com.example.app)")
-	say("  /path/to/app.apk - Local APK file path (must end with .apk)")
-	say("  (no argument)    - Interactive selection: foreground apps from all devices + APK files")
-	say("")
-	say("Note: No Android SDK is required. If the APK cannot be parsed, apksigner from")
-	say("      Android SDK build-tools is used as a fallback.")
-	say("")
-}
-
-// signatureTarget is a package on a device or a local APK file.
 type signatureTarget struct {
-	pkg, serial string // package target
-	apkPath     string // local APK target
+	pkg, serial string
+	apkPath     string
 }
 
-func selectSignatureTarget() signatureTarget {
+func (t signatureTarget) describe() string {
+	if t.pkg != "" {
+		return t.pkg + " on " + deviceName(t.serial)
+	}
+	return filepath.Base(t.apkPath)
+}
+
+// pickSignatureTarget lists foreground apps of devices and local APKs.
+func pickSignatureTarget(c *Ctx) (signatureTarget, error) {
+	serials := c.Strings("--serial")
+	if len(serials) == 0 {
+		if env := os.Getenv("ANDROID_SERIAL"); env != "" {
+			serials = []string{env}
+		} else {
+			serials = adb.ReadySerials()
+		}
+	}
 	var items []string
 	var targets []signatureTarget
-	for _, serial := range adb.ReadySerials() {
-		pkg := foregroundPackage(serial)
-		if pkg == "" || pkg == "null" {
-			continue
+	for _, serial := range serials {
+		if pkg := foregroundPackage(serial); pkg != "" && pkg != "null" {
+			items = append(items, fmt.Sprintf("%s\t(foreground app on %s)", pkg, deviceName(serial)))
+			targets = append(targets, signatureTarget{pkg: pkg, serial: serial})
 		}
-		items = append(items, fmt.Sprintf("📱 %s (%s)", pkg, prettyDevice(serial, "minimal")))
-		targets = append(targets, signatureTarget{pkg: pkg, serial: serial})
 	}
-	say("")
-	say("%s %sScanning APK files in the current directory...%s", BArrow, Bold, NC)
 	for _, f := range listAPKs(".", sortByName) {
-		items = append(items, "📦 "+filepath.Base(f))
+		items = append(items, filepath.Base(f)+"\t(local APK)")
 		targets = append(targets, signatureTarget{apkPath: f})
 	}
 	switch len(items) {
 	case 0:
-		say("")
-		say("%s No options available:", Error)
-		say("  - No foreground app detected on any connected device")
-		say("  - No APK files found in current directory")
-		say("")
-		say("Please specify a package name or APK file path explicitly.")
-		exit(1)
+		return signatureTarget{}, failErr("Pass a package name or an APK file",
+			"No foreground app on connected devices and no APK files in the current directory")
 	case 1:
-		t := targets[0]
-		if t.pkg != "" {
-			say("%s Auto-selected: %s%s%s on %s%s%s", BArrow, Yellow, t.pkg, NC, Dim, t.serial, NC)
-		} else {
-			say("%s Auto-selected: %s%s%s", BArrow, Yellow, filepath.Base(t.apkPath), NC)
-		}
-		return t
+		return targets[0], nil
 	}
-	say("")
-	r := pick(tui.Options{Prompt: "Select target for signature extraction", Items: items})
-	return targets[r.Index]
+	r, err := pick(tui.Options{Prompt: "Select a package or APK", Items: items}, "Pass a package name or an APK file")
+	if err != nil {
+		return signatureTarget{}, err
+	}
+	return targets[r.Index], nil
 }
 
 func absPath(p string) string {
@@ -95,127 +83,133 @@ func absPath(p string) string {
 	return p
 }
 
-func runSignature(args []string) {
-	args = parseLeading("signature", args, showHelpSignature, nil, true)
+func resolveSignatureTarget(c *Ctx) (signatureTarget, error) {
+	if len(c.Args) == 0 {
+		return pickSignatureTarget(c)
+	}
+	input := c.Args[0]
+	if strings.HasSuffix(input, ".apk") {
+		if st, err := os.Stat(input); err != nil || st.IsDir() {
+			return signatureTarget{}, failErr("", "APK file not found: %s", input)
+		}
+		return signatureTarget{apkPath: absPath(input)}, nil
+	}
+	serial, err := c.Device()
+	if err != nil {
+		return signatureTarget{}, err
+	}
+	return signatureTarget{pkg: input, serial: serial}, nil
+}
 
-	var t signatureTarget
-	if len(args) > 0 && args[0] != "" {
-		input := args[0]
-		isLocal := strings.HasSuffix(input, ".apk")
-		if !isLocal {
-			t.serial = selectDevice()
-		}
-		say("")
-		if isLocal {
-			say("%sUsing local APK file:%s %s", Blue, NC, input)
-			if st, err := os.Stat(input); err != nil || st.IsDir() {
-				say("%sERROR: Local APK file not found:%s %s", Red, NC, input)
-				say("")
-				exit(1)
-			}
-			t.apkPath = absPath(input)
-			say("%s==> Using APK file:%s %s", Green, NC, t.apkPath)
-		} else {
-			t.pkg = input
-			say("%sUsing specified package:%s %s", Blue, NC, input)
-			requirePackage(t.serial, input)
-		}
-	} else {
-		t = selectSignatureTarget()
-		say("")
-		if t.pkg != "" {
-			say("%sSelected package:%s %s", Blue, NC, t.pkg)
-			say("%sDevice:%s %s", Dim, NC, prettyDevice(t.serial, "short"))
-			requirePackage(t.serial, t.pkg)
-		} else {
-			say("%sSelected APK file:%s %s", Blue, NC, filepath.Base(t.apkPath))
-			t.apkPath = absPath(t.apkPath)
-			say("%s==> Using APK file:%s %s", Green, NC, t.apkPath)
+type signerJSON struct {
+	DN     string `json:"dn"`
+	SHA256 string `json:"sha256"`
+	SHA1   string `json:"sha1"`
+	MD5    string `json:"md5"`
+}
+
+func runSignature(c *Ctx) error {
+	if err := tooMany(c, 1); err != nil {
+		return err
+	}
+	t, err := resolveSignatureTarget(c)
+	if err != nil {
+		return err
+	}
+	if t.pkg != "" {
+		if err := requirePackage(t.serial, t.pkg); err != nil {
+			return err
 		}
 	}
-	say("")
 
 	apkPath := t.apkPath
 	if t.pkg != "" {
-		remote, ok := apkPathForPackage(t.serial, t.pkg)
-		if !ok {
-			exit(1)
+		remote, err := apkPathForPackage(t.serial, t.pkg)
+		if err != nil {
+			return err
 		}
 		tmp, err := os.CreateTemp("", "ak_signature_*.apk")
 		if err != nil {
-			say("%s %v", Error, err)
-			exit(1)
+			return err
 		}
 		_ = tmp.Close()
 		defer func() { _ = os.Remove(tmp.Name()) }()
-		say("%s==> Pulling APK from device...%s", Blue, NC)
-		if _, err := adb.Combined("-s", t.serial, "pull", remote, tmp.Name()); err != nil {
-			say("")
-			say("%sERROR: Failed to pull APK from device. Check device connection and permissions.%s", Red, NC)
-			exit(1)
+		sp := ui.Spin("Pulling the APK of %s", t.describe())
+		out, err := adb.Combined("-s", t.serial, "pull", remote, tmp.Name())
+		sp.Stop()
+		if err != nil {
+			ui.Errorf("Couldn't pull the APK of %s", t.pkg)
+			ui.Detail("%s", out)
+			return errReported
 		}
 		apkPath = tmp.Name()
-		say("")
 	}
 
-	say("%s==> Extracting signature...%s", Blue, NC)
-	if signers, err := apk.Signers(apkPath); err == nil {
-		for i, s := range signers {
-			n := i + 1
-			say("Signer #%d certificate DN: %s", n, s.DN)
-			say("%s%sSigner #%d certificate SHA-256 digest: %s%s", Green, Bold, n, s.SHA256, NC)
-			say("%s%sSigner #%d certificate SHA-1 digest: %s%s", Yellow, Bold, n, s.SHA1, NC)
-			say("Signer #%d certificate MD5 digest: %s", n, s.MD5)
-		}
-		if apk.HasSourceStamp(apkPath) {
-			say("%sNote: the Source Stamp signer (added by Google Play) is not shown.%s", Dim, NC)
-		}
-	} else {
+	signers, err := apk.Signers(apkPath)
+	if err != nil {
 		debuglog.Logf("apk.Signers failed: %v", err)
-		signatureWithAPKSigner(apkPath, err)
+		if c.JSON() {
+			return failErr("", "Could not read the signature of %s: %v", t.describe(), err)
+		}
+		return signatureWithAPKSigner(apkPath, t.describe(), err)
 	}
-	say("")
-	say("%sSignature extraction complete.%s", Green, NC)
+	stamp := apk.HasSourceStamp(apkPath)
+	if c.JSON() {
+		list := make([]signerJSON, len(signers))
+		for i, s := range signers {
+			list[i] = signerJSON{s.DN, s.SHA256, s.SHA1, s.MD5}
+		}
+		src := map[string]any{"signers": list, "sourceStamp": stamp}
+		if t.pkg != "" {
+			src["package"], src["serial"] = t.pkg, t.serial
+		} else {
+			src["file"] = t.apkPath
+		}
+		return ui.JSON(src)
+	}
+	ui.Step("Signature of %s", t.describe())
+	for i, s := range signers {
+		if i > 0 {
+			ui.Out.Println("")
+		}
+		ui.Out.Println(ui.Out.Bold(fmt.Sprintf("Signer #%d", i+1)))
+		ui.KeyValues([][2]string{{"DN", s.DN}, {"SHA-256", s.SHA256}, {"SHA-1", s.SHA1}, {"MD5", s.MD5}})
+	}
+	if stamp {
+		ui.Detail("The Source Stamp signer added by Google Play is not shown")
+	}
+	return nil
 }
 
 // signatureWithAPKSigner falls back to the SDK's apksigner when the Go parser fails.
-func signatureWithAPKSigner(apkPath string, parseErr error) {
+func signatureWithAPKSigner(apkPath, label string, parseErr error) error {
 	tool := adb.FindBuildTool("apksigner")
 	if tool == "" {
-		say("%s Could not read the APK signature: %v", Error, parseErr)
-		say("")
-		say("%sapksigner (Android SDK build-tools) was not found for a fallback.%s", Yellow, NC)
-		say("")
-		exit(1)
+		return failErr("Install Android SDK build-tools to use apksigner as a fallback",
+			"Could not read the signature of %s: %v", label, parseErr)
 	}
-	say("%s   Falling back to apksigner...%s", Dim, NC)
+	ui.Warn("Could not parse the APK (%v); using apksigner", parseErr)
 	run := func(extra ...string) string {
 		out, _ := exec.Command(tool, append(append([]string{"verify", "--print-certs"}, extra...), apkPath)...).CombinedOutput()
 		return string(out)
 	}
 	out := run()
-	switch {
-	case strings.Contains(out, "not supported on API Level"):
-		say("%s   Detected legacy signing algorithm, retrying...%s", Dim, NC)
-		out = run("--min-sdk-version", "21")
-	case (strings.Contains(out, "DOES NOT VERIFY") || strings.Contains(out, "ERROR")) && !strings.Contains(out, "certificate"):
-		say("%s   Retrying with --min-sdk-version 21...%s", Dim, NC)
-		out = run("--min-sdk-version", "21")
+	if !strings.Contains(out, "certificate") {
+		out = run("--min-sdk-version", "21") // legacy algorithms (MD5/SHA-1) need an older min SDK
 	}
+	if !strings.Contains(out, "certificate") {
+		ui.Errorf("apksigner could not read the signature of %s", label)
+		ui.Detail("%s", out)
+		return errReported
+	}
+	ui.Step("Signature of %s (apksigner)", label)
 	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
-		switch {
-		case strings.HasPrefix(line, "WARNING:"):
-		case strings.Contains(line, "SHA-256"):
-			say("%s%s%s%s", Green, Bold, line, NC)
-		case strings.Contains(line, "SHA-1"):
-			say("%s%s%s%s", Yellow, Bold, line, NC)
-		default:
-			say("%s", line)
+		if !strings.HasPrefix(line, "WARNING:") {
+			ui.Out.Println(line)
 		}
 	}
-	if strings.Contains(out, "DOES NOT VERIFY") && strings.Contains(out, "certificate") {
-		say("")
-		say("%sNote: Signature extracted but verification failed.%s", Yellow, NC)
-		say("%sThis may occur with system apps or APKs missing v1 signature.%s", Dim, NC)
+	if strings.Contains(out, "DOES NOT VERIFY") {
+		ui.Warn("The signature was extracted but does not verify (common for system apps or APKs without a v1 signature)")
 	}
+	return nil
 }

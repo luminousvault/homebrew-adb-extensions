@@ -18,7 +18,7 @@ var (
 	reCommand = regexp.MustCompile(`^\s+'([a-z]+):(.+)'$`)
 	reCase    = regexp.MustCompile(`^\s{8}([a-z]+)\)$`)
 	reBrace   = regexp.MustCompile(`\{(-[^}]+)\}'?\[`)
-	reSingle  = regexp.MustCompile(`[')](-{1,2}[a-zA-Z]+)\[`)
+	reSingle  = regexp.MustCompile(`[')](-{1,2}[a-zA-Z][a-zA-Z-]*)\[`)
 )
 
 func loadZsh(t *testing.T) zshSpec {
@@ -81,10 +81,18 @@ func TestCompletionMatchesCommands(t *testing.T) {
 			t.Errorf("%s: missing from completions/_ak command list", c.Name)
 			continue
 		}
-		if desc != c.Desc {
-			t.Errorf("%s: description %q, completion has %q", c.Name, c.Desc, desc)
+		if desc != c.Summary {
+			t.Errorf("%s: description %q, completion has %q", c.Name, c.Summary, desc)
 		}
-		if got, want := sorted(spec.flags[c.Name]), sorted(c.Flags); strings.Join(got, " ") != strings.Join(want, " ") {
+		var flags []string
+		for _, f := range c.AllFlags() {
+			for _, n := range []string{f.Short, f.Long} {
+				if n != "" {
+					flags = append(flags, n)
+				}
+			}
+		}
+		if got, want := sorted(spec.flags[c.Name]), sorted(flags); strings.Join(got, " ") != strings.Join(want, " ") {
 			t.Errorf("%s: flags %v, completion has %v", c.Name, want, got)
 		}
 	}

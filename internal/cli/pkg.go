@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
-	. "github.com/luminousvault/homebrew-adb-extensions/internal/style"
 )
 
 var (
@@ -45,27 +44,27 @@ func packageInstalled(serial, pkg string) bool {
 	return false
 }
 
-// requirePackage exits unless pkg is well-formed and installed.
-func requirePackage(serial, pkg string) {
+const hintPackage = "Run 'ak info' on the foreground app to check the name"
+
+// requirePackage fails unless pkg is well-formed and installed on serial.
+func requirePackage(serial, pkg string) error {
+	if pkg == "" {
+		return failErr("Open the app on the device or pass a package name", "No foreground app found on %s", deviceName(serial))
+	}
 	if !validPackageName(pkg) {
-		say("%sERROR: Invalid package name format:%s %s", Red, NC, pkg)
-		say("")
-		exit(1)
+		return failErr("", "Invalid package name: %s", pkg)
 	}
 	if !packageInstalled(serial, pkg) {
-		say("%sERROR: Package not installed on the device:%s %s", Red, NC, pkg)
-		say("")
-		exit(1)
+		return failErr(hintPackage, "Package not installed on %s: %s", deviceName(serial), pkg)
 	}
+	return nil
 }
 
 // apkPathForPackage returns the device path of the package's base APK.
-func apkPathForPackage(serial, pkg string) (string, bool) {
+func apkPathForPackage(serial, pkg string) (string, error) {
 	out := adb.Shell(serial, "pm path "+pkg)
 	if strings.TrimSpace(out) == "" {
-		say("%sERROR: Package not found:%s %s", Red, NC, pkg)
-		say("")
-		return "", false
+		return "", failErr("", "Package not found on %s: %s", deviceName(serial), pkg)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	chosen := lines[0]
@@ -76,23 +75,32 @@ func apkPathForPackage(serial, pkg string) (string, bool) {
 		}
 	}
 	_, path, _ := strings.Cut(chosen, ":")
-	return strings.TrimSpace(path), true
+	return strings.TrimSpace(path), nil
 }
 
-// packageArgOrForeground prints which package is used and returns it.
-func packageArgOrForeground(serial string, args []string) string {
-	say("")
-	var pkg string
-	if len(args) == 0 || args[0] == "" {
-		pkg = foregroundPackage(serial)
-		say("%sAuto-detected package:%s %s", Yellow, NC, pkg)
-	} else {
-		pkg = args[0]
-		say("%sUsing specified package:%s %s", Blue, NC, pkg)
+// target is the package a command acts on.
+type target struct {
+	pkg        string
+	foreground bool
+}
+
+// describe returns "pkg (foreground app on Device)" or "pkg on Device".
+func (t target) describe(serial string) string {
+	if t.foreground {
+		return t.pkg + " (foreground app on " + deviceName(serial) + ")"
 	}
-	say("")
-	requirePackage(serial, pkg)
-	return pkg
+	return t.pkg + " on " + deviceName(serial)
+}
+
+// resolvePackage uses the given package or the foreground app, and checks it.
+func resolvePackage(serial string, args []string) (target, error) {
+	t := target{}
+	if len(args) > 0 && args[0] != "" {
+		t.pkg = args[0]
+	} else {
+		t.pkg, t.foreground = foregroundPackage(serial), true
+	}
+	return t, requirePackage(serial, t.pkg)
 }
 
 const (

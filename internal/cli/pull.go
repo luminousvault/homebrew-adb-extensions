@@ -1,44 +1,31 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
-	. "github.com/luminousvault/homebrew-adb-extensions/internal/style"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/tui"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 const pullRecentLimit = 300
 
 var cmdPull = &Command{
-	Name: "pull", Desc: "Pull recent files from device",
-	Usage: "pull [directory]", Help: "Pull recent files from device",
-	Flags: helpFlags, Run: runPull,
-}
-
-func showHelpPull() {
-	say("%s%sUsage:%s ak pull [-h|--help] [directory]", Cyan, Bold, NC)
-	say("")
-	say("Description: Lists recently modified files on the device (like the Files app")
-	say("'Recents' tab, via MediaStore), lets you pick one or more interactively,")
-	say("then pulls them with adb. Files are saved with their original names.")
-	say("")
-	say("%s%sExamples:%s", Cyan, Bold, NC)
-	say("  ak pull                  # Pull selected files into the current directory")
-	say("  ak pull /path/to/folder  # Pull into the given directory (created if needed)")
-	say("")
-	say("Notes:")
-	say("  - Shows the %d most recently modified files (newest first).", pullRecentLimit)
-	say("  - Existing local files with the same name are overwritten.")
-	say("  - Selected files sharing the same name are saved with a ' (N)' suffix.")
-	say("")
-	say("Options:")
-	say("  -h, --help  Show this help message")
-	say("")
+	Name: "pull", Summary: "Pull recent files from device", Args: "[directory]",
+	Long: "Pick recently modified files on the device (like the Files app 'Recents' tab, via MediaStore)\n" +
+		"and pull them. Files keep their names; existing local files are overwritten, and selected\n" +
+		"files with the same name get a ' (N)' suffix. Shows the " + strconv.Itoa(pullRecentLimit) + " newest files.",
+	ArgHelp:  [][2]string{{"directory", "Where to save (default: current directory; created after confirmation)"}},
+	Flags:    []Flag{flagYes},
+	Examples: []string{"ak pull", "ak pull ~/Downloads/device", "ak pull new-dir -y"},
+	Device:   oneDevice, Run: runPull,
 }
 
 // humanSize formats bytes like the Bash version (rounded B/KB, one decimal MB/GB).
@@ -116,38 +103,43 @@ func uniqueName(base string, used map[string]bool) string {
 	}
 }
 
-func confirmCreateDir(dest string) {
-	say("%sDirectory does not exist:%s %s", Yellow, NC, dest)
-	sayf("Create it? [y/N] ")
-	reply, _ := stdin.ReadString('\n')
-	switch strings.TrimRight(reply, "\r\n") {
-	case "y", "Y", "yes", "YES":
-	default:
-		say("Aborted.")
-		exit(1)
+func ensureDir(dest string) error {
+	if st, err := os.Stat(dest); err == nil {
+		if !st.IsDir() {
+			return failErr("", "Not a directory: %s", dest)
+		}
+		return nil
+	}
+	ok, err := ui.Confirm("Directory "+dest+" does not exist. Create it?", false)
+	switch {
+	case errors.Is(err, ui.ErrNoInput):
+		return failErr("Pass -y to create it", "Directory does not exist: %s", dest)
+	case err != nil:
+		return err
+	case !ok:
+		return failErr("", "Aborted")
 	}
 	if err := os.MkdirAll(dest, 0o755); err != nil {
-		say("%s Cannot create directory: %s", Error, dest)
-		exit(1)
+		return failErr("", "Cannot create directory %s: %v", dest, err)
 	}
+	return nil
 }
 
-func runPull(args []string) {
-	args = parseLeading("pull", args, showHelpPull, nil, true)
-	if len(args) > 1 {
-		say("%s Too many arguments", Error)
-		say("Try 'ak pull --help' for more information.")
-		exit(1)
+func runPull(c *Ctx) error {
+	if err := tooMany(c, 1); err != nil {
+		return err
 	}
 	dest := "."
-	if len(args) == 1 && args[0] != "" {
-		dest = args[0]
+	if len(c.Args) == 1 && c.Args[0] != "" {
+		dest = c.Args[0]
 	}
-	if st, err := os.Stat(dest); err != nil || !st.IsDir() {
-		confirmCreateDir(dest)
+	if err := ensureDir(dest); err != nil {
+		return err
 	}
-
-	serial := selectDevice()
+	serial, err := c.Device()
+	if err != nil {
+		return err
+	}
 	query := "content query --uri content://media/external/file" +
 		" --projection _data:date_modified:_size" +
 		` --where "(format IS NULL OR format != 12289) AND _size > 0 AND _data NOT LIKE '%/Android/%' AND _data NOT LIKE '%/.%'"` +
@@ -156,48 +148,53 @@ func runPull(args []string) {
 	files := parseRecentFiles(raw)
 	if len(files) == 0 {
 		if raw == "" || strings.Contains(raw, "No result found") {
-			say("%s No recent files found on device.", Error)
-		} else {
-			say("%s Failed to query recent files from device:", Error)
-			lines := strings.Split(strings.TrimRight(raw, "\n"), "\n")
-			say("%s", strings.Join(lines[:min(5, len(lines))], "\n"))
+			return failErr("", "No recent files found on %s", deviceName(serial))
 		}
-		exit(1)
+		lines := strings.Split(strings.TrimRight(raw, "\n"), "\n")
+		ui.Errorf("Couldn't query recent files on %s", deviceName(serial))
+		ui.Detail("%s", strings.Join(lines[:min(5, len(lines))], "\n"))
+		return errReported
 	}
 
 	items := make([]string, len(files))
 	for i, f := range files {
 		items[i] = path.Base(f.path) + "\t(" + fileMeta(f.path, f.size) + ")"
 	}
-	r := pick(tui.Options{Multi: true, Prompt: "Select files to pull",
-		Location: []string{"Recent files (newest first)"}, Items: items})
-	if len(r.Indices) == 0 {
-		say("%sNo files selected.%s", Yellow, NC)
-		exit(0)
+	r, err := pick(tui.Options{Multi: true, Prompt: "Select files to pull",
+		Location: []string{"Recent files on " + deviceName(serial) + " (newest first)"}, Items: items}, "")
+	if err != nil {
+		return err
 	}
 
 	used := map[string]bool{}
-	ok, fail := 0, 0
+	ok, failed := 0, 0
 	for _, i := range r.Indices {
 		remote := files[i].path
-		say("")
 		base := uniqueName(path.Base(remote), used)
-		if base != path.Base(remote) {
-			say("%sWARNING: Duplicate file name, saving as:%s %s", Yellow, NC, base)
-		}
 		used[base] = true
-		say("%s==> Pulling:%s %s", Yellow, NC, path.Base(remote))
-		if err := adb.Default.Passthrough("-s", serial, "pull", remote, strings.TrimSuffix(dest, "/")+"/"+base); err == nil {
-			ok++
-		} else {
-			fail++
-			say("%sERROR: Failed to pull:%s %s", Red, NC, remote)
+		if base != path.Base(remote) {
+			ui.Warn("Duplicate file name, saving %s as %s", path.Base(remote), base)
 		}
+		local := filepath.Join(dest, base)
+		start := time.Now()
+		sp := ui.Spin("Pulling %s", path.Base(remote))
+		out, err := adb.Combined("-s", serial, "pull", remote, local)
+		sp.Stop()
+		if err != nil {
+			failed++
+			ui.Errorf("Couldn't pull %s", remote)
+			ui.Detail("%s", out)
+			continue
+		}
+		ok++
+		ui.Success("Pulled %s %s", local, ui.Err.Dim("("+fileMeta(remote, files[i].size)+", "+elapsed(start)+")"))
 	}
-	say("")
-	if fail > 0 {
-		say("%sDone:%s %d pulled, %s%d failed%s", Green, NC, ok, Red, fail, NC)
-		exit(1)
+	if failed > 0 {
+		ui.Errorf("%d of %d files failed", failed, ok+failed)
+		return errReported
 	}
-	say("%sDone:%s %d file(s) pulled to %s", Green, NC, ok, dest)
+	if ok > 1 {
+		ui.Success("Pulled %d files to %s", ok, dest)
+	}
+	return nil
 }

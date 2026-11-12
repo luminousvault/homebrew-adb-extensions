@@ -1,33 +1,47 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
+	"os"
 	"strings"
-	"unicode/utf8"
+	"sync"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
-	. "github.com/luminousvault/homebrew-adb-extensions/internal/style"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/tui"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 // selectFn is the picker; tests replace it.
 var selectFn = tui.Select
 
-// pick runs the picker and exits on Ctrl+C (130) or when no terminal is available.
-func pick(o tui.Options) tui.Result {
-	r, err := selectFn(o)
-	switch {
-	case errors.Is(err, tui.ErrInterrupted):
-		exit(130)
-	case err != nil:
-		say("%s %v", Error, err)
-		exit(1)
+// pick runs the picker. Without a terminal it fails with a hint.
+func pick(o tui.Options, hint string) (tui.Result, error) {
+	if !ui.InTTY || !ui.Err.TTY {
+		return tui.Result{Index: -1}, failErr(hint, "%s: interactive selection needs a terminal", o.Prompt)
 	}
-	return r
+	return selectFn(o)
 }
 
-// capitalize upper-cases the first letter and lower-cases the rest.
+var (
+	propsMu    sync.Mutex
+	propsCache = map[string]map[string]string{}
+)
+
+// deviceProps returns cached getprop values (nil if the device does not respond).
+func deviceProps(serial string) map[string]string {
+	propsMu.Lock()
+	defer propsMu.Unlock()
+	if p, ok := propsCache[serial]; ok {
+		return p
+	}
+	var p map[string]string
+	if out := adb.Shell(serial, "getprop"); out != "" {
+		p = adb.ParseGetprop(out)
+	}
+	propsCache[serial] = p
+	return p
+}
+
 func capitalize(s string) string {
 	if s == "" {
 		return s
@@ -42,79 +56,121 @@ func orDefault(v, def string) string {
 	return v
 }
 
-// prettyDevice formats a device for display. level: "minimal", "short" or "normal".
-func prettyDevice(serial, level string) string {
+// deviceName returns "Brand Model" (e.g. "Google Pixel 9 Pro").
+func deviceName(serial string) string {
+	p := deviceProps(serial)
+	if p == nil {
+		return serial
+	}
+	return orDefault(capitalize(p["ro.product.brand"]), "Unknown") + " " + orDefault(p["ro.product.model"], "Device")
+}
+
+// deviceLabel is the picker label: "Brand Model (serial) Android X, API N".
+func deviceLabel(serial string) string {
+	p := deviceProps(serial)
+	if p == nil {
+		return serial + " (not responding)"
+	}
+	return fmt.Sprintf("%s (%s) Android %s, API %s", deviceName(serial), serial,
+		orDefault(p["ro.build.version.release"], "?"), orDefault(p["ro.build.version.sdk"], "?"))
+}
+
+const hintConnect = "Connect a device with USB debugging enabled, then run 'ak devices'"
+
+// checkSerial verifies that serial is connected and ready.
+func checkSerial(serial string) error {
 	for _, d := range adb.ListDevices() {
-		if d.Serial == serial && (d.State == "unauthorized" || d.State == "offline") {
-			return "(" + serial + ")"
+		if d.Serial != serial {
+			continue
+		}
+		switch d.State {
+		case "device":
+			return nil
+		case "unauthorized":
+			return failErr("Accept the USB debugging prompt on the device", "Device %s is unauthorized", serial)
+		default:
+			return failErr("Reconnect the device and run 'ak devices'", "Device %s is %s", serial, d.State)
 		}
 	}
-	out := adb.Shell(serial, "getprop")
-	if out == "" {
-		if level == "minimal" {
-			return "Unknown Device"
-		}
-		return fmt.Sprintf("Unknown Device (%s): device not responding", serial)
-	}
-	p := adb.ParseGetprop(out)
-	brand := orDefault(capitalize(p["ro.product.brand"]), "Unknown")
-	model := orDefault(p["ro.product.model"], "Device")
-	switch level {
-	case "minimal":
-		return brand + " " + model
-	case "short":
-		return fmt.Sprintf("%s %s (%s)", brand, model, serial)
-	}
-	return fmt.Sprintf("%s %s (%s) Android %s, API %s", brand, model, serial,
-		orDefault(p["ro.build.version.release"], "Unknown"), orDefault(p["ro.build.version.sdk"], "Unknown"))
+	return failErr("Run 'ak devices' to see connected devices", "Device not found: %s", serial)
 }
 
-// selectDevice returns the single target device, asking when several are connected.
-func selectDevice() string {
-	serials := adb.ReadySerials()
-	switch len(serials) {
+// Device resolves the single target: -s, ANDROID_SERIAL, the only device, or the picker.
+func (c *Ctx) Device() (string, error) {
+	serials := c.Strings("--serial")
+	if len(serials) > 1 {
+		return "", usageErr(c.Cmd, "This command works on one device; got %d (-s %s)", len(serials), strings.Join(serials, ", "))
+	}
+	if len(serials) == 0 {
+		if env := os.Getenv("ANDROID_SERIAL"); env != "" {
+			serials = []string{env}
+		}
+	}
+	if len(serials) == 1 {
+		return serials[0], checkSerial(serials[0])
+	}
+	ready := adb.ReadySerials()
+	switch len(ready) {
 	case 0:
-		say("%s No connected devices found.", Error)
-		exit(1)
+		return "", failErr(hintConnect, "No devices connected")
 	case 1:
-		return serials[0]
+		return ready[0], nil
 	}
-	items := make([]string, len(serials))
-	for i, s := range serials {
-		items[i] = prettyDevice(s, "normal")
+	items := make([]string, len(ready))
+	for i, s := range ready {
+		items[i] = deviceLabel(s)
 	}
-	r := pick(tui.Options{NoFilter: true, Prompt: "Select a device", Items: items})
-	return serials[r.Index]
+	r, err := pick(tui.Options{NoFilter: true, Prompt: "Select a device", Items: items},
+		"Multiple devices connected ("+strings.Join(ready, ", ")+"). Use -s <serial> or set ANDROID_SERIAL")
+	if err != nil {
+		return "", err
+	}
+	return ready[r.Index], nil
 }
 
-// selectDevicesMulti returns target devices for install: all with -m, otherwise asks.
-func selectDevicesMulti(all bool) []string {
-	serials := adb.ReadySerials()
+// Devices resolves targets for multi-device commands: -s (repeatable), --all,
+// ANDROID_SERIAL, the only device, or the picker.
+func (c *Ctx) Devices() ([]string, error) {
+	serials := c.Strings("--serial")
+	if len(serials) == 0 && !c.Bool("--all") {
+		if env := os.Getenv("ANDROID_SERIAL"); env != "" {
+			serials = []string{env}
+		}
+	}
+	if len(serials) > 0 {
+		for _, s := range serials {
+			if err := checkSerial(s); err != nil {
+				return nil, err
+			}
+		}
+		return serials, nil
+	}
+	ready := adb.ReadySerials()
 	switch {
-	case len(serials) == 0:
-		say("%s No connected devices found.", Error)
-		exit(1)
-	case len(serials) == 1 || all:
-		return serials
+	case len(ready) == 0:
+		return nil, failErr(hintConnect, "No devices connected")
+	case len(ready) == 1 || c.Bool("--all"):
+		return ready, nil
 	}
-	items := make([]string, len(serials))
-	for i, s := range serials {
-		items[i] = prettyDevice(s, "normal")
+	items := make([]string, len(ready))
+	for i, s := range ready {
+		items[i] = deviceLabel(s)
 	}
-	r := pick(tui.Options{Multi: true, NoFilter: true, Prompt: "Select devices for installation", Items: items})
+	r, err := pick(tui.Options{Multi: true, NoFilter: true, Prompt: "Select devices", Items: items},
+		"Multiple devices connected ("+strings.Join(ready, ", ")+"). Use -s <serial>, --all, or ANDROID_SERIAL")
+	if err != nil {
+		return nil, err
+	}
 	var picked []string
 	for _, i := range r.Indices {
-		picked = append(picked, serials[i])
+		picked = append(picked, ready[i])
 	}
-	return picked
+	return picked, nil
 }
 
-// width counts runes, matching ${#var} in a UTF-8 Bash locale.
-func width(s string) int { return utf8.RuneCountInString(s) }
-
-func pad(n int) string {
-	if n < 0 {
-		return ""
-	}
-	return strings.Repeat(" ", n)
+// resetDeviceCache is for tests.
+func resetDeviceCache() {
+	propsMu.Lock()
+	propsCache = map[string]map[string]string{}
+	propsMu.Unlock()
 }

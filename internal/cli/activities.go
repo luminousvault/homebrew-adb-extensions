@@ -6,25 +6,15 @@ import (
 	"strings"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
-	. "github.com/luminousvault/homebrew-adb-extensions/internal/style"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 var cmdActivities = &Command{
-	Name: "activities", Desc: "Show activity stack",
-	Usage: "activities [--all]", Help: "Show activity stack",
-	Flags: []string{"-h", "--help", "-a", "--all"}, Run: runActivities,
-}
-
-func showHelpActivities() {
-	say("%s%sUsage:%s ak activities [-h|--help] [-a|--all]", Cyan, Bold, NC)
-	say("")
-	say("Description: Display the activity stack of running applications.")
-	say("")
-	say("Options:")
-	say("  -h, --help  Show this help message")
-	say("  (none)      Show foreground task's activity stack (default)")
-	say("  -a, --all   Show all tasks' activity stacks")
-	say("")
+	Name: "activities", Summary: "Show activity stack",
+	Long:     "Show the activity stack of the foreground task, or of every task with --all-tasks.",
+	Flags:    []Flag{{"-a", "--all-tasks", "", "Show every task"}},
+	Examples: []string{"ak activities", "ak activities -a", "ak activities --json"},
+	Device:   oneDevice, JSON: true, Run: runActivities,
 }
 
 var (
@@ -34,7 +24,6 @@ var (
 	reActivity = regexp.MustCompile(`^.* u0 (.*) t[0-9]*}(.*)$`)
 )
 
-// histLines returns `dumpsys activity activities` lines containing "hist" (any case).
 func histLines(dumpsys string) []string {
 	var lines []string
 	for _, l := range strings.Split(dumpsys, "\n") {
@@ -45,7 +34,6 @@ func histLines(dumpsys string) []string {
 	return lines
 }
 
-// taskID extracts N from a line ending in " tN}".
 func taskID(line string) string {
 	if m := reTaskID.FindStringSubmatch(line); m != nil {
 		return m[1] + m[2]
@@ -53,7 +41,6 @@ func taskID(line string) string {
 	return ""
 }
 
-// histNumber extracts N from "Hist ... #N".
 func histNumber(line string) (int, bool) {
 	m := reHistNum.FindStringSubmatch(line)
 	if m == nil {
@@ -63,37 +50,7 @@ func histNumber(line string) (int, bool) {
 	return n, err == nil
 }
 
-func printActivityStack(lines []string, task string) {
-	say("%s==> Activity Stack (Task %s#%s%s)", Bold, Cyan, task, NC)
-	maxHist := 0
-	for _, l := range lines {
-		if n, ok := histNumber(l); ok && n > maxHist {
-			maxHist = n
-		}
-	}
-	count := 0
-	for _, l := range lines {
-		m := reActivity.FindStringSubmatch(l)
-		if m == nil || m[1]+m[2] == "" {
-			continue
-		}
-		count++
-		n, _ := histNumber(l)
-		color := Yellow
-		switch n {
-		case maxHist:
-			color = Cyan
-		case 0:
-			color = Green
-		}
-		say("  %s[#%d]%s %s", color, n, NC, m[1]+m[2])
-	}
-	say("%sTotal: %d activities in this task%s", Dim, count, NC)
-	say("")
-}
-
-// linesForTask keeps lines of task N. Matches " tN}" (with the leading space)
-// so task 2 does not also pick up task 12, unlike the Bash grep.
+// linesForTask keeps lines of task N, matching " tN}" exactly.
 func linesForTask(lines []string, task string) []string {
 	var out []string
 	for _, l := range lines {
@@ -104,16 +61,56 @@ func linesForTask(lines []string, task string) []string {
 	return out
 }
 
-func runActivities(args []string) {
-	all := false
-	parseLeading("activities", args, showHelpActivities, map[string]*bool{"-a": &all, "--all": &all}, false)
-	serial := selectDevice()
+type activityJSON struct {
+	Index int    `json:"index"`
+	Name  string `json:"name"`
+}
 
-	say("")
-	say("%s==> %sFetching activity stack...%s", Blue, Bold, NC)
-	say("")
+type taskJSON struct {
+	Task       string         `json:"task"`
+	Activities []activityJSON `json:"activities"`
+}
+
+func parseTask(lines []string, task string) taskJSON {
+	t := taskJSON{Task: task, Activities: []activityJSON{}}
+	for _, l := range lines {
+		m := reActivity.FindStringSubmatch(l)
+		if m == nil || m[1]+m[2] == "" {
+			continue
+		}
+		n, _ := histNumber(l)
+		t.Activities = append(t.Activities, activityJSON{n, m[1] + m[2]})
+	}
+	return t
+}
+
+func printTask(t taskJSON) {
+	ui.Out.Println(ui.Out.Bold("Task #" + t.Task))
+	top := -1
+	for _, a := range t.Activities {
+		top = max(top, a.Index)
+	}
+	for _, a := range t.Activities {
+		mark := ""
+		switch a.Index {
+		case top:
+			mark = ui.Out.Dim("  (top)")
+		case 0:
+			mark = ui.Out.Dim("  (root)")
+		}
+		ui.Out.Printf("  #%-3d %s%s\n", a.Index, a.Name, mark)
+	}
+}
+
+func runActivities(c *Ctx) error {
+	if err := tooMany(c, 0); err != nil {
+		return err
+	}
+	serial, err := c.Device()
+	if err != nil {
+		return err
+	}
 	dumpsys := adb.Shell(serial, "dumpsys activity activities")
-
 	foreground := ""
 	for _, l := range strings.Split(dumpsys, "\n") {
 		if id := taskID(l); id != "" {
@@ -122,37 +119,37 @@ func runActivities(args []string) {
 		}
 	}
 	if foreground == "" {
-		say("%s No foreground activity found.", Error)
-		exit(1)
+		return failErr("", "No foreground activity found on %s", deviceName(serial))
 	}
 	hist := histLines(dumpsys)
-	selected := hist
-	if !all {
-		selected = linesForTask(hist, foreground)
-	}
-	if len(selected) == 0 {
-		say("%s No activities found.", Error)
-		exit(1)
-	}
-	if !all {
-		printActivityStack(selected, foreground)
-		return
-	}
-	var tasks []string
-	seen := map[string]bool{}
-	for _, l := range hist {
-		if id := taskID(l); id != "" && !seen[id] {
-			seen[id] = true
-			tasks = append(tasks, id)
+	tasks := []string{foreground}
+	if c.Bool("--all-tasks") {
+		tasks = nil
+		seen := map[string]bool{}
+		for _, l := range hist {
+			if id := taskID(l); id != "" && !seen[id] {
+				seen[id] = true
+				tasks = append(tasks, id)
+			}
 		}
 	}
-	if len(tasks) == 0 {
-		say("%s No tasks found.", Error)
-		exit(1)
-	}
-	for _, t := range tasks {
-		if ls := linesForTask(hist, t); len(ls) > 0 {
-			printActivityStack(ls, t)
+	var result []taskJSON
+	for _, id := range tasks {
+		if t := parseTask(linesForTask(hist, id), id); len(t.Activities) > 0 {
+			result = append(result, t)
 		}
 	}
+	if len(result) == 0 {
+		return failErr("", "No activities found on %s", deviceName(serial))
+	}
+	if c.JSON() {
+		return ui.JSON(result)
+	}
+	for i, t := range result {
+		if i > 0 {
+			ui.Out.Println("")
+		}
+		printTask(t)
+	}
+	return nil
 }

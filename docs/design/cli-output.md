@@ -53,7 +53,7 @@ v2.0.0의 Go 전환은 v1.x(Bash) 출력을 바이트 단위로 그대로 옮기
 |---|---|
 | 커맨드 결과 데이터 (디바이스 표, info 항목, 권한 목록, 서명, MAC, `--json`) | stdout |
 | 단계·진행·성공·경고·오류 메시지, 확인 질문, 선택 UI, 상태판 | stderr |
-| adb 원본 출력 (`Performing Streamed Install` 등) | stderr (흐림) |
+| adb 원본 출력 (`Performing Streamed Install` 등) | 성공 시 숨김, 실패 시 stderr (흐림) |
 
 ### 5.2 색상
 
@@ -151,8 +151,7 @@ Examples:
 
 ### 5.11 버전
 
-- `ak --version`: `ak 2.0.0 (adb 1.0.41, 37.0.1)` 한 줄을 stdout에 출력.
-- 지금의 ASCII 아트 배너는 제거한다.
+- `ak --version`: 지금의 ASCII 아트 배너를 유지한다 (stdout). 내용만 Go 버전에 맞게(언어, 지원 OS, 의존성) 고친다.
 
 ## 6. 바뀌는 모습 예시
 
@@ -233,5 +232,7 @@ Hint: Use -s <serial> or set ANDROID_SERIAL
 | 1 | v2.0.0에서 출력 형식을 바꿀지 | 바꾼다 (메이저 버전, CHANGELOG에 Breaking 명시) |
 | 2 | 시각 정체성 | brew의 `==>` 단계 헤더는 유지하고, 성공·경고·오류는 `✓` / `Warning:` / `Error:` |
 | 3 | `--json` 포함 범위 | §5.9의 데이터 커맨드 전부 |
-| 4 | 버전 배너 | `--version`은 한 줄, 배너는 제거 |
+| 4 | 버전 배너 | 기존 배너 유지 (목업 확인 후 변경, 2026-11-12) |
 | 5 | 순서 | 이 가이드를 먼저 적용하고, 동시 설치는 그 위에 구현 |
+| 6 | `devices`의 `(64only)` 강조 | 노란색 유지 (경고 의미) |
+| 7 | 설치 중 adb 원본 출력 | 성공하면 숨기고, 실패하면 흐리게 표시 |

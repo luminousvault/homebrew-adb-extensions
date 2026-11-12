@@ -1,15 +1,15 @@
 // Package cli implements the ak commands.
+// Output rules: docs/design/cli-output.md.
 package cli
 
 import (
-	"bufio"
+	"errors"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
-	. "github.com/luminousvault/homebrew-adb-extensions/internal/style"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/tui"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 // Build metadata, set from main via ldflags.
@@ -18,15 +18,66 @@ var (
 	ReleaseDate = "unknown"
 )
 
-// Command is one `ak <name>` subcommand.
+type deviceMode int
+
+const (
+	noDevice    deviceMode = iota
+	oneDevice              // -s/--serial
+	manyDevices            // -s/--serial (repeatable), -m/--all
+)
+
+// Flag is one option of a command.
+type Flag struct {
+	Short, Long string // "-t", "--json"; either may be empty
+	Value       string // placeholder when the option takes a value
+	Help        string
+}
+
+func (f Flag) key() string {
+	if f.Long != "" {
+		return f.Long
+	}
+	return f.Short
+}
+
+// Command is one `ak <name>` subcommand. Parsing, help and the zsh completion
+// check are all driven by this definition.
 type Command struct {
-	Name  string
-	Desc  string   // short description (zsh completion)
-	Usage string   // "<name> <args>" column in the global help
-	Help  string   // description column in the global help
-	Flags []string // accepted options; must match completions/_ak
-	NoADB bool     // runs without adb (e.g. doctor)
-	Run   func(args []string)
+	Name     string
+	Summary  string      // one line for the global help and zsh completion
+	Args     string      // usage arguments, e.g. "[package]"
+	Long     string      // help description (defaults to Summary)
+	ArgHelp  [][2]string // argument name, description
+	Flags    []Flag
+	Examples []string
+	Device   deviceMode
+	JSON     bool // adds --json
+	NoADB    bool
+	Run      func(c *Ctx) error
+}
+
+var (
+	flagHelp   = Flag{"-h", "--help", "", "Show this help"}
+	flagJSON   = Flag{"", "--json", "", "Print the result as JSON"}
+	flagSerial = Flag{"-s", "--serial", "ID", "Target device (default: $ANDROID_SERIAL, or ask)"}
+	flagSerals = Flag{"-s", "--serial", "ID", "Target device; repeat for more (default: $ANDROID_SERIAL, or ask)"}
+	flagAll    = Flag{"-m", "--all", "", "All connected devices"}
+	flagYes    = Flag{"-y", "--yes", "", "Answer yes to confirmations"}
+)
+
+// AllFlags returns the command's options including the common ones.
+func (cmd *Command) AllFlags() []Flag {
+	fs := append([]Flag(nil), cmd.Flags...)
+	switch cmd.Device {
+	case oneDevice:
+		fs = append(fs, flagSerial)
+	case manyDevices:
+		fs = append(fs, flagSerals, flagAll)
+	}
+	if cmd.JSON {
+		fs = append(fs, flagJSON)
+	}
+	return append(fs, flagHelp)
 }
 
 // Commands lists every subcommand in global-help order.
@@ -44,114 +95,292 @@ func find(name string) *Command {
 	return nil
 }
 
-// Output and input streams; tests replace them.
-var (
-	stdout io.Writer     = os.Stdout
-	stderr io.Writer     = os.Stderr
-	stdin  *bufio.Reader = bufio.NewReader(os.Stdin)
-)
+// ── Errors and exit codes ────────────────────────────
 
-func say(format string, args ...any)  { fmt.Fprintf(stdout, format+"\n", args...) }
-func sayf(format string, args ...any) { fmt.Fprintf(stdout, format, args...) }
+// cliError carries the exit code and message printed by Main.
+type cliError struct {
+	code      int
+	msg, hint string
+	usageOf   string // command name for "Run 'ak <cmd> --help'"
+}
 
-// exitCode is panicked by exit() and recovered in Main, so deferred
-// terminal restores run and tests can observe the code.
-type exitCode int
+func (e *cliError) Error() string { return e.msg }
 
-func exit(code int) { panic(exitCode(code)) }
+// usageErr is a usage mistake (exit 2).
+func usageErr(cmd *Command, format string, args ...any) error {
+	return &cliError{code: 2, msg: fmt.Sprintf(format, args...), usageOf: cmd.Name}
+}
+
+// failErr is a failure with an optional hint (exit 1).
+func failErr(hint, format string, args ...any) error {
+	return &cliError{code: 1, msg: fmt.Sprintf(format, args...), hint: hint}
+}
+
+// errReported means failures were already printed; just exit 1.
+var errReported = &cliError{code: 1}
 
 // Main runs ak with args (without the program name) and returns the exit code.
-func Main(args []string) (code int) {
-	defer func() {
-		if r := recover(); r != nil {
-			c, ok := r.(exitCode)
-			if !ok {
-				panic(r)
-			}
-			code = int(c)
+func Main(args []string) int {
+	noColor := false
+	var rest []string
+	for _, a := range args {
+		if a == "--no-color" {
+			noColor = true
+			continue
 		}
-	}()
+		rest = append(rest, a)
+	}
+	ui.Setup(noColor)
+	return run(rest)
+}
 
+func run(args []string) int {
 	if len(args) == 0 {
 		showHelp()
 		return 0
 	}
-	name, rest := args[0], args[1:]
-	switch name {
-	case "--version", "-v":
+	switch args[0] {
+	case "-h", "--help", "help":
+		showHelp()
+		return 0
+	case "-v", "--version":
 		showVersion()
 		return 0
-	case "--help", "-h":
-		showHelp()
+	}
+	cmd := find(args[0])
+	if cmd == nil {
+		return report(&cliError{code: 2, msg: "Unknown command: " + args[0], hint: "Run 'ak --help' to see all commands"})
+	}
+	c, help, err := parse(cmd, args[1:])
+	if err != nil {
+		return report(err)
+	}
+	if help {
+		showCommandHelp(cmd)
 		return 0
 	}
-	c := find(name)
-	if c == nil {
-		say("%s Unknown command: %s", Error, name)
-		say("")
-		showHelp()
+	if !cmd.NoADB {
+		if err := ensureADB(); err != nil {
+			return report(err)
+		}
+	}
+	return report(cmd.Run(c))
+}
+
+// report prints err (if any) and returns the exit code.
+func report(err error) int {
+	if err == nil {
+		return 0
+	}
+	if errors.Is(err, tui.ErrInterrupted) || errors.Is(err, ui.ErrInterrupted) {
+		return 130
+	}
+	var ce *cliError
+	if !errors.As(err, &ce) {
+		ui.Errorf("%v", err)
 		return 1
 	}
-	if !c.NoADB && !ensureADB() {
-		return 1
+	if ce.msg != "" {
+		ui.Errorf("%s", ce.msg)
 	}
-	c.Run(rest)
-	return 0
+	if ce.hint != "" {
+		ui.Hint("%s", ce.hint)
+	}
+	if ce.usageOf != "" {
+		ui.Err.Println("Run 'ak " + ce.usageOf + " --help' for usage.")
+	}
+	return ce.code
 }
 
 // ensureADB locates adb and installs the default runner.
-func ensureADB() bool {
+func ensureADB() error {
 	if adb.Default != nil {
-		return true
+		return nil
 	}
 	p, err := adb.Locate()
 	if err != nil {
-		say("")
-		say("%s ADB is not installed.", Error)
-		say("")
-		printADBInstallGuide()
-		return false
+		return failErr(adbInstallHint(), "adb not found")
 	}
 	adb.Default = adb.Exec{Path: p}
-	return true
+	return nil
 }
 
-func printADBInstallGuide() {
-	say("%sInstallation:%s", Yellow, NC)
-	say("  %smacOS:%s   brew install --cask android-platform-tools", Bold, NC)
-	say("  %sUbuntu:%s  sudo apt install adb", Bold, NC)
-	say("  %sManual:%s  https://developer.android.com/tools/releases/platform-tools", Bold, NC)
-	say("  %sCustom:%s  export AK_ADB=/path/to/adb", Bold, NC)
-	say("")
+func adbInstallHint() string {
+	return "Install it with 'brew install --cask android-platform-tools' (macOS), " +
+		"'sudo apt install adb' (Ubuntu) or from https://developer.android.com/tools/releases/platform-tools, " +
+		"or point AK_ADB at an adb binary"
 }
 
-func showHelp() {
-	say("")
-	say("%s%sUsage:%s ak <command> [arguments...]", Cyan, Bold, NC)
-	say("")
-	say("%sCommands:%s", Bold, NC)
-	for _, c := range Commands {
-		cmd, args, _ := strings.Cut(c.Usage, " ")
-		pad := 33 - len(c.Usage)
-		if pad < 1 {
-			pad = 1
-		}
-		say("  %s%s%s%s%s%s", Bold, cmd, NC, prefixSpace(args), strings.Repeat(" ", pad), c.Help)
-	}
-	say("")
-	say("%sGlobal Options:%s", Bold, NC)
-	say("  %s--version, -v%s    Show version", Bold, NC)
-	say("  %s--help, -h%s       Show this help", Bold, NC)
-	say("")
-	say("Run '%sak <command> --help%s' for command-specific help.", Bold, NC)
-	say("")
+// ── Parsing ──────────────────────────────────────────
+
+// Ctx is a parsed invocation.
+type Ctx struct {
+	Cmd    *Command
+	Args   []string
+	values map[string][]string // flag key -> values ("" for switches)
 }
 
-func prefixSpace(s string) string {
-	if s == "" {
+// Bool reports whether a switch was given.
+func (c *Ctx) Bool(key string) bool { return len(c.values[key]) > 0 }
+
+// String returns the last value of an option.
+func (c *Ctx) String(key string) string {
+	v := c.values[key]
+	if len(v) == 0 {
 		return ""
 	}
-	return " " + s
+	return v[len(v)-1]
+}
+
+// Strings returns every value of a repeatable option (comma-separated values are split).
+func (c *Ctx) Strings(key string) []string {
+	var out []string
+	for _, v := range c.values[key] {
+		for _, p := range strings.Split(v, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				out = append(out, p)
+			}
+		}
+	}
+	return out
+}
+
+// JSON reports whether --json was given.
+func (c *Ctx) JSON() bool { return c.Bool("--json") }
+
+// parse splits options and arguments. Options may appear anywhere; "--" ends them.
+func parse(cmd *Command, args []string) (*Ctx, bool, error) {
+	c := &Ctx{Cmd: cmd, values: map[string][]string{}}
+	flags := cmd.AllFlags()
+	lookup := func(name string) (Flag, bool) {
+		for _, f := range flags {
+			if name != "" && (name == f.Short || name == f.Long) {
+				return f, true
+			}
+		}
+		return Flag{}, false
+	}
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "--" {
+			c.Args = append(c.Args, args[i+1:]...)
+			break
+		}
+		if len(a) < 2 || a[0] != '-' {
+			c.Args = append(c.Args, a)
+			continue
+		}
+		name, value, hasValue := strings.Cut(a, "=")
+		f, ok := lookup(name)
+		if !ok {
+			return nil, false, usageErr(cmd, "Unknown option: %s", name)
+		}
+		if f == flagHelp {
+			return c, true, nil
+		}
+		switch {
+		case f.Value == "" && hasValue:
+			return nil, false, usageErr(cmd, "Option %s does not take a value", name)
+		case f.Value != "" && !hasValue:
+			if i+1 >= len(args) {
+				return nil, false, usageErr(cmd, "Option %s requires a value (%s)", name, f.Value)
+			}
+			i++
+			value = args[i]
+		}
+		c.values[f.key()] = append(c.values[f.key()], value)
+	}
+	if c.Bool("--yes") {
+		ui.AssumeYes = true
+	}
+	return c, false, nil
+}
+
+// ── Help ─────────────────────────────────────────────
+
+func showHelp() {
+	o := ui.Out
+	o.Println("ak - ADB extensions kit")
+	o.Println("")
+	o.Println(o.Bold("Usage:"))
+	o.Println("  ak <command> [options] [arguments]")
+	o.Println("")
+	o.Println(o.Bold("Commands:"))
+	for _, c := range Commands {
+		o.Printf("  %-12s %s\n", c.Name, c.Summary)
+	}
+	o.Println("")
+	o.Println(o.Bold("Global options:"))
+	o.Println("  -h, --help      Show help")
+	o.Println("  -v, --version   Show version")
+	o.Println("      --no-color  Disable colored output")
+	o.Println("")
+	o.Println(o.Bold("Environment:"))
+	o.Println("  ANDROID_SERIAL  Default target device")
+	o.Println("  AK_ADB          Path to the adb binary")
+	o.Println("  NO_COLOR        Disable colored output")
+	o.Println("")
+	o.Println("Run 'ak <command> --help' for details.")
+}
+
+func flagLabel(f Flag) string {
+	var s string
+	switch {
+	case f.Short != "" && f.Long != "":
+		s = f.Short + ", " + f.Long
+	case f.Short != "":
+		s = f.Short
+	default:
+		s = "    " + f.Long
+	}
+	if f.Value != "" {
+		s += " " + f.Value
+	}
+	return s
+}
+
+func showCommandHelp(cmd *Command) {
+	o := ui.Out
+	desc := cmd.Long
+	if desc == "" {
+		desc = cmd.Summary + "."
+	}
+	o.Println(desc)
+	o.Println("")
+	o.Println(o.Bold("Usage:"))
+	usage := "  ak " + cmd.Name + " [options]"
+	if cmd.Args != "" {
+		usage += " " + cmd.Args
+	}
+	o.Println(usage)
+	if len(cmd.ArgHelp) > 0 {
+		o.Println("")
+		o.Println(o.Bold("Arguments:"))
+		w := 0
+		for _, a := range cmd.ArgHelp {
+			w = max(w, len(a[0]))
+		}
+		for _, a := range cmd.ArgHelp {
+			o.Printf("  %-*s  %s\n", w, a[0], a[1])
+		}
+	}
+	o.Println("")
+	o.Println(o.Bold("Options:"))
+	flags := cmd.AllFlags()
+	w := 0
+	for _, f := range flags {
+		w = max(w, len(flagLabel(f)))
+	}
+	for _, f := range flags {
+		o.Printf("  %-*s  %s\n", w, flagLabel(f), f.Help)
+	}
+	if len(cmd.Examples) > 0 {
+		o.Println("")
+		o.Println(o.Bold("Examples:"))
+		for _, e := range cmd.Examples {
+			o.Println("  " + e)
+		}
+	}
 }
 
 func showVersion() {
@@ -161,49 +390,27 @@ func showVersion() {
 			adbVersion = v
 		}
 	}
-	G, Y, R, C, B := Green, Yellow, Red, Cyan, Blue
-	say("")
-	say("                                        %sak%s %s%s%s - Released on %s", Bold, NC, G, Version, NC, ReleaseDate)
-	say("        %s::%s                   %s.::%s        ------------------------------------", G, NC, G, NC)
-	say("       %s:#*+.%s                %s:+*#.%s       %s%sADB Version:%s %s", G, NC, G, NC, Bold, Y, NC, adbVersion)
-	say("        %s:**+:%s    %s......%s    %s-+**.%s        %s%sAuthor:%s Claude Hwang", G, NC, G, NC, G, NC, Bold, Y, NC)
-	say("         %s.*+=---::::::::---+*+%s          %s%sLicense:%s MIT", G, NC, Bold, Y, NC)
-	say("        %s:-=----:--------:---==-.%s        %s%sLanguage:%s Go", Y, NC, Bold, Y, NC)
-	say("      %s:++=---==============---=+=.%s      %s%sSupported OS:%s macOS, Linux, Windows", Y, NC, Bold, Y, NC)
-	say("    %s.+*+=+*%%#++++++++++++++##+=+**-%s     %s%sDependencies:%s adb", R, NC, Bold, Y, NC)
-	say("   %s.****+%%@@%%+++++++++++++*@@@#+**#+%s    %s%sRepository:%s https://github.com/luminousvault/homebrew-adb-extensions", R, NC, Bold, Y, NC)
-	say("   %s*#*****#*+++++++++++++++*##*****#=%s   ", C, NC)
-	say("  %s-%%#*****++++++++++++++++++++****##%%.%s  %s%sPurpose:%s ADB extensions kit - Essential ADB utilities", B, NC, Bold, Y, NC)
-	say("                                        %s%sFeatures:%s APK install, Device management, App control", Bold, Y, NC)
-	say("")
-}
-
-// parseLeading parses options before the first positional argument, like the
-// Bash `while case` loops: -h/--help prints help, flags set bools, any other
-// "-x" is an invalid option. If positional is false, positional args are errors.
-func parseLeading(name string, args []string, help func(), flags map[string]*bool, positional bool) []string {
-	for len(args) > 0 {
-		a := args[0]
-		switch {
-		case a == "-h" || a == "--help":
-			help()
-			exit(1)
-		case flags[a] != nil:
-			*flags[a] = true
-			args = args[1:]
-		case strings.HasPrefix(a, "-"):
-			say("%s Invalid option: %s", Error, a)
-			say("Try 'ak %s --help' for more information.", name)
-			exit(1)
-		case !positional:
-			say("%s Unexpected argument: %s", Error, a)
-			say("Try 'ak %s --help' for more information.", name)
-			exit(1)
-		default:
-			return args
-		}
+	o := ui.Out
+	G, Y, R, C, B := o.Green, o.Yellow, o.Red, o.Cyan, func(s string) string { return o.Paint("\033[34m", s) }
+	key := func(s string) string { return o.Paint("\033[1m\033[33m", s) }
+	lines := []string{
+		"",
+		"                                        " + o.Bold("ak") + " " + G(Version) + " - Released on " + ReleaseDate,
+		"        " + G("::") + "                   " + G(".::") + "        ------------------------------------",
+		"       " + G(":#*+.") + "                " + G(":+*#.") + "       " + key("ADB Version:") + " " + adbVersion,
+		"        " + G(":**+:") + "    " + G("......") + "    " + G("-+**.") + "        " + key("Author:") + " Claude Hwang",
+		"         " + G(".*+=---::::::::---+*+") + "          " + key("License:") + " MIT",
+		"        " + Y(":-=----:--------:---==-.") + "        " + key("Language:") + " Go",
+		"      " + Y(":++=---==============---=+=.") + "      " + key("Supported OS:") + " macOS, Linux, Windows",
+		"    " + R(".+*+=+*%#++++++++++++++##+=+**-") + "     " + key("Dependencies:") + " adb",
+		"   " + R(".****+%@@%+++++++++++++*@@@#+**#+") + "    " + key("Repository:") + " https://github.com/luminousvault/homebrew-adb-extensions",
+		"   " + C("*#*****#*+++++++++++++++*##*****#=") + "   ",
+		"  " + B("-%#*****++++++++++++++++++++****##%.") + "  " + key("Purpose:") + " ADB extensions kit - Essential ADB utilities",
+		"                                        " + key("Features:") + " APK install, Device management, App control",
+		"",
 	}
-	return args
+	for _, l := range lines {
+		o.Println(l)
+	}
 }
 
-func sayErr(format string, args ...any) { fmt.Fprintf(stderr, format+"\n", args...) }

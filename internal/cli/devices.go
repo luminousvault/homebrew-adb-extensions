@@ -1,107 +1,111 @@
 package cli
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
-	. "github.com/luminousvault/homebrew-adb-extensions/internal/style"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 var cmdDevices = &Command{
-	Name: "devices", Desc: "Show connected devices",
-	Usage: "devices", Help: "List connected devices",
-	Flags: helpFlags, Run: runDevices,
+	Name: "devices", Summary: "Show connected devices",
+	Long:     "List connected devices with model, Android version, CPU ABI and state.\nABI shows 32/64-bit app support: (64/32), (64only) or (32only).",
+	Examples: []string{"ak devices", "ak devices --json"},
+	JSON:     true, Run: runDevices,
 }
 
-var showHelpDevices = helpWith("ak devices [-h|--help]",
-	"Description: Show connected device list with model and Android version.")
-
-type deviceRow struct {
-	id, model, android, cpu, status string
-}
-
-// cpuLabel appends 64/32-bit support from the ABI lists (Android 5.0+).
-func cpuLabel(p map[string]string) string {
-	cpu := orDefault(p["ro.product.cpu.abi"], "Unknown")
+// abiBits returns "64/32", "64only", "32only" or "" from the ABI lists (Android 5.0+).
+func abiBits(p map[string]string) string {
 	has32, has64 := p["ro.product.cpu.abilist32"] != "", p["ro.product.cpu.abilist64"] != ""
 	switch {
 	case has64 && has32:
-		return cpu + " (64/32)"
+		return "64/32"
 	case has64:
-		return cpu + " (64only)"
+		return "64only"
 	case has32:
-		return cpu + " (32only)"
+		return "32only"
 	}
-	return cpu
+	return ""
 }
 
-func deviceRowFor(d adb.DeviceEntry) deviceRow {
-	row := deviceRow{id: d.Serial, model: "-", android: "-", cpu: "-"}
-	switch d.State {
+type deviceInfo struct {
+	Serial  string `json:"serial"`
+	State   string `json:"state"`
+	Brand   string `json:"brand,omitempty"`
+	Model   string `json:"model,omitempty"`
+	Android string `json:"android,omitempty"`
+	API     any    `json:"api,omitempty"`
+	ABI     string `json:"abi,omitempty"`
+	Bits    string `json:"bits,omitempty"`
+}
+
+func collectDevice(d adb.DeviceEntry) deviceInfo {
+	info := deviceInfo{Serial: d.Serial, State: d.State}
+	if d.State != "device" {
+		return info
+	}
+	p := deviceProps(d.Serial)
+	if p == nil {
+		info.State = "not responding"
+		return info
+	}
+	info.Brand = capitalize(p["ro.product.brand"])
+	info.Model = p["ro.product.model"]
+	info.Android = p["ro.build.version.release"]
+	info.API = intOrNil(p["ro.build.version.sdk"])
+	info.ABI = p["ro.product.cpu.abi"]
+	info.Bits = abiBits(p)
+	return info
+}
+
+func stateLabel(state string) (string, func(string) string) {
+	switch state {
 	case "device":
-		row.status = "Connected"
-		out := adb.Shell(d.Serial, "getprop")
-		if out == "" {
-			row.model, row.android, row.cpu = "Unknown Device", "Unknown (API Unknown)", "Unknown"
-			return row
-		}
-		p := adb.ParseGetprop(out)
-		brand := orDefault(capitalize(p["ro.product.brand"]), "Unknown")
-		row.model = brand + " " + orDefault(p["ro.product.model"], "Device")
-		row.android = orDefault(p["ro.build.version.release"], "Unknown") + " (API " + orDefault(p["ro.build.version.sdk"], "Unknown") + ")"
-		row.cpu = cpuLabel(p)
+		return "connected", ui.Out.Green
 	case "unauthorized":
-		row.status = "Unauthorized"
-	case "offline":
-		row.status = "Offline"
-	default:
-		row.status = "Unknown"
+		return state, ui.Out.Red
 	}
-	return row
+	return state, ui.Out.Dim
 }
 
-func runDevices(args []string) {
-	parseLeading("devices", args, showHelpDevices, nil, false)
+func runDevices(c *Ctx) error {
+	if err := tooMany(c, 0); err != nil {
+		return err
+	}
 	entries := adb.ListDevices()
-	if len(entries) == 0 {
-		say("%sERROR: No connected devices found.%s", Red, NC)
-		return
-	}
-	idW, modelW, androidW, cpuW, statusW := 15, 20, 12, 10, 11
-	rows := make([]deviceRow, len(entries))
+	infos := make([]deviceInfo, len(entries))
 	for i, e := range entries {
-		r := deviceRowFor(e)
-		rows[i] = r
-		idW = max(idW, width(r.id))
-		if e.State == "device" {
-			modelW, androidW, cpuW = max(modelW, width(r.model)), max(androidW, width(r.android)), max(cpuW, width(r.cpu))
-		}
+		infos[i] = collectDevice(e)
 	}
-
-	say("")
-	say("%s%sConnected Devices:%s", Cyan, Bold, NC)
-	say("")
-	head := func(label string, w int) string { return Dim + Bold + label + NC + pad(w-width(label)) }
-	say("%s  %s  %s  %s  %s", head("Device ID", idW), head("Model", modelW), head("Android", androidW), head("CPU", cpuW), Dim+Bold+"Status"+NC)
-	say("%s%s%s", Dim, strings.Repeat("─", idW+modelW+androidW+cpuW+statusW+8), NC)
-	for _, r := range rows {
-		cpu := r.cpu
-		if strings.HasSuffix(cpu, "(64only)") {
-			cpu = Yellow + cpu + NC
-		}
-		status := r.status
-		switch status {
-		case "Unauthorized":
-			status = Red + status + NC
-		case "Offline", "Unknown":
-			status = Dim + status + NC
-		}
-		say("%s%s  %s%s  %s%s  %s%s  %s%s",
-			Bold+r.id+NC, pad(idW-width(r.id)),
-			r.model, pad(modelW-width(r.model)),
-			r.android, pad(androidW-width(r.android)),
-			cpu, pad(cpuW-width(r.cpu)),
-			status, pad(statusW-width(r.status)))
+	if c.JSON() {
+		return ui.JSON(infos)
 	}
-	say("")
+	if len(infos) == 0 {
+		ui.Info("No devices connected")
+		return nil
+	}
+	var rows [][]ui.Cell
+	for _, d := range infos {
+		model, android, abi := "-", "-", "-"
+		var abiColor func(string) string
+		if d.State == "device" {
+			model = strings.TrimSpace(d.Brand + " " + d.Model)
+			android = d.Android
+			if d.API != nil {
+				android += " (API " + strconv.FormatInt(d.API.(int64), 10) + ")"
+			}
+			abi = d.ABI
+			if d.Bits != "" {
+				abi += " (" + d.Bits + ")"
+			}
+			if d.Bits == "64only" {
+				abiColor = ui.Out.Yellow // 32-bit apps cannot be installed
+			}
+		}
+		state, stateColor := stateLabel(d.State)
+		rows = append(rows, []ui.Cell{{Text: d.Serial}, {Text: model}, {Text: android}, {Text: abi, Color: abiColor}, {Text: state, Color: stateColor}})
+	}
+	ui.Table([]string{"SERIAL", "MODEL", "ANDROID", "ABI", "STATE"}, rows)
+	return nil
 }

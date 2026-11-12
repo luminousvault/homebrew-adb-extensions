@@ -1,41 +1,27 @@
 package cli
 
 import (
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
-	. "github.com/luminousvault/homebrew-adb-extensions/internal/style"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
-var helpFlags = []string{"-h", "--help"}
-
-// helpWith builds the common help layout used by package commands.
-func helpWith(usage string, lines ...string) func() {
-	return func() {
-		say("%s%sUsage:%s %s", Cyan, Bold, NC, usage)
-		say("")
-		for _, l := range lines {
-			say("%s", l)
-		}
-		say("")
-		say("Options:")
-		say("  -h, --help  Show this help message")
-		say("")
-	}
-}
+var argPackage = [2]string{"package", "Package name (default: the foreground app)"}
 
 // ── info ─────────────────────────────────────────────
 
 var cmdInfo = &Command{
-	Name: "info", Desc: "Show package information",
-	Usage: "info [package]", Help: "Show app information",
-	Flags: helpFlags, Run: runInfo,
+	Name: "info", Summary: "Show package information", Args: "[package]",
+	Long:     "Show the version, SDK levels, debuggable flag and installer of a package.",
+	ArgHelp:  [][2]string{argPackage},
+	Examples: []string{"ak info", "ak info com.example.app", "ak info --json | jq .versionName"},
+	Device:   oneDevice, JSON: true, Run: runInfo,
 }
-
-var showHelpInfo = helpWith("ak info [-h|--help] [packageName]",
-	"Description: Show detailed information of the package (version, SDK, debuggable, etc.).",
-	"If 'packageName' is not provided, the script will auto-detect the current foreground app.")
 
 var (
 	reMinSdk    = regexp.MustCompile(`minSdk=([0-9]*)`)
@@ -57,8 +43,7 @@ func firstLine(out, substr string) string {
 	return ""
 }
 
-// afterEquals mimics `cut -d= -f2 | xargs`: the text between the first and
-// second '=', with whitespace collapsed.
+// afterEquals returns the text between the first and second '=', trimmed.
 func afterEquals(line string) string {
 	parts := strings.Split(line, "=")
 	if len(parts) < 2 {
@@ -88,258 +73,283 @@ func parseAppInfo(dumpsys string) AppInfo {
 		}
 	}
 	a.Installer = afterEquals(firstLine(dumpsys, "installerPackageName"))
+	if a.Installer == "null" {
+		a.Installer = ""
+	}
 	return a
 }
 
-func runInfo(args []string) {
-	args = parseLeading("info", args, showHelpInfo, nil, true)
-	serial := selectDevice()
-	pkg := packageArgOrForeground(serial, args)
+func intOrNil(s string) any {
+	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return n
+	}
+	return nil
+}
 
-	a := parseAppInfo(adb.Out("-s", serial, "shell", "dumpsys", "package", pkg))
+func strOrNil(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+func tooMany(c *Ctx, max int) error {
+	if len(c.Args) > max {
+		return usageErr(c.Cmd, "Too many arguments: %s", strings.Join(c.Args[max:], " "))
+	}
+	return nil
+}
+
+func runInfo(c *Ctx) error {
+	if err := tooMany(c, 1); err != nil {
+		return err
+	}
+	serial, err := c.Device()
+	if err != nil {
+		return err
+	}
+	t, err := resolvePackage(serial, c.Args)
+	if err != nil {
+		return err
+	}
+	a := parseAppInfo(adb.Out("-s", serial, "shell", "dumpsys", "package", t.pkg))
 	if a.VersionName == "" || a.VersionCode == "" || a.TargetSdk == "" {
-		say("%sERROR: Critical app info missing for package:%s %s", Red, NC, pkg)
-		say("%s  ==> versionName, versionCode, or targetSdk could not be retrieved.%s", Red, NC)
-		say("")
-		exit(1)
+		return failErr("", "Could not read versionName, versionCode or targetSdk of %s", t.pkg)
 	}
-	installer := a.Installer
-	if installer == "" {
-		installer = Yellow + "(not available)" + NC
+	if c.JSON() {
+		return ui.JSON(map[string]any{
+			"package": t.pkg, "versionName": a.VersionName, "versionCode": intOrNil(a.VersionCode),
+			"minSdk": intOrNil(a.MinSdk), "targetSdk": intOrNil(a.TargetSdk),
+			"debuggable": a.Debuggable, "installer": strOrNil(a.Installer),
+		})
 	}
-	debuggable := "false"
-	if a.Debuggable {
-		debuggable = "true"
-	}
-	say("%sAPK Detailed Info:%s", Cyan, NC)
-	say("  %sversionName:%s %s", Green, NC, a.VersionName)
-	say("  %sversionCode:%s %s", Green, NC, a.VersionCode)
-	say("  %sminSdk:%s %s", Green, NC, a.MinSdk)
-	say("  %stargetSdk:%s %s", Green, NC, a.TargetSdk)
-	say("  %sdebuggable:%s %s", Green, NC, debuggable)
-	say("  %sinstallerPackageName:%s %s", Green, NC, installer)
-	say("")
+	ui.Step("%s", t.describe(serial))
+	ui.KeyValues([][2]string{
+		{"versionName", a.VersionName},
+		{"versionCode", a.VersionCode},
+		{"minSdk", a.MinSdk},
+		{"targetSdk", a.TargetSdk},
+		{"debuggable", strconv.FormatBool(a.Debuggable)},
+		{"installerPackageName", orDefault(a.Installer, "-")},
+	})
+	return nil
 }
 
 // ── permissions ──────────────────────────────────────
 
 var cmdPermissions = &Command{
-	Name: "permissions", Desc: "List package permissions",
-	Usage: "permissions [package]", Help: "List app permissions",
-	Flags: helpFlags, Run: runPermissions,
+	Name: "permissions", Summary: "List package permissions", Args: "[package]",
+	Long:     "List the permissions granted to a package.",
+	ArgHelp:  [][2]string{argPackage},
+	Examples: []string{"ak permissions", "ak permissions com.example.app --json"},
+	Device:   oneDevice, JSON: true, Run: runPermissions,
 }
 
-var showHelpPermissions = helpWith("ak permissions [-h|--help] [packageName]",
-	"Description: List all permissions granted to the specified package.",
-	"If 'packageName' is not provided, the script will auto-detect the current foreground app.")
-
 func parseGrantedPermissions(dumpsys string) []string {
-	var perms []string
+	perms := []string{}
 	for _, l := range strings.Split(dumpsys, "\n") {
 		if strings.Contains(l, "granted=true") {
 			name, _, _ := strings.Cut(l, ":")
-			perms = append(perms, strings.TrimLeft(name, " "))
+			perms = append(perms, strings.TrimSpace(name))
 		}
 	}
 	return perms
 }
 
-func runPermissions(args []string) {
-	args = parseLeading("permissions", args, showHelpPermissions, nil, true)
-	serial := selectDevice()
-	pkg := packageArgOrForeground(serial, args)
-
-	perms := parseGrantedPermissions(adb.Out("-s", serial, "shell", "dumpsys", "package", pkg))
-	if len(perms) == 0 {
-		say("%sERROR: No permissions found or failed to retrieve permissions for package:%s %s", Red, NC, pkg)
-		say("")
-		exit(1)
+func runPermissions(c *Ctx) error {
+	if err := tooMany(c, 1); err != nil {
+		return err
 	}
-	say("%sPermissions for package %s:%s", Cyan, pkg, NC)
-	say("%s", strings.Join(perms, "\n"))
-	say("")
+	serial, err := c.Device()
+	if err != nil {
+		return err
+	}
+	t, err := resolvePackage(serial, c.Args)
+	if err != nil {
+		return err
+	}
+	perms := parseGrantedPermissions(adb.Out("-s", serial, "shell", "dumpsys", "package", t.pkg))
+	if c.JSON() {
+		return ui.JSON(map[string]any{"package": t.pkg, "granted": perms})
+	}
+	ui.Step("Granted permissions of %s", t.describe(serial))
+	if len(perms) == 0 {
+		ui.Info("(none)")
+	}
+	for _, p := range perms {
+		ui.Out.Println(p)
+	}
+	return nil
 }
 
 // ── launch ───────────────────────────────────────────
 
 var cmdLaunch = &Command{
-	Name: "launch", Desc: "Launch package",
-	Usage: "launch <package>", Help: "Launch app",
-	Flags: helpFlags, Run: runLaunch,
+	Name: "launch", Summary: "Launch package", Args: "<package>",
+	Long:     "Start the launcher activity of a package.",
+	ArgHelp:  [][2]string{{"package", "Package name"}},
+	Examples: []string{"ak launch com.example.app"},
+	Device:   oneDevice, Run: runLaunch,
 }
-
-var showHelpLaunch = helpWith("ak launch [-h|--help] <packageName>",
-	"Description: Launch the specified package using its launcher activity.",
-	"Package name is required for this command.")
 
 func lastLine(s string) string {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	return lines[len(lines)-1]
 }
 
-func runLaunch(args []string) {
-	args = parseLeading("launch", args, showHelpLaunch, nil, true)
-	if len(args) == 0 || args[0] == "" {
-		showHelpLaunch()
-		exit(1)
+func runLaunch(c *Ctx) error {
+	if len(c.Args) == 0 {
+		return usageErr(c.Cmd, "Missing package name")
 	}
-	pkg := args[0]
-	serial := selectDevice()
-	if !packageInstalled(serial, pkg) {
-		say("")
-		say("%sERROR: Package not installed on the device:%s %s", Red, NC, pkg)
-		exit(1)
+	if err := tooMany(c, 1); err != nil {
+		return err
+	}
+	serial, err := c.Device()
+	if err != nil {
+		return err
+	}
+	pkg := c.Args[0]
+	if err := requirePackage(serial, pkg); err != nil {
+		return err
 	}
 	resolved, _ := adb.Combined("-s", serial, "shell", "cmd", "package", "resolve-activity", "--brief", pkg)
 	result, _ := adb.Combined("-s", serial, "shell", "am", "start", "--user", "0", "-n", lastLine(resolved))
-	if strings.Contains(result, "Exception occurred while executing 'start'") {
-		say("%sERROR: Failed to launch app. Reason:%s", Red, NC)
-		say("  %s", strings.ReplaceAll(strings.TrimRight(result, "\n"), "\n", "\n  "))
-		say("")
-		exit(1)
+	if strings.Contains(result, "Exception occurred while executing 'start'") || strings.Contains(result, "Error:") {
+		ui.Errorf("Couldn't launch %s", pkg)
+		ui.Detail("%s", result)
+		return errReported
 	}
-	say("%sSuccessfully launched package:%s %s", Green, NC, pkg)
-	say("")
+	ui.Success("Launched %s on %s", pkg, deviceName(serial))
+	return nil
 }
 
 // ── kill / clear ─────────────────────────────────────
 
 var cmdKill = &Command{
-	Name: "kill", Desc: "Force-stop package",
-	Usage: "kill [packages...]", Help: "Force-stop app",
-	Flags: helpFlags, Run: runKill,
+	Name: "kill", Summary: "Force-stop package", Args: "[package...]",
+	Long:     "Force-stop one or more packages.",
+	ArgHelp:  [][2]string{{"package", "Package names (default: the foreground app)"}},
+	Examples: []string{"ak kill", "ak kill com.example.app com.example.other"},
+	Device:   oneDevice, Run: runKill,
 }
-
-var showHelpKill = helpWith("ak kill [-h|--help] [packageName1] [packageName2] ...",
-	"Description: Force-stops one or more specified packages on the connected device.",
-	"If no packageName is provided, the script will auto-detect the current foreground app.")
 
 var cmdClear = &Command{
-	Name: "clear", Desc: "Clear app data and cache",
-	Usage: "clear [packages...]", Help: "Clear app data",
-	Flags: helpFlags, Run: runClear,
+	Name: "clear", Summary: "Clear app data and cache", Args: "[package...]",
+	Long:     "Clear the data and cache of one or more packages.",
+	ArgHelp:  [][2]string{{"package", "Package names (default: the foreground app)"}},
+	Examples: []string{"ak clear", "ak clear com.example.app"},
+	Device:   oneDevice, Run: runClear,
 }
 
-var showHelpClear = helpWith("ak clear [-h|--help] [packageName1] [packageName2] ...",
-	"Description: Clear app data and cache for one or more specified packages.",
-	"If no packageName is provided, the script will auto-detect the current foreground app.")
-
-func killPackage(serial, pkg string) {
-	say("")
-	say("%s==> Attempting to kill:%s %s", Yellow, NC, pkg)
-	if err := adb.Default.Passthrough("-s", serial, "shell", "am", "force-stop", pkg); err == nil {
-		say("%sSuccessfully killed%s", Green, NC)
-	} else {
-		say("%sERROR: Failed to kill:%s %s (may not be installed or running)", Red, NC, pkg)
+// forEachPackage runs action for the foreground app (no args) or each package.
+// Invalid, missing and duplicate packages are reported and skipped; any failure exits 1.
+func forEachPackage(c *Ctx, action func(serial, pkg, label string) bool) error {
+	serial, err := c.Device()
+	if err != nil {
+		return err
 	}
-}
-
-func clearPackage(serial, pkg string) {
-	say("")
-	say("%s==> Attempting to clear data for:%s %s", Yellow, NC, pkg)
-	say("%s==> Clearing app data...%s", Blue, NC)
-	out, _ := adb.Combined("-s", serial, "shell", "pm", "clear", pkg)
-	out = strings.TrimRight(out, "\n")
-	if strings.Contains(out, "Success") {
-		say("%sSuccessfully cleared data%s", Green, NC)
-	} else {
-		say("%sERROR: Failed to clear app data:%s %s", Red, NC, pkg)
-		say("  ==> %s", out)
-	}
-}
-
-// forEachPackage runs action for the foreground app (no args) or each valid,
-// installed, non-duplicate package.
-func forEachPackage(serial string, args []string, startMsg string, action func(serial, pkg string)) {
-	if len(args) == 0 {
-		pkg := foregroundPackage(serial)
-		say("")
-		say("%sAuto-detected package:%s %s", Yellow, NC, pkg)
-		requirePackage(serial, pkg)
-		action(serial, pkg)
-		return
-	}
-	say("%s%s%s", Cyan, startMsg, NC)
-	seen := map[string]bool{}
-	for _, pkg := range args {
-		switch {
-		case !validPackageName(pkg):
-			say("")
-			say("%sERROR: Invalid package name format:%s %s", Red, NC, pkg)
-		case !packageInstalled(serial, pkg):
-			say("")
-			say("%sERROR: Package not installed on the device:%s %s", Red, NC, pkg)
-		case seen[pkg]:
-			say("")
-			say("%sWARNING: Skipping duplicate package:%s %s", Yellow, NC, pkg)
-		default:
-			seen[pkg] = true
-			action(serial, pkg)
+	if len(c.Args) == 0 {
+		t, err := resolvePackage(serial, nil)
+		if err != nil {
+			return err
 		}
+		if !action(serial, t.pkg, t.pkg+" (foreground app)") {
+			return errReported
+		}
+		return nil
 	}
+	failed := false
+	seen := map[string]bool{}
+	for _, pkg := range c.Args {
+		switch {
+		case seen[pkg]:
+			ui.Warn("Skipping duplicate package %s", pkg)
+		case !validPackageName(pkg):
+			ui.Errorf("Invalid package name: %s", pkg)
+			failed = true
+		case !packageInstalled(serial, pkg):
+			ui.Errorf("Package not installed on %s: %s", deviceName(serial), pkg)
+			failed = true
+		default:
+			if !action(serial, pkg, pkg) {
+				failed = true
+			}
+		}
+		seen[pkg] = true
+	}
+	if failed {
+		return errReported
+	}
+	return nil
 }
 
-func runKill(args []string) {
-	args = parseLeading("kill", args, showHelpKill, nil, true)
-	forEachPackage(selectDevice(), args, "Starting to kill packages...", killPackage)
+func runKill(c *Ctx) error {
+	return forEachPackage(c, func(serial, pkg, label string) bool {
+		if out, err := adb.Combined("-s", serial, "shell", "am", "force-stop", pkg); err != nil {
+			ui.Errorf("Couldn't stop %s", pkg)
+			ui.Detail("%s", out)
+			return false
+		}
+		ui.Success("Stopped %s", label)
+		return true
+	})
 }
 
-func runClear(args []string) {
-	args = parseLeading("clear", args, showHelpClear, nil, true)
-	forEachPackage(selectDevice(), args, "Starting to clear app data...", clearPackage)
+func runClear(c *Ctx) error {
+	return forEachPackage(c, func(serial, pkg, label string) bool {
+		out, _ := adb.Combined("-s", serial, "shell", "pm", "clear", pkg)
+		if !strings.Contains(out, "Success") {
+			ui.Errorf("Couldn't clear data of %s", pkg)
+			ui.Detail("%s", out)
+			return false
+		}
+		ui.Success("Cleared data of %s", label)
+		return true
+	})
 }
 
 // ── uninstall ────────────────────────────────────────
 
 var cmdUninstall = &Command{
-	Name: "uninstall", Desc: "Uninstall package",
-	Usage: "uninstall [package]", Help: "Uninstall app",
-	Flags: helpFlags, Run: runUninstall,
+	Name: "uninstall", Summary: "Uninstall package", Args: "[package]",
+	Long:     "Uninstall a package.",
+	ArgHelp:  [][2]string{argPackage},
+	Examples: []string{"ak uninstall", "ak uninstall com.example.app"},
+	Device:   oneDevice, Run: runUninstall,
 }
 
-var showHelpUninstall = helpWith("ak uninstall [-h|--help] [packageName]",
-	"Description: Uninstall the specified package from the device.",
-	"If 'packageName' is not provided, the script will auto-detect the current foreground app.")
-
-func runUninstall(args []string) {
-	args = parseLeading("uninstall", args, showHelpUninstall, nil, true)
-	serial := selectDevice()
-	pkg := packageArgOrForeground(serial, args)
-	out, _ := adb.Combined("-s", serial, "uninstall", pkg)
-	out = strings.TrimRight(out, "\n")
-	if strings.Contains(out, "Success") {
-		say("%sSuccessfully uninstalled.%s", Green, NC)
-	} else {
-		say("%sERROR: Failed to uninstall:%s", Red, NC)
-		say("  ==> %s", out)
+func runUninstall(c *Ctx) error {
+	if err := tooMany(c, 1); err != nil {
+		return err
 	}
-	say("")
+	serial, err := c.Device()
+	if err != nil {
+		return err
+	}
+	t, err := resolvePackage(serial, c.Args)
+	if err != nil {
+		return err
+	}
+	out, _ := adb.Combined("-s", serial, "uninstall", t.pkg)
+	if !strings.Contains(out, "Success") {
+		ui.Errorf("Couldn't uninstall %s", t.pkg)
+		ui.Detail("%s", out)
+		return errReported
+	}
+	ui.Success("Uninstalled %s", t.describe(serial))
+	return nil
 }
 
 // ── extract ──────────────────────────────────────────
 
 var cmdExtract = &Command{
-	Name: "extract", Desc: "Extract APK file from device",
-	Usage: "extract [package] [filename]", Help: "Extract APK from device",
-	Flags: helpFlags, Run: runExtract,
-}
-
-func showHelpExtract() {
-	say("%s%sUsage:%s ak extract [-h|--help] [packageName|saveApkFileName] [saveApkFileName|packageName]", Cyan, Bold, NC)
-	say("")
-	say("Description: Extract the APK file of the specified package to local storage.")
-	say("The order of arguments is flexible - the script automatically detects which is the package name and which is the file name.")
-	say("")
-	say("%s%sExamples:%s", Cyan, Bold, NC)
-	say("  ak extract                          # Auto-detect current app, save as <packageName>.apk")
-	say("  ak extract myapp.apk                # Auto-detect current app, save as myapp.apk")
-	say("  ak extract com.example.app          # Specific package, save as com.example.app.apk")
-	say("  ak extract com.example.app out.apk  # Specific package, save as out.apk")
-	say("  ak extract out.apk com.example.app  # Same as above (order flexible)")
-	say("")
-	say("Options:")
-	say("  -h, --help  Show this help message")
-	say("")
+	Name: "extract", Summary: "Extract APK file from device", Args: "[package] [file]",
+	Long: "Save the APK of an installed package to a local file.\n" +
+		"The arguments can be given in either order: a value ending in .apk or containing '/' is the file.",
+	ArgHelp: [][2]string{argPackage, {"file", "Output file (default: <package>.apk)"}},
+	Examples: []string{"ak extract", "ak extract myapp.apk", "ak extract com.example.app",
+		"ak extract com.example.app out.apk"},
+	Device: oneDevice, Run: runExtract,
 }
 
 func looksLikeFile(s string) bool { return strings.HasSuffix(s, ".apk") || strings.Contains(s, "/") }
@@ -361,31 +371,47 @@ func splitExtractArgs(args []string) (pkg, file string) {
 	return "", ""
 }
 
-func runExtract(args []string) {
-	args = parseLeading("extract", args, showHelpExtract, nil, true)
-	serial := selectDevice()
-	if len(args) > 2 {
-		say("%s Too many arguments", Error)
-		say("Try 'ak extract --help' for more information.")
-		exit(1)
+func runExtract(c *Ctx) error {
+	if err := tooMany(c, 2); err != nil {
+		return err
 	}
-	pkg, file := splitExtractArgs(args)
-	pkg = packageArgOrForeground(serial, []string{pkg})
-
+	serial, err := c.Device()
+	if err != nil {
+		return err
+	}
+	pkg, file := splitExtractArgs(c.Args)
+	t, err := resolvePackage(serial, []string{pkg})
+	if err != nil {
+		return err
+	}
 	switch {
 	case file == "":
-		file = pkg + ".apk"
+		file = t.pkg + ".apk"
 	case !strings.HasSuffix(file, ".apk"):
 		file += ".apk"
 	}
-	path, ok := apkPathForPackage(serial, pkg)
-	if !ok {
-		exit(1)
+	remote, err := apkPathForPackage(serial, t.pkg)
+	if err != nil {
+		return err
 	}
-	if err := adb.Default.Passthrough("-s", serial, "pull", path, file); err != nil {
-		say("")
-		say("%sERROR: Failed to pull APK from device. Check device connection and permissions.%s", Red, NC)
-		exit(1)
+	start := time.Now()
+	sp := ui.Spin("Extracting %s", t.describe(serial))
+	out, err := adb.Combined("-s", serial, "pull", remote, file)
+	sp.Stop()
+	if err != nil {
+		ui.Errorf("Couldn't pull the APK of %s", t.pkg)
+		ui.Detail("%s", out)
+		return errReported
 	}
-	say("%sAPK file saved as:%s %s", Green, NC, file)
+	size := ""
+	if st, err := os.Stat(file); err == nil {
+		size = humanSize(strconv.FormatInt(st.Size(), 10)) + ", "
+	}
+	ui.Success("Saved %s %s", file, ui.Err.Dim("("+size+elapsed(start)+")"))
+	return nil
+}
+
+// elapsed formats the time since start like "3.2s".
+func elapsed(start time.Time) string {
+	return strconv.FormatFloat(time.Since(start).Seconds(), 'f', 1, 64) + "s"
 }
