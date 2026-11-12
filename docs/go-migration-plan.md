@@ -2,7 +2,7 @@
 
 - 작성: 2026-11-12
 - 근거: Obsidian `100. Raw/개발환경/대화/2026-11-12 ak Go 전환과 adb 의존성 처리 검토`
-- 상태: **확정 (2026-11-12) — §6 권장안 채택, 브랜치 `feature/go-migration`에서 진행**
+- 상태: **Phase 0~4 구현 완료 (2026-11-12), 브랜치 `feature/go-migration`. v2.0.0 릴리즈 전 (push·PR·릴리즈 미실행)**
 
 ## 1. 목표와 성공 기준
 
@@ -21,11 +21,11 @@
 
 | Bash | 줄 수 | Go 대응 | 비고 |
 |---|---|---|---|
-| `src/ak` (라우터, `case` 수동 등록) | 108 | `cmd/ak/main.go` + cobra 루트 | 커맨드 등록이 코드로 강제됨 |
+| `src/ak` (라우터, `case` 수동 등록) | 108 | `cmd/ak/main.go` + `internal/cli` 커맨드 테이블 | cobra 대신 직접 구현 (§8) |
 | `common.sh` (색상, 디버그, SDK 탐색, foreground 감지) | 398 | `internal/adb`(실행·탐색), `internal/log`, `internal/style` | `AK_DEBUG=1` 유지 |
-| `device.sh` (단일/다중 선택, 목록) | 369 | `internal/device` | `-m` 다중 디바이스 |
-| `ui.sh` + `filter.sh` (인터랙티브 선택 UI) | 1,206 | `internal/tui` (bubbletea 예정) | 가장 큰 덩어리, 키 조작·필터·정렬·하이라이트 재현 필요 |
-| `commands/*.sh` | 2,418 | `internal/cmd/<name>.go` | 13개 |
+| `device.sh` (단일/다중 선택, 목록) | 369 | `internal/cli/device.go`, `devices.go` | `-m` 다중 디바이스 |
+| `ui.sh` + `filter.sh` (인터랙티브 선택 UI) | 1,206 | `internal/tui` (`golang.org/x/term`) | bubbletea 대신 직접 이식 (§8) |
+| `commands/*.sh` | 2,418 | `internal/cli/<name>.go` | 13개 + `doctor` |
 | `AK_COMPLETION` 블록 → `_ak` 생성 | — | 기존 zsh `_ak`를 `completions/_ak`로 그대로 유지·설치 | **요구사항: 기존 completion 동작 유지.** cobra 기본 `completion` 커맨드는 끔. 커맨드·플래그와 `_ak` 일치 여부를 테스트로 검증 |
 | `build.sh` + `release.yml` | 605+ | `Makefile`(선택) + `.goreleaser.yaml` + workflow | |
 
@@ -111,3 +111,23 @@
 - **adb 서버 버전 충돌**: 다른 버전 adb를 쓰면 Android Studio와 서버를 서로 재시작. 탐색 순서상 Studio/SDK를 캐시보다 우선하고 `doctor`로 경고.
 - **Go APK 파서 정확도**: split APK, 최신 서명 방식(v3.1/v4)에서 `apksigner`와 결과가 다를 수 있음 → 실제 APK 샘플로 대조.
 - **기존 사용자 호환**: 커맨드명·옵션·completion 유지, 출력 형식 변경은 CHANGELOG에 명시.
+
+## 8. 구현 중 바꾼 결정
+
+| 계획 | 실제 | 이유 |
+|---|---|---|
+| cobra | 직접 만든 라우터 + `parseLeading` | Bash는 첫 위치 인자에서 옵션 파싱을 멈추고, 도움말 뒤 exit 1, 고정 오류 문구를 쓴다. pflag로 맞추려면 플래그 파싱을 거의 꺼야 해서 cobra의 이점이 없다 |
+| bubbletea | `golang.org/x/term`으로 `select_interactive` 직접 이식 | 화면 상단에 그리고 종료 후 내용을 남기는 기존 동작을 그대로 재현하기 위해 |
+| cobra completion | 기존 `completions/_ak` 유지 | 요구사항: 기존 completion 동작 유지. `TestCompletionMatchesCommands`로 커맨드 테이블과 동기화 검증 |
+| `Formula/ak.rb` 직접 수정 | `.github/formula/ak.rb.tmpl` → 릴리즈 때 생성 | 이 저장소가 tap이라 main 병합 즉시 사용자 설치에 반영되므로, v2.0.0 릴리즈 전까지 기존 formula를 유지해야 한다 |
+
+## 9. 검증 결과
+
+- 단위 테스트: adb 파싱·탐색, 선택 UI 상태·렌더링, APK 파서, 커맨드 흐름(가짜 adb), completion 동기화
+- 실기기(Pixel 9 Pro, Android 16): Bash v1.4.0과 Go 버전을 같은 기기에서 실행해 출력 비교
+  - `devices`, `info`, `permissions`, `activities [-a]`, `mac`, 각 커맨드 `-h`, 오류 경로: ANSI 코드까지 동일
+  - `extract`: 받은 APK 해시 동일
+  - 테스트 패키지 `com.example.aktest`로 `install`(신규·다운그레이드·testOnly·서명 충돌 자동 복구), `launch`, `kill`, `clear`, `uninstall`: 동일 (프롬프트 입력 echo만 테스트 하네스 차이)
+  - `pull`: pty에서 선택 UI 조작(이동·토글·필터·확정) 후 파일 수신 확인
+- APK 파서: 실제 APK 6개 + 테스트 APK 2개에서 패키지명은 aapt와, 서명 DN·다이제스트는 apksigner와 일치
+- 미검증: Homebrew formula 실제 설치, GitHub Actions 릴리즈 실행, Windows·Linux 실기 실행 (CI 빌드·테스트만)

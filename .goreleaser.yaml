@@ -4,7 +4,6 @@ version: 2
 
 before:
   hooks:
-    - go mod tidy
     - go test ./...
 
 builds:
@@ -38,5 +37,8 @@ changelog:
   disable: true
 
 release:
-  # The release workflow passes notes from CHANGELOG.md and the source archive.
+  # The release workflow passes notes from CHANGELOG.md (--release-notes) and the
+  # source archive used by the Homebrew formula (SOURCE_ARCHIVE).
   mode: replace
+  extra_files:
+    - glob: "{{ .Env.SOURCE_ARCHIVE }}"

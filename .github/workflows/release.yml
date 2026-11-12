@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '릴리즈 버전 (예: 1.0.0, v 접두사 제외)'
+        description: '릴리즈 버전 (예: 2.0.0, v 접두사 제외)'
         required: true
         type: string
 
@@ -21,216 +21,111 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Validate version format
         id: version
         run: |
           VERSION="${{ github.event.inputs.version }}"
-
-          # Remove 'v' prefix if present
           VERSION=${VERSION#v}
-
-          # Validate semantic version format (x.y.z)
           if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "Error: Invalid version format '$VERSION'. Expected format: x.y.z (e.g., 1.0.0)"
+            echo "Error: Invalid version format '$VERSION'. Expected format: x.y.z (e.g., 2.0.0)"
             exit 1
           fi
-
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Validated version: $VERSION"
 
       - name: Verify VERSION file matches input
         run: |
-          FILE_VERSION=$(cat src/VERSION)
+          FILE_VERSION=$(cat VERSION)
           INPUT_VERSION="${{ steps.version.outputs.version }}"
-
           if [ "$FILE_VERSION" != "$INPUT_VERSION" ]; then
             echo "Error: VERSION file ($FILE_VERSION) does not match input version ($INPUT_VERSION)"
-            echo "Please update src/VERSION to $INPUT_VERSION before running this workflow"
+            echo "Please update VERSION to $INPUT_VERSION before running this workflow"
             exit 1
           fi
-
-          echo "Version verified: $INPUT_VERSION"
 
       - name: Check if tag already exists
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-
           if git rev-parse "v$VERSION" >/dev/null 2>&1; then
             echo "Error: Tag v$VERSION already exists"
-            echo "Please use a different version number or delete the existing tag first"
             exit 1
           fi
 
-          echo "Tag v$VERSION does not exist - proceeding with release"
-      
-      - name: Run build
-        run: |
-          chmod +x build.sh
-          ./build.sh
-      
-      - name: Verify build
+      - name: Test and smoke test
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-
-          if [ ! -f "build/ak" ]; then
-            echo "Error: build/ak not found"
-            exit 1
-          fi
-          if [ ! -f "build/completions/_ak" ]; then
-            echo "Error: build/completions/_ak not found"
-            exit 1
-          fi
-
-          # 빌드 산출물 스모크 테스트 (Formula test 블록과 동일한 검증)
-          chmod +x build/ak
-
-          VERSION_OUTPUT=$(./build/ak --version)
-          if ! echo "$VERSION_OUTPUT" | grep -qF "$VERSION"; then
-            echo "Error: 'ak --version' output does not contain version $VERSION"
-            echo "$VERSION_OUTPUT"
-            exit 1
-          fi
-
-          HELP_OUTPUT=$(./build/ak --help)
-          if ! echo "$HELP_OUTPUT" | grep -qF "install"; then
-            echo "Error: 'ak --help' output does not list install command"
-            echo "$HELP_OUTPUT"
-            exit 1
-          fi
-
-          echo "Smoke test passed: version and help output verified"
-      
-      - name: Create source archive
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          tar -czpf /tmp/adb-extensions-v${VERSION}.tar.gz \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='.gitignore' \
-            --exclude='.cursor' \
-            --exclude='*.tar.gz' \
-            .
-
-          mv /tmp/adb-extensions-v${VERSION}.tar.gz .
-      
-      - name: Calculate SHA256
-        id: sha256
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          SHA256=$(shasum -a 256 adb-extensions-v${VERSION}.tar.gz | awk '{print $1}')
-          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
-          echo "SHA256: $SHA256"
+          go vet ./...
+          go test ./...
+          go build -ldflags "-X main.version=${VERSION}" -o "$RUNNER_TEMP/ak" ./cmd/ak
+          "$RUNNER_TEMP/ak" --version | grep -qF "$VERSION" || { echo "Error: --version does not show $VERSION"; exit 1; }
+          "$RUNNER_TEMP/ak" --help | grep -qF "install" || { echo "Error: --help does not list install"; exit 1; }
 
       - name: Extract CHANGELOG for version
-        id: changelog
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-
-          # Extract the changelog section for this version
-          # Format: ## [VERSION] - DATE
-          CHANGELOG_CONTENT=$(awk -v ver="$VERSION" '
-            BEGIN { found=0; content="" }
-            /^## \[/ {
-              if (found) exit
-              if ($0 ~ "\\[" ver "\\]") {
-                found=1
-                next
-              }
-            }
-            found { content = content $0 "\n" }
-            END { print content }
-          ' CHANGELOG.md)
-
-          if [ -z "$CHANGELOG_CONTENT" ]; then
+          awk -v ver="$VERSION" '
+            /^## \[/ { if (found) exit; if ($0 ~ "\\[" ver "\\]") { found=1; next } }
+            found { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if [ -z "$(tr -d '[:space:]' < "$RUNNER_TEMP/notes.md")" ]; then
             echo "Error: No CHANGELOG entry found for version $VERSION"
-            echo "Please add a changelog entry in CHANGELOG.md before releasing"
             exit 1
           fi
+          cat "$RUNNER_TEMP/notes.md"
 
-          # Save to output using heredoc to handle multiline content
-          echo "content<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG_CONTENT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-          echo "Extracted changelog:"
-          echo "$CHANGELOG_CONTENT"
+      - name: Create source archive
+        id: archive
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCHIVE="$RUNNER_TEMP/adb-extensions-v${VERSION}.tar.gz"
+          git archive --format=tar.gz --prefix="adb-extensions-v${VERSION}/" -o "$ARCHIVE" HEAD
+          echo "path=$ARCHIVE" >> $GITHUB_OUTPUT
+          echo "sha256=$(sha256sum "$ARCHIVE" | awk '{print $1}')" >> $GITHUB_OUTPUT
 
       - name: Update Homebrew Formula
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          SHA256="${{ steps.sha256.outputs.sha256 }}"
-
-          # Update Formula file - use release assets URL instead of auto-generated archive
-          sed -i "s|url \".*\"|url \"https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v${VERSION}/adb-extensions-v${VERSION}.tar.gz\"|g" Formula/ak.rb
-          sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|g" Formula/ak.rb
-          sed -i "s|version \".*\"|version \"${VERSION}\"|g" Formula/ak.rb
-
-          echo "Updated Formula/ak.rb:"
+          sed -e "s|__VERSION__|${VERSION}|g" \
+              -e "s|__SHA256__|${{ steps.archive.outputs.sha256 }}|g" \
+              -e "s|__DATE__|$(date +%Y-%m-%d)|g" \
+              .github/formula/ak.rb.tmpl > Formula/ak.rb
           cat Formula/ak.rb
 
-      - name: Commit Formula updates
+      - name: Commit Formula and tag
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          CURRENT_BRANCH="${{ github.ref_name }}"
-          
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
           git add Formula/ak.rb
-
-          # Commit the Formula update
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
+          if ! git diff --cached --quiet; then
             git commit -m "Release: update Homebrew Formula for v${VERSION}"
-            git push origin HEAD:${CURRENT_BRANCH}
-            echo "Formula updated and committed to ${CURRENT_BRANCH} branch"
-            
-            if [ "${CURRENT_BRANCH}" != "main" ]; then
-              echo "::warning::Running on branch '${CURRENT_BRANCH}'. Remember to create a PR to merge into main."
-            fi
+            git push origin "HEAD:${{ github.ref_name }}"
           fi
-
-      - name: Create and push tag
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          # Create annotated tag
           git tag -a "v${VERSION}" -m "Release v${VERSION}"
-
-          # Push tag to remote
           git push origin "v${VERSION}"
 
-          echo "Tag v${VERSION} created and pushed"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+      - name: Release with GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: Release v${{ steps.version.outputs.version }}
-          generate_release_notes: true
-          body: |
-            ## ADB Extensions Kit (ak) v${{ steps.version.outputs.version }}
+          version: "~> v2"
+          args: release --clean --release-notes ${{ runner.temp }}/notes.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_ARCHIVE: ${{ steps.archive.outputs.path }}
 
-            ${{ steps.changelog.outputs.content }}
-
-          files: |
-            adb-extensions-v${{ steps.version.outputs.version }}.tar.gz
-          draft: false
-          prerelease: false
-      
       - name: Build summary
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version:** v${VERSION}" >> $GITHUB_STEP_SUMMARY
-          echo "- **SHA256:** ${{ steps.sha256.outputs.sha256 }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Archive:** adb-extensions-v${VERSION}.tar.gz" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Installation" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "brew tap luminousvault/adb-extensions" >> $GITHUB_STEP_SUMMARY
-          echo "brew install ak" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Release Summary"
+            echo "- **Version:** v${VERSION}"
+            echo "- **Source SHA256:** ${{ steps.archive.outputs.sha256 }}"
+            echo '```bash'
+            echo "brew tap luminousvault/adb-extensions"
+            echo "brew install ak"
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY

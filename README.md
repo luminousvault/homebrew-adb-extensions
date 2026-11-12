@@ -1,7 +1,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/github/v/release/luminousvault/homebrew-adb-extensions?color=blue)](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)
-![Shell Script](https://img.shields.io/badge/shell_script-%23121011.svg?style=flat&logo=gnu-bash&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)
+![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)
 ![Android](https://img.shields.io/badge/Android-3DDC84?logo=android&logoColor=white)
 ![Homebrew](https://img.shields.io/badge/Homebrew-supported-orange.svg?logo=homebrew)
 
@@ -43,10 +43,35 @@ brew install ak
 git clone https://github.com/luminousvault/homebrew-adb-extensions.git
 cd homebrew-adb-extensions
 
-# Build and install
-./build.sh
-sudo ./build.sh --install
+# Build (Go 1.27+)
+go build -o ak ./cmd/ak
+sudo mv ak /usr/local/bin/
+
+# Zsh completion (optional)
+cp completions/_ak "${fpath[1]}/_ak"
 ```
+
+Or with `go install`:
+
+```bash
+go install github.com/luminousvault/homebrew-adb-extensions/cmd/ak@latest
+```
+
+### Prebuilt Binaries
+
+Download the archive for your OS (macOS, Linux, Windows; amd64/arm64) from [GitHub Releases](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest). Each archive includes the `ak` binary and the Zsh completion file.
+
+### Requirements
+
+`adb` is the only dependency. ak looks for it in this order and uses the first one found:
+
+1. `AK_ADB` environment variable
+2. `$ANDROID_HOME/platform-tools`, `$ANDROID_SDK_ROOT/platform-tools`
+3. `PATH` (e.g. `brew install --cask android-platform-tools`)
+4. Android Studio's default SDK (`~/Library/Android/sdk`, `~/Android/Sdk`, `%LOCALAPPDATA%\Android\Sdk`)
+5. `~/.ak/platform-tools`
+
+Run `ak doctor` to see which adb is used. Running two adb versions side by side (for example ak and Android Studio) restarts the adb server and drops device connections; `ak doctor` warns about this.
 
 ## Quick Start
 
@@ -124,6 +149,7 @@ ak <command> [options] [arguments...]
 - `devices` - List connected devices (brand, model, ID, Android version, CPU ABI with 32/64-bit support)
 - `mac [options]` - Show current Wi-Fi MAC (with randomized detection and SSID), factory Wi-Fi MAC, and Bluetooth MAC
   - `-m` all connected devices
+- `doctor` - Show which adb binary is used and warn about adb version conflicts
 
 ### Interactive UI Features
 
@@ -371,17 +397,16 @@ Quick start for contributors:
 git clone https://github.com/YOUR_USERNAME/homebrew-adb-extensions.git
 cd homebrew-adb-extensions
 
-# Test changes directly
-./src/ak <command>
+# Run your changes
+go run ./cmd/ak <command>
 
-# Build and test
-./build.sh
-./build/ak <command>
+# Test
+go test ./...
 ```
 
 ## Acknowledgments
 
-- Built with Bash for maximum compatibility
+- Built with Go as a single binary with no runtime dependencies
 - Inspired by the need for efficient Android development workflows
 - Special thanks to the Android development community
 

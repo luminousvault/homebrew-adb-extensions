@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - Unreleased
+
+### Changed
+- Rewritten in Go as a single binary; no Bash, `awk`, `sed`, `tput` or `stty` needed. Commands, options, output and Zsh completion stay the same (see `docs/spec/commands.md` for the few intentional differences)
+- `signature` no longer needs Android SDK build-tools: certificates are read directly from the APK, printed as `Signer #N certificate ...` regardless of apksigner version (apksigner is used only as a fallback)
+- `install` reads the package name for downgrade recovery from the APK itself, so `aapt` is no longer required
+- adb is looked up in `AK_ADB`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `PATH`, the Android Studio default SDK and `~/.ak/platform-tools`, so Android Studio users no longer need adb on `PATH`
+- Prebuilt binaries for macOS, Linux and Windows (amd64/arm64) are attached to each GitHub release; the Homebrew formula builds from source
+
+### Added
+- `doctor` command: shows which adb is used, lists other adb binaries and warns when their versions differ (mixed versions restart the adb server and drop connections)
+
+### Fixed
+- `install -f <filter> <dir>` no longer installs a non-matching APK when the directory contains exactly one APK
+- `activities` no longer mixes in activities of task 12 when showing task 2 (and similar)
+
 ## [1.4.0] - 2026-11-11
 
 ### Added

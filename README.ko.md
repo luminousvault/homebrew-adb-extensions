@@ -1,7 +1,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/github/v/release/luminousvault/homebrew-adb-extensions?color=blue)](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)
-![Shell Script](https://img.shields.io/badge/shell_script-%23121011.svg?style=flat&logo=gnu-bash&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)
+![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)
 ![Android](https://img.shields.io/badge/Android-3DDC84?logo=android&logoColor=white)
 ![Homebrew](https://img.shields.io/badge/Homebrew-supported-orange.svg?logo=homebrew)
 
@@ -43,10 +43,35 @@ brew install ak
 git clone https://github.com/luminousvault/homebrew-adb-extensions.git
 cd homebrew-adb-extensions
 
-# 빌드 및 설치
-./build.sh
-sudo ./build.sh --install
+# 빌드 (Go 1.27+)
+go build -o ak ./cmd/ak
+sudo mv ak /usr/local/bin/
+
+# Zsh 자동 완성 (선택)
+cp completions/_ak "${fpath[1]}/_ak"
 ```
+
+또는 `go install`로 설치:
+
+```bash
+go install github.com/luminousvault/homebrew-adb-extensions/cmd/ak@latest
+```
+
+### 빌드된 바이너리
+
+[GitHub Releases](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest)에서 OS별(macOS, Linux, Windows / amd64·arm64) 압축 파일을 받으세요. `ak` 실행 파일과 Zsh 자동 완성 파일이 들어 있습니다.
+
+### 요구 사항
+
+필요한 것은 `adb` 하나입니다. ak는 다음 순서로 찾아 처음 발견한 것을 씁니다.
+
+1. `AK_ADB` 환경 변수
+2. `$ANDROID_HOME/platform-tools`, `$ANDROID_SDK_ROOT/platform-tools`
+3. `PATH` (예: `brew install --cask android-platform-tools`)
+4. Android Studio 기본 SDK (`~/Library/Android/sdk`, `~/Android/Sdk`, `%LOCALAPPDATA%\Android\Sdk`)
+5. `~/.ak/platform-tools`
+
+어떤 adb를 쓰는지는 `ak doctor`로 확인합니다. 버전이 다른 adb를 함께 쓰면(예: ak와 Android Studio) adb 서버가 서로 재시작되어 디바이스 연결이 끊기는데, `ak doctor`가 이를 경고합니다.
 
 ## 빠른 시작
 
@@ -124,6 +149,7 @@ ak <command> [options] [arguments...]
 - `devices` - 연결된 디바이스 목록 (브랜드, 모델, ID, Android 버전, CPU ABI 및 32/64비트 지원 여부)
 - `mac [options]` - 현재 Wi-Fi MAC(랜덤 여부·SSID 포함), 공장 Wi-Fi MAC, Bluetooth MAC 표시
   - `-m` 연결된 모든 디바이스 표시
+- `doctor` - 사용 중인 adb 경로를 보여 주고 adb 버전 충돌을 경고
 
 ### 인터랙티브 UI 기능
 
@@ -371,17 +397,16 @@ Claude Hwang
 git clone https://github.com/YOUR_USERNAME/homebrew-adb-extensions.git
 cd homebrew-adb-extensions
 
-# 변경사항 직접 테스트
-./src/ak <command>
+# 변경사항 실행
+go run ./cmd/ak <command>
 
-# 빌드 및 테스트
-./build.sh
-./build/ak <command>
+# 테스트
+go test ./...
 ```
 
 ## 감사의 말
 
-- 최대 호환성을 위해 Bash로 제작
+- 런타임 의존성 없는 단일 바이너리를 위해 Go로 제작
 - 효율적인 Android 개발 워크플로우의 필요성에서 영감을 받음
 - Android 개발 커뮤니티에 특별한 감사
 
