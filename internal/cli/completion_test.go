@@ -30,7 +30,7 @@ func loadZsh(t *testing.T) zshSpec {
 	spec := zshSpec{desc: map[string]string{}, flags: map[string][]string{}}
 	current := ""
 	inCases := false
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") { // CRLF on a Windows checkout
 		if strings.Contains(line, "case $words[1] in") {
 			inCases = true
 			continue

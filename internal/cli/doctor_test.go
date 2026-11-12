@@ -10,6 +10,7 @@ import (
 func TestDoctorReport(t *testing.T) {
 	ui.Out = &ui.Stream{}
 	t.Setenv("HOME", "/home/u")
+	t.Setenv("USERPROFILE", "/home/u") // os.UserHomeDir on Windows
 	found := []adbFound{
 		{Path: "/home/u/sdk/platform-tools/adb", Source: "ANDROID_HOME", Version: "37.0.1", Protocol: "1.0.41", InUse: true},
 		{Path: "/usr/local/bin/adb", Source: "PATH", Version: "35.0.0", Protocol: "1.0.41"},
