@@ -14,9 +14,12 @@ import (
 // selectFn is the picker; tests replace it.
 var selectFn = tui.Select
 
+// canPick reports whether the interactive picker can be shown.
+func canPick() bool { return ui.InTTY && ui.Err.TTY }
+
 // pick runs the picker. Without a terminal it fails with a hint.
 func pick(o tui.Options, hint string) (tui.Result, error) {
-	if !ui.InTTY || !ui.Err.TTY {
+	if !canPick() {
 		return tui.Result{Index: -1}, failErr(hint, "%s: interactive selection needs a terminal", o.Prompt)
 	}
 	return selectFn(o)
@@ -116,12 +119,14 @@ func (c *Ctx) Device() (string, error) {
 	case 1:
 		return ready[0], nil
 	}
+	if !canPick() {
+		return "", failErr("Use -s <serial> or set ANDROID_SERIAL", "Multiple devices connected: %s", strings.Join(ready, ", "))
+	}
 	items := make([]string, len(ready))
 	for i, s := range ready {
 		items[i] = deviceLabel(s)
 	}
-	r, err := pick(tui.Options{NoFilter: true, Prompt: "Select a device", Items: items},
-		"Multiple devices connected ("+strings.Join(ready, ", ")+"). Use -s <serial> or set ANDROID_SERIAL")
+	r, err := pick(tui.Options{NoFilter: true, Prompt: "Select a device", Items: items}, "")
 	if err != nil {
 		return "", err
 	}
@@ -152,12 +157,14 @@ func (c *Ctx) Devices() ([]string, error) {
 	case len(ready) == 1 || c.Bool("--all"):
 		return ready, nil
 	}
+	if !canPick() {
+		return nil, failErr("Use -s <serial>, --all, or set ANDROID_SERIAL", "Multiple devices connected: %s", strings.Join(ready, ", "))
+	}
 	items := make([]string, len(ready))
 	for i, s := range ready {
 		items[i] = deviceLabel(s)
 	}
-	r, err := pick(tui.Options{Multi: true, NoFilter: true, Prompt: "Select devices", Items: items},
-		"Multiple devices connected ("+strings.Join(ready, ", ")+"). Use -s <serial>, --all, or ANDROID_SERIAL")
+	r, err := pick(tui.Options{Multi: true, NoFilter: true, Prompt: "Select devices", Items: items}, "")
 	if err != nil {
 		return nil, err
 	}

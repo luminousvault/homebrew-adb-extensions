@@ -148,8 +148,8 @@ func TestAndroidSerialEnv(t *testing.T) {
 
 func TestMultipleDevicesWithoutTerminal(t *testing.T) {
 	r := ak(t, twoDevices(), "info")
-	want := "Error: Select a device: interactive selection needs a terminal\n" +
-		"Hint: Multiple devices connected (TESTSERIAL01, SECOND). Use -s <serial> or set ANDROID_SERIAL\n"
+	want := "Error: Multiple devices connected: TESTSERIAL01, SECOND\n" +
+		"Hint: Use -s <serial> or set ANDROID_SERIAL\n"
 	if r.code != 1 || r.err != want || r.out != "" {
 		t.Errorf("code %d stderr %q", r.code, r.err)
 	}
