@@ -18,7 +18,7 @@ import (
 var cmdInstall = &Command{
 	Name: "install", Summary: "Install APK files", Args: "[apk|directory...]",
 	Long: "Install APK files on one or more devices.\n" +
-		"Without arguments, pick APKs from the current directory (newest first).\n" +
+		"APK files given by name are installed; with a directory or no argument, pick APKs (newest first).\n" +
 		"Common failures are handled automatically: test-only APKs are retried with -t, downgrades\n" +
 		"with -d, and when that is not allowed or the signature differs, ak offers to uninstall first.\n" +
 		"If '<file>.apk.idsig' exists, --no-incremental is added.",
@@ -121,9 +121,12 @@ func displayDir(dir string) string {
 const hintChooseAPK = "Pass APK files, or use -l (newest) or -a (all)"
 
 // pickAPKs asks which APKs to install (or uses the only one).
-func pickAPKs(list, sources, location []string, prompt string) ([]string, error) {
+// scanned says the list came from a directory, so a single result is announced.
+func pickAPKs(list, sources, location []string, prompt string, scanned bool) ([]string, error) {
 	if len(list) == 1 {
-		ui.Step("Using %s %s", filepath.Base(list[0]), ui.Err.Dim("(the only APK found)"))
+		if scanned {
+			ui.Step("Using %s %s", filepath.Base(list[0]), ui.Err.Dim("(the only APK found)"))
+		}
 		return list, nil
 	}
 	distinct := map[string]bool{}
@@ -159,7 +162,7 @@ func apksInCurrentDir(filter string) ([]string, error) {
 			return nil, failErr("", "No APK files match all of: %s", filter)
 		}
 	}
-	return pickAPKs(list, nil, []string{displayDir(".")}, "Select APK files to install")
+	return pickAPKs(list, nil, []string{displayDir(".")}, "Select APK files to install", true)
 }
 
 // apksFromArgs resolves APK file and directory arguments.
@@ -202,11 +205,15 @@ func apksFromArgs(args []string, filter string) ([]string, error) {
 			return nil, failErr("", "No APK files match all of: %s", filter)
 		}
 	}
+	// APK files given by name are all installed; directories (or -f) mean "let me pick".
+	if len(dirs) == 0 && filter == "" {
+		return list, nil
+	}
 	var location []string
 	for _, d := range dirs {
 		location = append(location, displayDir(d))
 	}
-	return pickAPKs(list, sources, location, "Select APK files to install")
+	return pickAPKs(list, sources, location, "Select APK files to install", true)
 }
 
 func selectInstallAPKs(o installOptions) ([]string, error) {
@@ -410,21 +417,4 @@ func uninstallThenInstall(r reporter, serial, pkg string, opts []string, apkFile
 	}
 	r.progress("Reinstalling %s on %s", filepath.Base(apkFile), deviceName(serial))
 	return finish(adbInstall(serial, opts, apkFile))
-}
-
-// installParallel is replaced by the status-board implementation (parallel.go).
-var installParallel = func(devices, files []string, opts []string) error {
-	ok := true
-	r := &directReporter{}
-	for _, d := range devices {
-		for _, f := range files {
-			if !installOne(r, d, opts, f) {
-				ok = false
-			}
-		}
-	}
-	if !ok {
-		return errReported
-	}
-	return nil
 }

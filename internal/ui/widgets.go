@@ -183,3 +183,40 @@ func JSON(v any) error {
 	enc.SetEscapeHTML(false)
 	return enc.Encode(v)
 }
+
+// Choose asks a question answered by one key. choices are lowercase keys; the
+// first is the default for Enter and is shown uppercase, e.g. "[Y/n/a]".
+// It returns the chosen key. With -y it returns the first choice.
+func Choose(question string, choices ...string) (string, error) {
+	if AssumeYes {
+		return choices[0], nil
+	}
+	if !InTTY {
+		return "", ErrNoInput
+	}
+	shown := make([]string, len(choices))
+	for i, c := range choices {
+		shown[i] = c
+		if i == 0 {
+			shown[i] = strings.ToUpper(c)
+		}
+	}
+	for {
+		Err.Printf("%s [%s] ", question, strings.Join(shown, "/"))
+		k, err := ReadKey()
+		if err != nil {
+			Err.Println("")
+			return "", err
+		}
+		Err.Println(k)
+		k = strings.ToLower(k)
+		if k == "" {
+			return choices[0], nil
+		}
+		for _, c := range choices {
+			if k == c {
+				return c, nil
+			}
+		}
+	}
+}

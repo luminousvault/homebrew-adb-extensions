@@ -361,7 +361,7 @@ func TestInstallRecovery(t *testing.T) {
 	})
 	r := ak(t, f, "install", apkFile)
 	// Without a terminal each attempt prints its start line instead of a spinner.
-	if r.code != 0 || !strings.Contains(r.err, "==> Using app.apk (the only APK found)\n==> Installing app.apk on Google Pixel 9 Pro\n"+
+	if r.code != 0 || !strings.Contains(r.err, "==> Installing app.apk on Google Pixel 9 Pro\n"+
 		"Warning: app.apk is a test-only APK, retrying with -t\n==> Installing app.apk on Google Pixel 9 Pro\n✓ Installed app.apk on Google Pixel 9 Pro (") {
 		t.Errorf("test-only: %d\n%s", r.code, r.err)
 	}
@@ -519,5 +519,15 @@ func TestListAPKsOrder(t *testing.T) {
 	}
 	if got := names(listAPKs(dir, sortByName)); got != "a.apk,b.apk,c.apk" {
 		t.Errorf("name: %s", got)
+	}
+}
+
+func TestInstallExplicitFilesSkipPicker(t *testing.T) {
+	dir := t.TempDir()
+	a := writeAPK(t, dir, "a.apk", 0)
+	b := writeAPK(t, dir, "b.apk", 0)
+	got, err := apksFromArgs([]string{a, b}, "")
+	if err != nil || len(got) != 2 {
+		t.Errorf("explicit files should all be installed without asking: %v %v", got, err)
 	}
 }

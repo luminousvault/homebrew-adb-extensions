@@ -89,34 +89,26 @@ func (s *Stream) Println(line string) { fmt.Fprintln(s.W, line) }
 // ── Messages (stderr) ────────────────────────────────
 
 // Step prints a section header: "==> text".
-func Step(format string, args ...any) {
-	Err.Println(Err.Paint(blue+bold, "==>") + " " + Err.Bold(fmt.Sprintf(format, args...)))
-}
+func Step(format string, args ...any) { Err.Println(Line(KindStep, fmt.Sprintf(format, args...))) }
 
 // Success prints "✓ text".
-func Success(format string, args ...any) {
-	Err.Println(Err.Green("✓") + " " + fmt.Sprintf(format, args...))
-}
+func Success(format string, args ...any) { Err.Println(Line(KindSuccess, fmt.Sprintf(format, args...))) }
 
 // Info prints an indented line.
 func Info(format string, args ...any) { Err.Println("  " + fmt.Sprintf(format, args...)) }
 
-// Detail prints an indented, dimmed line (raw tool output, paths, timings).
+// Detail prints indented, dimmed lines (raw tool output, paths, timings).
 func Detail(format string, args ...any) {
 	for _, l := range strings.Split(strings.TrimRight(fmt.Sprintf(format, args...), "\n"), "\n") {
-		Err.Println(Err.Dim("  " + l))
+		Err.Println(Line(KindDetail, l))
 	}
 }
 
 // Warn prints "Warning: text".
-func Warn(format string, args ...any) {
-	Err.Println(Err.Yellow("Warning:") + " " + fmt.Sprintf(format, args...))
-}
+func Warn(format string, args ...any) { Err.Println(Line(KindWarn, fmt.Sprintf(format, args...))) }
 
 // Errorf prints "Error: text".
-func Errorf(format string, args ...any) {
-	Err.Println(Err.Red("Error:") + " " + fmt.Sprintf(format, args...))
-}
+func Errorf(format string, args ...any) { Err.Println(Line(KindError, fmt.Sprintf(format, args...))) }
 
 // Hint prints "Hint: text".
 func Hint(format string, args ...any) {
