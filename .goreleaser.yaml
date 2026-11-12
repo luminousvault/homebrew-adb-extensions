@@ -1,0 +1,45 @@
+# GoReleaser config: prebuilt binaries attached to the GitHub release.
+# Formula/ak.rb downloads these archives (rendered from .github/formula/ak.rb.tmpl
+# with dist/checksums.txt by the release workflow).
+version: 2
+
+before:
+  hooks:
+    - go test ./...
+
+builds:
+  - id: ak
+    main: ./cmd/ak
+    binary: ak
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Version }} -X main.date={{ time "2006-01-02" }}
+
+archives:
+  - id: ak
+    name_template: "ak_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - completions/_ak
+      - LICENSE.md
+      - README.md
+      - README.ko.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  disable: true
+
+release:
+  # The release workflow passes notes from CHANGELOG.md (--release-notes) and a
+  # source archive for building from source (SOURCE_ARCHIVE).
+  mode: replace
+  extra_files:
+    - glob: "{{ .Env.SOURCE_ARCHIVE }}"

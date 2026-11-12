@@ -1,0 +1,3 @@
+# Keep LF everywhere, also in Windows checkouts: the zsh completion and shell
+# scripts must stay LF, and tests read completions/_ak.
+* text=auto eol=lf

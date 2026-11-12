@@ -80,3 +80,6 @@ yarn-error.log*
 .env.production 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Go
+/ak

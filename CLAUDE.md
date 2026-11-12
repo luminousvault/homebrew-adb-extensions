@@ -13,266 +13,176 @@
 **목적:** Android Debug Bridge (ADB) 작업을 단순화하는 통합 CLI 도구. APK 관리, 디바이스 제어, 앱 정보 조회 등을 하나의 진입점(`ak`)으로 제공합니다.
 
 **주요 기술:**
-* **Bash Scripting:** 전체가 Bash로 구현되어 macOS, Linux, WSL 등 Unix 계열 환경에서 동작합니다.
-* **ADB:** 디바이스 통신·제어의 핵심 의존성입니다.
+* **Go:** 단일 바이너리 (v2.0.0부터. v1.x는 Bash). 외부 의존 라이브러리는 `golang.org/x/term`, `avast/apkparser`, `avast/apkverifier`뿐입니다.
+* **ADB:** 디바이스 통신·제어의 유일한 외부 실행 파일 의존성입니다.
 
 **주요 기능:**
 * **통합 CLI:** 모든 ADB 관련 작업을 `ak <command>` 하나로 실행
-* **멀티 디바이스:** 여러 디바이스에 동시 설치·명령 실행 (`-m` 옵션 등)
-* **인터랙티브 UI:** APK·디바이스 선택용 터미널 UI (키보드 탐색, 필터링)
-* **포그라운드 앱 자동 감지:** 패키지명 미지정 시 현재 화면 앱을 자동으로 감지 (`info`, `pull`, `kill` 등)
-* **자동 복구:** `install` 시 서명 충돌, 버전 다운그레이드 등 일반적인 설치 실패를 자동 처리
+* **멀티 디바이스:** 여러 디바이스에 동시 설치·명령 실행 (`-a/--all` 옵션 등)
+* **인터랙티브 UI:** APK·디바이스 선택용 터미널 UI (키보드 탐색, 필터링, 정렬)
+* **포그라운드 앱 자동 감지:** 패키지명 미지정 시 현재 화면 앱을 자동으로 감지 (`info`, `kill` 등)
+* **자동 복구:** `install` 시 testOnly, 버전 다운그레이드, 서명 충돌을 자동 처리
+* **adb 자동 탐색 + `doctor`:** 여러 설치 경로에서 adb를 찾고 버전 충돌을 경고
 * **Zsh 탭 완성:** 커맨드·옵션 자동 완성
-* **구조화된 출력:** 색상·표 형식으로 정보 표시
+* **정형화된 출력:** stdout은 결과, stderr은 메시지. `==>`/`✓`/`Warning:`/`Error:`/`Hint:` 다섯 가지 메시지, `--json`, 종료 코드 0/1/2/130 ([docs/design/cli-output.md](docs/design/cli-output.md))
+* **디바이스 지정:** `-s/--serial`, `ANDROID_SERIAL`, `-a/--all`. 터미널이 아니면 선택 UI 대신 `-s`를 요구
+* **여러 디바이스 동시 설치:** 상태판 + 확인 질문 모아서 묻기 ([docs/spec/parallel-install.md](docs/spec/parallel-install.md))
 
-**지원 플랫폼:** macOS, Linux, WSL
+**지원 플랫폼:** macOS, Linux, Windows
 
 ## 아키텍처
 
-모듈화된 Bash 스크립트(`.sh`)를 빌드 시 단일 실행 파일(`build/ak`)로 병합하는 구조입니다.
-
-### 개발 모드 vs 빌드 모드
-
-| 구분 | 실행 방법 | 라이브러리 로드 | 커맨드 로드 |
-|------|-----------|----------------|-------------|
-| 개발 모드 | `./src/ak` | `bootstrap.sh`가 `src/lib/`에서 `source` | `load_command`로 동적 로드 |
-| 빌드 모드 | `./build/ak` 또는 `ak` | 모든 모듈이 단일 파일에 인라인 병합 | `cmd_*` 함수가 이미 병합됨 |
-
-**실행 흐름:**
-
 ```
-src/ak (또는 build/ak)
-  → bootstrap.sh (개발 모드만, 빌드 시 제거)
-  → common.sh, filter.sh, ui.sh, device.sh
-  → main() case 분기
-  → load_command (개발 모드만)
-  → cmd_<command> 실행
+cmd/ak/main.go
+  → enableVT() (Windows 콘솔 ANSI 활성화), debuglog.Init()
+  → cli.Main(args)
+      → --no-color 제거, ui.Setup() (터미널·색상 판단)
+      → 글로벌 옵션(-v, -h) 처리
+      → Commands 테이블에서 커맨드 찾기 → parse() (옵션 위치 무관, --opt=value, --)
+      → ensureADB() (doctor 제외) → adb.Default = adb.Exec{Path}
+      → Command.Run(*Ctx) error → report(err)가 메시지·종료 코드 결정
 ```
 
-`bootstrap.sh`는 개발 모드에서 `src/lib/`를 찾아 필수 라이브러리를 로드하고, `load_command`로 `commands/<name>.sh`를 동적으로 `source`합니다. `#@@BUILD_EXCLUDE` 블록 안의 코드(`bootstrap.sh` 호출, `load_command` 등)는 빌드 결과물에서 제거됩니다.
-
-**커맨드 라우팅** (`src/ak`):
-
-- `case` 문에 커맨드명을 **수동 등록**해야 합니다 (`install|pull|info|...`)
-- 실행 시 `cmd_${command}` 함수를 호출합니다 (예: `cmd_install`)
-- 신규 커맨드 추가 시 `src/ak`의 `case`와 `show_help`도 함께 수정해야 합니다 (파일 병합만으로는 라우팅이 추가되지 않음)
+* **커맨드 정의:** `Command{Name, Summary, Args, Long, ArgHelp, Flags, Examples, Device, JSON, Run}`. 도움말 생성, 옵션 파싱, completion 검증이 모두 이 정의를 씁니다. `Device`(oneDevice/manyDevices)와 `JSON`을 켜면 `-s`, `-a/--all`, `--json`이 자동으로 붙습니다. `Hidden: true`면 전체 도움말과 zsh completion에서 빠집니다(개인용 `verifier`).
+* **오류와 종료 코드:** 커맨드는 `error`를 반환합니다. `usageErr`(2), `failErr(hint, …)`(1), `errReported`(이미 출력한 실패, 1), `ui.ErrInterrupted`/`tui.ErrInterrupted`(130). `os.Exit`를 직접 쓰지 않습니다.
+* **출력:** 반드시 `internal/ui`를 통합니다. 결과 데이터는 `ui.Out`(stdout, `ui.Table`, `ui.KeyValues`, `ui.JSON`), 메시지는 `ui.Step/Success/Warn/Errorf/Hint/Detail`(stderr). 색은 `ui.Out.Green(...)`처럼 스트림 메서드로만 칠합니다(색 끔이면 자동으로 빠짐).
+* **adb 호출:** `internal/adb`의 `Out`, `Combined`, `Shell`, `Default.Passthrough`를 통해서만 호출합니다. 테스트는 `adbtest.Fake`를 `adb.Default`에 넣습니다(동시 호출 안전, `Delay`로 느린 명령 흉내).
 
 ## 디렉터리 구조
 
 ```
 adb-extensions/
-├── src/                          # 소스 코드 (모듈화)
-│   ├── ak                        # 메인 진입점 (라우터)
-│   ├── bootstrap.sh              # 라이브러리 로더 (개발 모드 전용)
-│   ├── VERSION                   # 버전 파일 (현재 단일 소스)
-│   ├── completions/
-│   │   └── _ak                   # Zsh completion 원본
-│   └── lib/
-│       ├── common.sh             # 공통 유틸, 색상, 디버그, SDK 도구 탐색
-│       ├── filter.sh             # 인터랙티브 UI 필터·하이라이트
-│       ├── ui.sh                 # 터미널 인터랙티브 UI
-│       ├── device.sh             # 디바이스 감지·선택
-│       └── commands/             # 커맨드별 모듈
-│           ├── activities.sh
-│           ├── clear.sh
-│           ├── devices.sh
-│           ├── extract.sh
-│           ├── info.sh
-│           ├── install.sh
-│           ├── kill.sh
-│           ├── launch.sh
-│           ├── mac.sh
-│           ├── permissions.sh
-│           ├── pull.sh
-│           ├── signature.sh
-│           └── uninstall.sh
-├── build/                        # 빌드 산출물 (gitignore)
-│   ├── ak                        # 병합된 단일 스크립트
-│   ├── completions/_ak           # 생성된 Zsh completion
-│   └── debug.log                 # AK_DEBUG=1 시 로그
-├── Formula/
-│   └── ak.rb                     # Homebrew formula
-├── .github/workflows/
-│   └── release.yml               # 수동 workflow_dispatch 릴리즈
-├── build.sh                      # 빌드·설치·제거 스크립트
-├── CONTRIBUTING.md               # 상세 기여 가이드
-├── README.md / README.ko.md      # 사용자 문서
-├── CHANGELOG.md                  # 변경 이력
-└── LICENSE.md                    # MIT 라이선스
+├── cmd/ak/                     # 진입점 (ldflags로 version, date 주입)
+├── internal/
+│   ├── cli/                    # 커맨드 구현
+│   │   ├── cli.go              # 커맨드 정의·파서·도움말·버전·오류/종료 코드
+│   │   ├── device.go           # Ctx.Device()/Devices(): -s, ANDROID_SERIAL, --all, 선택 UI; deviceName
+│   │   ├── pkg.go              # 포그라운드 앱, 패키지 검증(resolvePackage), APK 목록 등 공통 헬퍼
+│   │   ├── apps.go             # info, permissions, launch, kill, clear, uninstall, extract
+│   │   ├── install.go          # install + 자동 복구 (reporter 인터페이스로 출력)
+│   │   ├── parallel.go         # 여러 디바이스 동시 설치 (상태판, 확인 질문 큐)
+│   │   ├── activities.go, devices.go, mac.go, pull.go, signature.go, doctor.go
+│   │   ├── screenshot.go, record.go, logcat.go, restart.go, wifi.go  # adb 여러 단계를 묶은 커맨드
+│   │   ├── cli_test.go, parallel_test.go  # 가짜 adb로 커맨드 흐름 테스트
+│   │   └── completion_test.go  # completions/_ak ↔ 커맨드 정의 일치 검사
+│   ├── ui/                     # 출력 규칙 구현: 스트림·색상 판단, 메시지, 표, JSON, 확인 질문, 스피너, 상태판, Fit
+│   ├── adb/                    # adb 실행·탐색(locate.go)·SDK build-tools 탐색(sdk.go)·파싱
+│   │   └── adbtest/            # 가짜 adb Runner
+│   ├── tui/                    # 인터랙티브 선택 UI (state.go 로직, render.go 화면, keys.go 키 파싱, term.go 터미널)
+│   ├── apk/                    # APK 패키지명·서명 인증서 (aapt/apksigner 대체), testdata/aktest.apk
+│   ├── style/                  # 선택 UI(tui) 내부 색상 상수
+│   └── debuglog/               # AK_DEBUG=1 로그
+├── completions/_ak             # Zsh completion (수동 관리, 테스트로 동기화 검증)
+├── docs/
+│   ├── go-migration-plan.md    # Go 전환 계획
+│   ├── design/cli-output.md    # CLI 출력 설계 가이드 (출력·오류·종료 코드·옵션 규칙)
+│   ├── spec/commands.md        # v1.4.0(Bash) 동작 기록
+│   └── spec/parallel-install.md # 동시 설치 설계
+├── Formula/ak.rb               # Homebrew formula (릴리즈 워크플로가 생성, 직접 수정 금지)
+├── .github/formula/ak.rb.tmpl  # Formula 템플릿 (소스 빌드)
+├── .github/workflows/          # ci.yml (vet/test/lint/snapshot), release.yml (수동 릴리즈)
+├── .goreleaser.yaml            # 멀티 플랫폼 바이너리
+├── Makefile                    # 로컬 빌드·설치 (make install / uninstall)
+├── .golangci.yml
+├── VERSION                     # 버전 단일 소스 (릴리즈 워크플로가 이 값을 씀)
+├── CHANGELOG.md, README.md, README.ko.md, CONTRIBUTING.md
 ```
 
-## 빌드·설치·실행
-
-### 빌드
+## 빌드·실행·테스트
 
 ```bash
-./build.sh
+go run ./cmd/ak <command>             # 바로 실행
+go build -o ak ./cmd/ak               # 빌드
+make install                          # build/ak + completions/_ak를 /usr/local에 설치 (make uninstall로 제거)
+go test ./...                         # 단위 테스트
+go vet ./... && golangci-lint run     # 정적 검사 (CI와 동일)
+goreleaser build --snapshot --clean   # 멀티 플랫폼 빌드 확인
 ```
 
-수행 내용:
-1. `src/lib/` 및 `src/lib/commands/`의 Bash 스크립트를 `build/ak`로 병합
-2. 커맨드 소스의 `AK_COMPLETION*` 블록에서 Zsh completion 생성 (`build/completions/_ak`)
-3. 기본 구문·버전 검사
-
-### 빌드 스크립트 옵션
-
-| 명령 | 설명 |
-|------|------|
-| `./build.sh` | 빌드 |
-| `sudo ./build.sh --install` | `/usr/local/bin/ak` 및 completion 설치 |
-| `sudo ./build.sh --uninstall` | 로컬 설치 제거 |
-| `./build.sh --clean` | `build/` 디렉터리 정리 |
-| `./build.sh --help` | 도움말 표시 |
-
-### 설치
-
-**Homebrew (권장):**
-```bash
-brew tap luminousvault/adb-extensions
-brew install ak
-```
-
-**소스 빌드 후 설치:**
-```bash
-./build.sh
-sudo ./build.sh --install
-```
-
-### 실행 예시
-
-```bash
-ak install app.apk
-ak info com.example.app          # 패키지 생략 시 포그라운드 앱 자동 감지
-ak launch com.example.app
-ak devices
-```
-
-## 개발 워크플로
-
-```bash
-# 1. 기능 브랜치 생성
-git checkout -b feature/your-feature
-
-# 2. 소스 수정 후 즉시 테스트 (빌드 불필요)
-./src/ak <command>
-
-# 3. 병합 결과 검증
-./build.sh
-./build/ak <command>
-
-# 4. (선택) 시스템 전역 테스트
-sudo ./build.sh --install
-ak <command>
-
-# 5. 커밋 및 PR
-```
-
-**자동화 테스트는 없습니다.** 변경 후 반드시 `./src/ak` → `./build.sh` → `./build/ak` 순으로 수동 검증하고, 가능하면 0/1/다중 디바이스 환경에서 확인합니다.
+**실기기 확인:** 테스트는 가짜 adb로 돌기 때문에 디바이스 출력 형식 변화는 잡지 못합니다. 동작을 바꿨다면 0/1/다중 디바이스 환경에서 직접 실행해 확인합니다. 인터랙티브 UI는 실제 터미널(또는 `script`로 만든 pty)에서 확인합니다.
 
 ## 신규 커맨드 추가 체크리스트
 
-1. `src/lib/commands/<name>.sh` 생성
-   - `cmd_<name>()` — 커맨드 본체
-   - `show_help_<name>()` — 도움말
-   - `AK_COMPLETION_DESC` / `AK_COMPLETION` 블록 — Zsh completion
-2. `src/ak` 수정
-   - `case` 문에 커맨드명 추가
-   - `show_help()`에 커맨드 설명 추가
-3. `README.md`, `README.ko.md`에 사용법 문서화
-4. `./src/ak <name>` → `./build.sh` → `./build/ak <name>` 검증
+1. `internal/cli/<name>.go`에 `var cmd<Name> = &Command{...}` 작성
+   - `Summary`(전체 도움말·completion 설명), `Args`, `Long`, `ArgHelp`, `Flags`, `Examples`, `Device`, `JSON`, `Run func(*Ctx) error`
+   - 도움말은 정의에서 자동 생성됩니다. 디바이스는 `c.Device()`/`c.Devices()`, 옵션은 `c.Bool/String/Strings`, 인자 개수는 `tooMany(c, n)`
+2. `internal/cli/cli.go`의 `Commands`에 추가
+3. `completions/_ak`에 커맨드와 옵션 추가 (`TestCompletionMatchesCommands`가 불일치를 잡음)
+4. `cli_test.go`에 가짜 adb 기반 테스트 추가
+5. `README.md`, `README.ko.md`, `CHANGELOG.md` 갱신
 
-커맨드 템플릿·상세 절차는 [CONTRIBUTING.md](CONTRIBUTING.md)의 "Adding a New Command" 섹션을 참고합니다.
+## 코드 스타일 (Go)
 
-## 코드 스타일 (Bash)
+* `gofmt`, `go vet`, `golangci-lint` 통과 필수
+* 옵션 이름은 [docs/design/cli-output.md](docs/design/cli-output.md) §5.7 규칙을 따릅니다: 짧은 이름 = 긴 이름 첫 글자, `-s`·`-a`·`-y`·`-h`는 전 커맨드 공통 의미로 예약, 커맨드 항목 전부는 `-e, --every-…`
+* 출력은 [docs/design/cli-output.md](docs/design/cli-output.md)를 따릅니다: 결과는 stdout, 메시지는 stderr, 메시지 기호 다섯 가지, 실패하면 0이 아닌 종료 코드, 고칠 방법을 알면 `Hint`
+* 터미널이 아닐 때(파이프·CI)도 동작해야 합니다: 선택 UI와 확인 질문은 `-s`, `-y`, 인자로 대신할 수 있어야 합니다
+* adb 출력 파싱은 순수 함수(`parse...`)로 분리해 테스트합니다
+* 테스트 fixture에 실제 시리얼·MAC·SSID 등 기기 식별 정보를 넣지 않습니다 (공개 저장소)
 
-* **들여쓰기:** 4 spaces (탭 사용 금지)
-* **함수명:** `snake_case`
-  - 커맨드: `cmd_<name>()`
-  - 도움말: `show_help_<name>()`
-  - 유틸리티: 설명적 이름 (예: `detect_foreground_package`)
-* **전역 상수:** `UPPER_CASE` (예: `RED`, `VERSION`)
-* **지역 변수:** `local` 사용
-* **따옴표:** 변수는 항상 `"$variable"`로 감싸기
-* **조건문:** `[ ]` 대신 `[[ ]]` 선호
-* **Bash 3.2 호환:** macOS 기본 Bash를 고려하여 연관 배열 등 Bash 4+ 전용 기능은 지양 (필요 시 배열 순회 등으로 대체)
+### 메시지 (`internal/ui`, stderr)
 
-### 색상 변수 (`common.sh`)
-
-| 변수 | 용도 |
+| 함수 | 출력 |
 |------|------|
-| `CYAN` | 정보·Usage 표시 |
-| `GREEN` | 성공 메시지 |
-| `YELLOW` | 경고 |
-| `RED` | 오류 텍스트 |
-| `ERROR` | `"${RED}==>${NC} ${BOLD}Error:${NC}"` 형식의 오류 접두사 |
-| `BOLD`, `DIM`, `NC` | 스타일·리셋 |
+| `ui.Step` | `==> 내용` (단계) |
+| `ui.Success` | `✓ 내용` |
+| `ui.Warn` | `Warning: 내용` |
+| `ui.Errorf` | `Error: 내용` (보통은 `failErr`를 반환해 `report`가 출력) |
+| `ui.Hint` | `Hint: 내용` |
+| `ui.Detail` | 흐린 들여쓰기 (adb 원본 출력 등) |
+| `ui.Spin` | 터미널이면 스피너, 아니면 `==>` 한 줄 |
+| `ui.Confirm` / `ui.Choose` | `[Y/n]` / `[Y/n/a]` 한 글자 질문 (`-y`면 묻지 않음, 터미널 아니면 `ErrNoInput`) |
 
-### 빌드 시스템 마커
+## 핵심 함수·타입 레퍼런스
 
-| 마커 | 용도 |
-|------|------|
-| `#@@HEADER_START` / `#@@HEADER_END` | `src/ak` 헤더 메타데이터 추출 |
-| `#@@BUILD_EXCLUDE_START` / `#@@BUILD_EXCLUDE_END` | 빌드 결과물에서 제외할 개발 전용 코드 |
-| `: <<'AK_COMPLETION_DESC'` / `AK_COMPLETION_DESC` | Zsh completion 커맨드 설명 |
-| `: <<'AK_COMPLETION'` / `AK_COMPLETION` | Zsh completion 핸들러 코드 |
+### `internal/adb`
+* `Candidates()`, `Locate()` — adb 탐색 순서: `AK_ADB` → `ANDROID_HOME` → `ANDROID_SDK_ROOT` → `PATH` → Android Studio 기본 SDK → `~/.ak/platform-tools`
+* `VersionInfo(path)` — 프로토콜·빌드 버전
+* `FindBuildTool(name)` — SDK build-tools 최신 버전에서 도구 탐색 (apksigner 폴백용)
+* `ListDevices()`, `ReadySerials()`, `ParseGetprop()`
+* `Start(args)` — 오래 도는 명령(logcat, screenrecord). 별도 프로세스 그룹이라 터미널 Ctrl+C를 받지 않으므로 호출자가 직접 멈춘다
+* `Output(args)` — 바이너리 stdout (screencap)
 
-## 핵심 함수·변수 레퍼런스
+### `internal/cli`
+* `Ctx.Device()` / `Ctx.Devices()` — 대상 디바이스 결정 (-s, ANDROID_SERIAL, --all, 1대, 선택 UI 또는 오류)
+* `deviceName(serial)` — "Google Pixel 9 Pro" (getprop 캐시)
+* `foregroundPackage(serial)`, `requirePackage(serial, pkg)`, `resolvePackage(serial, args)`
+* `apkPathForPackage(serial, pkg)` — base.apk 우선
+* `listAPKs(dir, sortByName|sortNewest)`
+* `pick(tui.Options, hint)` — 선택 UI, 터미널이 아니면 hint와 함께 실패
 
-### `common.sh`
+### `internal/tui`
+* `Select(Options) (Result, error)` — `Multi`, `NoFilter`, `Prompt`, `Location`, `Items`(탭 뒤는 흐린 접미사)
+* `Result.Index`(단일) / `Result.Indices`(다중, 선택 순서) — 원본 `Items` 인덱스
 
-* `show_version` — 버전·의존성 배너 출력
-* `debug_log`, `debug_init` — 디버그 로깅 (`AK_DEBUG=1` 시)
-* `check_adb_available` — ADB 설치 확인
-* `detect_android_home`, `find_android_tool` — Android SDK 및 `aapt`, `apksigner` 탐색
-* `get_apk_list` — 디렉터리에서 APK 목록 조회·정렬
-* `detect_foreground_package` — 현재 포그라운드 앱 패키지명 감지 (다수 커맨드에서 사용)
+### `internal/apk`
+* `PackageName(path)`, `Signers(path)` (DN·SHA-256·SHA-1·MD5, apksigner와 같은 값), `HasSourceStamp(path)`
 
-### `device.sh`
-
-* `pretty_device` — 디바이스 정보 포맷팅
-* `find_and_select_device`, `G_SELECTED_DEVICE` — 단일 디바이스 선택
-* `find_and_select_devices_multi`, `selected_device[]` — 다중 디바이스 선택
-* `find_and_list_devices` — 연결된 디바이스 목록·상태 표시
-
-### `filter.sh`
-
-* `matches_sequential` — 인터랙티브 UI용 순차 문자 매칭 필터 (Bash 3.2 호환)
-* `compute_highlight` — fzf 스타일 필터 하이라이트 계산
-
-### `ui.sh`
-
-* `select_interactive` — 터미널 선택 UI (단일/다중, 필터, 정렬, 키보드 탐색)
-* `SELECTED_ITEM`, `SELECTED_INDEX` — 단일 선택 결과
-* `SELECTED_ITEMS[]`, `SELECTED_INDICES[]` — 다중 선택 결과
-
-### `install.sh` (자동 복구)
-
-설치 실패 시 `resolve_downgrade`, 서명 충돌 시 기존 앱 제거 후 재설치 등 자동 복구 로직이 구현되어 있습니다. `install` 관련 수정 시 이 파일을 우선 참고합니다.
+### `install` 자동 복구
+`installOne(reporter, …)` → `INSTALL_FAILED_TEST_ONLY`면 `-t` 재시도, `INSTALL_FAILED_VERSION_DOWNGRADE`면 `-d` 재시도 후 확인을 받아 제거·재설치, `INSTALL_FAILED_UPDATE_INCOMPATIBLE`면 확인 후 제거·재설치. 출력은 `reporter`로만 합니다: 1대면 `directReporter`(바로 출력), 여러 대면 `jobReporter`(버퍼 + 상태판, `parallel.go`).
 
 ## 디버깅
 
 ```bash
-AK_DEBUG=1 ./src/ak <command>
-# 또는
 AK_DEBUG=1 ak <command>
+tail -f "${TMPDIR:-/tmp}/ak-debug.log"    # AK_DEBUG_LOG로 경로 변경 가능
 ```
 
-* 로그 파일: `build/debug.log` (`src/ak` 실행 시에도 프로젝트 루트의 `build/`에 기록)
-* 로그 형식: `[타임스탬프] [파일:행번호] 메시지`
-* 코드에서 `debug_log "메시지"` 사용 (`AK_DEBUG=1`일 때만 기록, 일반 실행 성능 영향 없음)
+로그 형식: `[타임스탬프] [파일:행번호] 메시지`. adb 호출과 선택 UI 결과가 기록됩니다. 코드에서는 `debuglog.Logf(...)`를 씁니다.
 
 ## 릴리즈
 
-* 버전: `src/VERSION` (단일 소스)
-* GitHub Actions: `.github/workflows/release.yml` — `workflow_dispatch`로 수동 트리거, semver 형식 (`x.y.z`)
-* 변경 이력: `CHANGELOG.md`에 기록
+* 버전: 루트 `VERSION` (단일 소스)
+* `CHANGELOG.md`에 `## [x.y.z]` 항목이 있어야 릴리즈됩니다
+* GitHub Actions `release.yml` — main에서 수동 실행: `gh workflow run release.yml --ref main` (버전은 `VERSION` 파일, `-f version=x.y.z`는 확인용). 테스트 → 소스 아카이브 → 태그 → GoReleaser가 바이너리·소스 아카이브를 GitHub Release에 업로드 → `dist/checksums.txt`로 `Formula/ak.rb`를 생성해 main에 커밋. main이 아니면 실패합니다(tap은 main의 formula를 읽음)
+* Homebrew formula는 GitHub Release의 플랫폼별 바이너리(tar.gz)를 내려받습니다. 사용자 Mac에 Go가 필요 없습니다. cask가 아니라 formula라서 quarantine이 붙지 않습니다. `Formula/ak.rb`는 직접 고치지 말고 `.github/formula/ak.rb.tmpl`(렌더링은 `.github/formula/render.sh`)을 고칩니다
 
 ## 사전 요구사항
 
-* **adb** — 필수
-* **aapt** — `install` 커맨드
-* **apksigner** (`ANDROID_HOME` 필요) — `signature` 커맨드
+* **Go** 1.27+ — 개발 시
+* **adb** — 실행 시 (유일한 런타임 의존성)
+* **apksigner** — 선택. `signature`에서 Go 파서가 실패할 때만 폴백으로 사용
 
 ## 상세 가이드
 
-기여 절차, PR 프로세스, 커맨드 템플릿 전문은 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고합니다.
+기여 절차, PR 프로세스는 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고합니다.

@@ -1,7 +1,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/github/v/release/luminousvault/homebrew-adb-extensions?color=blue)](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey.svg)
-![Shell Script](https://img.shields.io/badge/shell_script-%23121011.svg?style=flat&logo=gnu-bash&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)
+![Go](https://img.shields.io/badge/Go-00ADD8?logo=go&logoColor=white)
 ![Android](https://img.shields.io/badge/Android-3DDC84?logo=android&logoColor=white)
 ![Homebrew](https://img.shields.io/badge/Homebrew-supported-orange.svg?logo=homebrew)
 
@@ -43,10 +43,36 @@ brew install ak
 git clone https://github.com/luminousvault/homebrew-adb-extensions.git
 cd homebrew-adb-extensions
 
-# Build and install
-./build.sh
-sudo ./build.sh --install
+# Build and install ak + zsh completion into /usr/local (Go 1.27+)
+make install
+
+# Remove
+make uninstall
 ```
+
+`make install PREFIX=~/.local` installs elsewhere; the completion goes to `$PREFIX/share/zsh/site-functions`, which must be in `fpath`.
+
+Or with `go install`:
+
+```bash
+go install github.com/luminousvault/homebrew-adb-extensions/cmd/ak@latest
+```
+
+### Prebuilt Binaries
+
+Download the archive for your OS (macOS, Linux, Windows; amd64/arm64) from [GitHub Releases](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest). Each archive includes the `ak` binary and the Zsh completion file.
+
+### Requirements
+
+`adb` is the only dependency. ak looks for it in this order and uses the first one found:
+
+1. `AK_ADB` environment variable
+2. `$ANDROID_HOME/platform-tools`, `$ANDROID_SDK_ROOT/platform-tools`
+3. `PATH` (e.g. `brew install --cask android-platform-tools`)
+4. Android Studio's default SDK (`~/Library/Android/sdk`, `~/Android/Sdk`, `%LOCALAPPDATA%\Android\Sdk`)
+5. `~/.ak/platform-tools`
+
+Run `ak doctor` to see which adb is used. Running two adb versions side by side (for example ak and Android Studio) restarts the adb server and drops device connections; `ak doctor` warns about this.
 
 ## Quick Start
 
@@ -77,28 +103,50 @@ ak <command> [options] [arguments...]
 
 **Note:** Many commands support auto-detection of the foreground app when no package is specified. See [Examples](#examples) for detailed usage scenarios.
 
+### Choosing Devices
+
+| Option | Effect |
+|---|---|
+| `-s, --serial <ID>` | Target this device (`install` and `mac` accept it more than once) |
+| `ANDROID_SERIAL` | Default target device, same as adb |
+| `-a, --all` | All connected devices (`install`, `mac`, `screenshot`) |
+| (none) | The only connected device, or a picker when several are connected |
+
+Without a terminal (pipes, CI), ak does not open pickers: it asks for `-s` instead.
+
+### Output and Scripting
+
+- Options can come before or after arguments, and short options can be combined: `ak install -ea` is `ak install -e -a`, `ak logcat -clW` is `ak logcat -c -l W`.
+- Results go to stdout; progress, warnings, errors and prompts go to stderr. `ak info --json | jq` gets only the result.
+- `--json` prints machine-readable output for `devices`, `info`, `permissions`, `signature`, `mac`, `activities` and `doctor`.
+- `-y, --yes` answers confirmations (e.g. uninstall-and-reinstall in `install`); without a terminal and without `-y`, ak does not guess.
+- Colors are used only on terminals. `NO_COLOR=1` or `--no-color` turns them off; `CLICOLOR_FORCE=1` forces them on.
+- Exit codes: `0` success, `1` failure (including partial failure), `2` usage error, `130` interrupted.
+
 ### Available Commands
 
 #### APK Management
 
-- `install [apk_files|directories...]` - Install APK files with interactive selection
+- `install [apk_files|directories...]` - Install APK files (named APKs directly; directories or no argument open a picker)
   - APK Selection:
-    - `-l` - Install latest APK file (from current directory or specified directory)
-    - `-a` - Install all APK files (from current directory or specified directory)
-    - `-f <filter>` - Filter APKs by pattern
+    - `-l, --latest` - Install the newest APK (from current directory or specified directory)
+    - `-e, --every-apk` - Install all APK files (from current directory or specified directory); the list is shown first
+    - `-f, --filter <words>` - Pick among APKs whose names contain all the words
   - Device Options:
-    - `-m` - Install to all connected devices
+    - `-a, --all` - Install on all connected devices, in parallel
+    - `-s, --serial <ID>` - Install on this device (repeat for more)
   - ADB Options:
-    - `-r` - Replace existing app (default)
-    - `-t` - Allow test APKs
-    - `-d` - Allow version downgrade
+    - `-r` - Replace existing app (always on)
+    - `-t, --test-only` - Allow test-only APKs
+    - `-d, --downgrade` - Allow version downgrade
+  - `-y, --yes` - Uninstall and reinstall without asking when recovery needs it
 - `extract [package|filename] [filename|package]` - Extract APK from device (order flexible)
 
 #### File Management
 
 - `pull [directory]` - Pull recent device files (MediaStore 'Recents', interactive multi-select)
   - No argument: pull into the current directory
-  - Directory argument: pull into it (created if needed)
+  - Directory argument: pull into it (a missing directory is created after confirmation, or with `-y`)
   - Files are saved with their original names (duplicates get a ' (N)' suffix)
 
 #### App Information
@@ -108,13 +156,20 @@ ak <command> [options] [arguments...]
 - `info [package]` - Display app information (version, SDK, debuggable status, installer)
 - `permissions [package]` - List granted app permissions
 - `signature [package|apk_file]` - Display app signature (supports interactive selection)
-- `activities [--all]` - Display activity stack (`--all` for all tasks)
+- `activities [-e]` - Display activity stack (`-e, --every-task` for all tasks)
+- `logcat [package] [-l level] [-c]` - Logs of one app only, following it across restarts (new PIDs are picked up; `pkg:remote` processes included)
+
+#### Screen
+
+- `screenshot [file|directory]` - Save a PNG on this computer (nothing left on the device); `--all` saves one per device, `-o, --open` opens it
+- `record [file|directory] [-t seconds] [--size WxH]` - Record until Ctrl+C or the time limit (max 180 s), then save the MP4 and delete it from the device; `-o, --open` opens it
 
 #### App Control
 
 **Note:** Omitting `[package]` or `[packages...]` auto-detects the foreground app.
 
 - `launch <package>` - Launch app (main activity)
+- `restart [package] [-r N]` - Force-stop and launch again, showing the launch time (`am start -W`); `-r, --repeat` repeats and shows min/avg/max
 - `kill [packages...]` - Force stop app(s)
 - `clear [packages...]` - Clear app data
 - `uninstall [package]` - Uninstall app
@@ -123,7 +178,9 @@ ak <command> [options] [arguments...]
 
 - `devices` - List connected devices (brand, model, ID, Android version, CPU ABI with 32/64-bit support)
 - `mac [options]` - Show current Wi-Fi MAC (with randomized detection and SSID), factory Wi-Fi MAC, and Bluetooth MAC
-  - `-m` all connected devices
+  - `-a, --all` all connected devices
+- `wifi [off]` - Switch a USB device to Wi-Fi debugging and connect (`adb tcpip` + IP lookup + `adb connect`); `off` switches back to USB
+- `doctor` - Check the adb in use, other adb versions, connected devices (unauthorized/offline) and optional tools; exits 1 when a problem is found
 
 ### Interactive UI Features
 
@@ -132,6 +189,8 @@ ak <command> [options] [arguments...]
 - **Arrow keys** (Up/Down) - Navigate through APKs
 - **Space** - Toggle selection
 - **A** - Select/deselect all
+- **S** - Sort by time or by name
+- **/** - Filter by typing part of the name
 - **Number keys** (1-9) - Quick select (single item, 9 or fewer APKs)
 - **Enter** - Confirm selection
 - **Ctrl+C** - Cancel
@@ -150,6 +209,7 @@ ak <command> [options] [arguments...]
 ak --version, -v                # Show version information
 ak --help, -h                   # Show help message
 ak <command> --help             # Show command-specific help
+ak --no-color <command>         # Disable colors
 ```
 
 ## Examples
@@ -177,11 +237,6 @@ ak install -l /path/to/dir
 ak install /path/to/dir -l  # Same as above
 ```
 
-**Install latest debug APK:**
-```bash
-ak install -l -f debug
-```
-
 **Install all APKs:**
 ```bash
 ak install -a
@@ -199,9 +254,27 @@ ak install -f debug              # Current directory
 ak install -f debug /path/to/dir # Specific directory
 ```
 
-**Install to all connected devices:**
+**Install to all connected devices (in parallel):**
 ```bash
-ak install -m app.apk
+ak install -a app.apk
+ak install -s emulator-5554 -s emulator-5556 app.apk
+ak install -e -a                 # Every APK in the current directory on every device
+```
+
+With several devices, a status board shows each device's progress. If a device needs confirmation (for example, the signature differs and the app must be uninstalled first), ak asks right away while the other devices keep installing; further questions follow one after another (`a` answers yes for every device for the rest of the run). A summary follows.
+
+**Install seems stuck?** When a step takes more than 10 seconds, ak shows `(check the device screen)`: the device is usually waiting for you. Google Play Protect asks whether to scan an app it has not seen (often after an uninstall and reinstall), and some devices ask to allow installs over USB. Answer on the device and the install continues.
+
+On test devices you can stop Play Protect from checking apps installed with adb. This is a device security setting, so ak never changes it for you:
+
+```bash
+adb shell settings put global verifier_verify_adb_installs 0   # 1 turns it back on
+adb -s <serial> shell settings put global verifier_verify_adb_installs 0   # with several devices (see `ak devices`)
+```
+
+**In scripts and CI:**
+```bash
+ak install -s "$SERIAL" -y app.apk   # no prompts; exit code 1 if anything failed
 ```
 
 **Interactive selection from directory:**
@@ -273,7 +346,7 @@ ak signature app.apk           # Local APK file
 **View activity stack:**
 ```bash
 ak activities                   # Foreground task
-ak activities --all             # All tasks
+ak activities -a               # All tasks
 ```
 
 ### App Control
@@ -311,15 +384,16 @@ ak devices
 **Show MAC addresses:**
 ```bash
 ak mac                # MAC addresses of the selected device
-ak mac -m             # All connected devices
+ak mac -a             # All connected devices
+ak mac --json         # Machine-readable
 ```
 
 Example output:
 ```
-Samsung SM-S928N (R3CW80E6Y8Z) Android 15, API 35
-  Wi-Fi (current)  a2:70:aa:5b:37:f2   (randomized · SSID "ONE-GUEST")
-  Wi-Fi (factory)  6c:ac:c2:75:85:ff
-  Bluetooth        6c:ac:c2:75:85:fe
+Samsung SM-S928N (R5CX00000000) Android 15, API 35
+  Wi-Fi (current)  02:00:5e:00:53:01   (randomized · SSID "MyWiFi")
+  Wi-Fi (factory)  00:00:5e:00:53:10
+  Bluetooth        00:00:5e:00:53:11
 ```
 
 **Note:** Since Android 10, the Wi-Fi MAC is randomized per network by default, so `Wi-Fi (current)` shows the MAC used for the current connection only (`n/a` when Wi-Fi is off or not connected). `Wi-Fi (factory)` is the device's own Wi-Fi MAC and is available even when Wi-Fi is off, but some devices may not expose it; in that case, set the Wi-Fi privacy setting to "Use device MAC" to see it as the current MAC. Bluetooth MAC may show `n/a` on devices that restrict access to it.
@@ -371,17 +445,16 @@ Quick start for contributors:
 git clone https://github.com/YOUR_USERNAME/homebrew-adb-extensions.git
 cd homebrew-adb-extensions
 
-# Test changes directly
-./src/ak <command>
+# Run your changes
+go run ./cmd/ak <command>
 
-# Build and test
-./build.sh
-./build/ak <command>
+# Test
+go test ./...
 ```
 
 ## Acknowledgments
 
-- Built with Bash for maximum compatibility
+- Built with Go as a single binary with no runtime dependencies
 - Inspired by the need for efficient Android development workflows
 - Special thanks to the Android development community
 

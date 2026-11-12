@@ -1,0 +1,196 @@
+#compdef ak
+
+# Serials of connected devices for -s/--serial.
+_ak_serials() {
+  local -a serials
+  serials=(${(f)"$(adb devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }')"})
+  _describe 'device serial' serials
+}
+
+_ak() {
+  local -a commands
+  commands=(
+    'activities:Show activity stack'
+    'clear:Clear app data and cache'
+    'devices:Show connected devices'
+    'doctor:Diagnose adb setup'
+    'extract:Extract APK file from device'
+    'info:Show package information'
+    'install:Install APK files'
+    'kill:Force-stop package'
+    'launch:Launch package'
+    'logcat:Show logs of one app'
+    'mac:Show device MAC addresses'
+    'permissions:List package permissions'
+    'pull:Pull recent files from device'
+    'record:Record the screen'
+    'restart:Restart an app and time its launch'
+    'screenshot:Save a screenshot'
+    'signature:Extract signature hash'
+    'uninstall:Uninstall package'
+    'wifi:Debug over Wi-Fi'
+  )
+
+  _arguments -C \
+    '(- *)'{-h,--help}'[Show help message]' \
+    '(- *)'{-v,--version}'[Show version]' \
+    '--no-color[Disable colored output]' \
+    '1:command:->command' \
+    '*::arg:->args' && return 0
+
+  case $state in
+    command)
+      _describe 'ak commands' commands
+      ;;
+    args)
+      case $words[1] in
+        activities)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            '--json[Print the result as JSON]' \
+            {-e,--every-task}'[Show every task]'
+          ;;
+        clear)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            '*:package name:_message "package name"'
+          ;;
+        devices)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            '--json[Print the result as JSON]'
+          ;;
+        doctor)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            '--json[Print the result as JSON]'
+          ;;
+        extract)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            '1:package name or file name:_message "package name or save file name"' \
+            '2:save file name or package name:_files'
+          ;;
+        info)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            '--json[Print the result as JSON]' \
+            '1:package name:_message "package name"'
+          ;;
+        install)
+          local -a apk_files
+          apk_files=(*.apk(N-.))
+          _arguments -s -C \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            '(-e --every-apk -f --filter)'{-l,--latest}'[Install the newest APK]' \
+            '(-l --latest -f --filter)'{-e,--every-apk}'[Install every APK]' \
+            '(-l --latest -e --every-apk)'{-f,--filter}'[Pick APKs matching all words]:filter' \
+            '*'{-s,--serial}'[Target device]:serial:_ak_serials' \
+            {-a,--all}'[All connected devices]' \
+            {-y,--yes}'[Answer yes to confirmations]' \
+            '-r[Replace existing app]' \
+            {-t,--test-only}'[Allow test-only APKs]' \
+            {-d,--downgrade}'[Allow version downgrade]' \
+            '*:APK files or directories:_files -g "*.apk(-.)" -/'
+          ;;
+        kill)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            '*:package name:_message "package name"'
+          ;;
+        launch)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            '1:package name:_message "package name"'
+          ;;
+        logcat)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            {-l,--level}'[Minimum level]:level:(V D I W E F)' \
+            {-c,--clear}'[Clear the log buffer first]' \
+            '1:package name:_message "package name"'
+          ;;
+        mac)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            '*'{-s,--serial}'[Target device]:serial:_ak_serials' \
+            {-a,--all}'[All connected devices]' \
+            '--json[Print the result as JSON]'
+          ;;
+        permissions)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            '--json[Print the result as JSON]' \
+            '1:package name:_message "package name"'
+          ;;
+        pull)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            {-y,--yes}'[Answer yes to confirmations]' \
+            '1:destination directory:_files -/'
+          ;;
+        record)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            {-t,--time-limit}'[Stop after seconds]:seconds' \
+            '--size[Video size]:size (WxH)' \
+            {-o,--open}'[Open the saved file]' \
+            '1:output file or directory:_files'
+          ;;
+        restart)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            '--json[Print the result as JSON]' \
+            {-r,--repeat}'[Restart N times]:count' \
+            '1:package name:_message "package name"'
+          ;;
+        screenshot)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            '*'{-s,--serial}'[Target device]:serial:_ak_serials' \
+            {-a,--all}'[All connected devices]' \
+            {-o,--open}'[Open the saved file]' \
+            '1:output file or directory:_files'
+          ;;
+        signature)
+          local -a apk_files
+          apk_files=(*.apk(N-.))
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            '--json[Print the result as JSON]' \
+            '1:package name or APK file:compadd -a apk_files'
+          ;;
+        uninstall)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            '1:package name:_message "package name"'
+          ;;
+        wifi)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            {-s,--serial}'[Target device]:serial:_ak_serials' \
+            {-p,--port}'[TCP port]:port' \
+            '1:action:(off)'
+          ;;
+        *)
+          _arguments -s '(- *)'{-h,--help}'[Show help for this command]'
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_ak "$@"
