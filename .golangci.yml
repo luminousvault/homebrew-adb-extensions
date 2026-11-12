@@ -1,0 +1,16 @@
+version: "2"
+linters:
+  settings:
+    errcheck:
+      # Terminal/log writes: a failed write has no useful recovery.
+      exclude-functions:
+        - fmt.Fprintf
+        - fmt.Fprint
+        - fmt.Fprintln
+    staticcheck:
+      checks:
+        - all
+        # Dot-importing internal/style keeps color constants (Red, NC, ...) readable like the Bash version.
+        - -ST1001
+        - -ST1000
+        - -ST1003

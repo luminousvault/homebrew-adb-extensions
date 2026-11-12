@@ -1,0 +1,31 @@
+class Ak < Formula
+  desc "ADB extensions kit - Essential ADB utilities for Android development"
+  homepage "https://github.com/luminousvault/homebrew-adb-extensions"
+  url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v__VERSION__/adb-extensions-v__VERSION__.tar.gz"
+  sha256 "__SHA256__"
+  license "MIT"
+  version "__VERSION__"
+
+  depends_on "go" => :build
+
+  def install
+    ldflags = "-s -w -X main.version=#{version} -X main.date=__DATE__"
+    system "go", "build", *std_go_args(ldflags:), "./cmd/ak"
+    zsh_completion.install "completions/_ak"
+  end
+
+  def caveats
+    <<~EOS
+      ak needs adb. If it is not installed yet:
+        brew install --cask android-platform-tools
+      Run 'ak doctor' to see which adb ak uses.
+
+      To enable tab completion, restart your terminal.
+    EOS
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/ak --version")
+    assert_match "install", shell_output("#{bin}/ak --help")
+  end
+end
