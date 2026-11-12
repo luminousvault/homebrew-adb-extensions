@@ -18,11 +18,11 @@ func copyImage(path string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		// The path goes in as an argument, so quotes in it need no escaping.
-		cmd = exec.Command("osascript",
-			"-e", "on run argv",
-			"-e", "set the clipboard to (read (POSIX file (item 1 of argv)) as «class PNGf»)",
-			"-e", "end run", path)
+		// PNG plus an LZW-compressed TIFF, like Preview's copy: AppleScript's
+		// «class PNGf» pastes fine but clipboard history apps (Raycast) only
+		// record images that also come as TIFF, and an uncompressed TIFF is
+		// ~8x the PNG. The path goes in as an argument, so it needs no escaping.
+		cmd = exec.Command("osascript", "-l", "JavaScript", "-e", macCopyImageJS, path)
 	case "windows":
 		cmd = exec.Command("powershell", "-NoProfile", "-STA", "-Command",
 			"Add-Type -AssemblyName System.Windows.Forms, System.Drawing; "+
@@ -44,12 +44,32 @@ func copyImage(path string) error {
 	}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if msg := strings.TrimSpace(string(out)); msg != "" {
-			return errors.New(msg)
+			// osascript: "execution error: Error: Error: cannot read the image (-2700)"
+			msg = strings.TrimPrefix(msg, "execution error: ")
+			for strings.HasPrefix(msg, "Error: ") {
+				msg = strings.TrimPrefix(msg, "Error: ")
+			}
+			return errors.New(strings.TrimSuffix(msg, " (-2700)"))
 		}
 		return err
 	}
 	return nil
 }
+
+// macCopyImageJS writes one pasteboard item with public.png (the original
+// bytes) and public.tiff (NSTIFFCompressionLZW = 5).
+const macCopyImageJS = `function run(argv) {
+  ObjC.import("AppKit");
+  var png = $.NSData.dataWithContentsOfFile(argv[0]);
+  var img = png.isNil() ? $() : $.NSImage.alloc.initWithData(png);
+  if (img.isNil()) throw new Error("cannot read the image");
+  var item = $.NSPasteboardItem.alloc.init;
+  item.setDataForType(png, "public.png");
+  item.setDataForType(img.TIFFRepresentationUsingCompressionFactor(5, 0), "public.tiff");
+  var pb = $.NSPasteboard.generalPasteboard;
+  pb.clearContents;
+  if (!pb.writeObjects($([item]))) throw new Error("the clipboard did not accept the image");
+}`
 
 // linuxClipboard picks wl-copy on Wayland, else xclip.
 func linuxClipboard() (string, []string) {
