@@ -637,6 +637,7 @@ func TestBundledShortOptions(t *testing.T) {
 		{cmdLogcat, []string{"-cl", "W"}, map[string]string{"--clear": "", "--level": "W"}, nil},
 		{cmdLogcat, []string{"-clW", "com.example.app"}, map[string]string{"--clear": "", "--level": "W"}, []string{"com.example.app"}},
 		{cmdRestart, []string{"-r5"}, map[string]string{"--repeat": "5"}, nil},
+		{cmdLogcat, []string{"-cl=W"}, map[string]string{"--clear": "", "--level": "W"}, nil},
 	}
 	for _, tc := range cases {
 		c, help, err := parse(tc.cmd, tc.args)

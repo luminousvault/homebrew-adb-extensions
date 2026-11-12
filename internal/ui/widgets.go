@@ -144,11 +144,11 @@ type Cell struct {
 func Table(headers []string, rows [][]Cell) {
 	widths := make([]int, len(headers))
 	for i, h := range headers {
-		widths[i] = textWidth(h)
+		widths[i] = TextWidth(h)
 	}
 	for _, r := range rows {
 		for i, c := range r {
-			widths[i] = max(widths[i], textWidth(c.Text))
+			widths[i] = max(widths[i], TextWidth(c.Text))
 		}
 	}
 	line := func(cells []string, raw []string) {
@@ -156,7 +156,7 @@ func Table(headers []string, rows [][]Cell) {
 		for i, c := range cells {
 			b.WriteString(c)
 			if i < len(cells)-1 {
-				b.WriteString(strings.Repeat(" ", widths[i]-textWidth(raw[i])+2))
+				b.WriteString(strings.Repeat(" ", widths[i]-TextWidth(raw[i])+2))
 			}
 		}
 		Out.Println(b.String())
@@ -185,15 +185,6 @@ func Table(headers []string, rows [][]Cell) {
 		}
 		line(cells, raw)
 	}
-}
-
-// textWidth is the number of terminal columns s takes (wide runes count 2).
-func textWidth(s string) int {
-	n := 0
-	for _, r := range s {
-		n += runeWidth(r)
-	}
-	return n
 }
 
 // KeyValues prints "  key  value" pairs aligned (stdout).

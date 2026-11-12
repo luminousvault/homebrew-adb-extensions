@@ -249,3 +249,18 @@ func TestFrameFitsHeight(t *testing.T) {
 		}
 	}
 }
+
+// On a small terminal the rows of dropped lines go to items.
+func TestSmallTerminalShowsMoreItems(t *testing.T) {
+	items := make([]string, 40)
+	for i := range items {
+		items[i] = "item"
+	}
+	s := newState(Options{Multi: true, Prompt: "Select", Location: []string{"/tmp"}, Items: items})
+	fixed := 0
+	l := s.computeLayout(6, &fixed, false)
+	lines := s.frame(l, fixed, 40, 6)
+	if len(lines) > 6 || strings.Count(plain(lines), "item") < 4 {
+		t.Errorf("height 6:\n%s", plain(lines))
+	}
+}

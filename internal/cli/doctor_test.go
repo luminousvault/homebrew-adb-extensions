@@ -58,3 +58,15 @@ func TestDoctorReport(t *testing.T) {
 		t.Errorf("unexpected problem:\n%s", got)
 	}
 }
+
+// A device named by ANDROID_SERIAL that is listed but unauthorized is one
+// problem, not two.
+func TestDoctorSerialNotDoubleCounted(t *testing.T) {
+	ui.Out = &ui.Stream{}
+	found := []adbFound{{Path: "/sdk/adb", Source: "PATH", Version: "37", Protocol: "1.0.41"}}
+	devices := []deviceFound{{Serial: "emulator-5556", State: "unauthorized"}}
+	got := strings.Join(doctorLines(doctorChecks(found, devices, "emulator-5556", "/x/apksigner")), "\n")
+	if strings.Count(got, "✗") != 1 || strings.Contains(got, "not connected") {
+		t.Errorf("report:\n%s", got)
+	}
+}

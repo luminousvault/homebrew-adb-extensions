@@ -36,8 +36,15 @@ func (s *state) headerLines() int {
 func (s *state) computeLayout(height int, fixedHeight *int, resized bool) layout {
 	reserved := s.headerLines() + counterLines + helpLines + spacingLines + filterBoxLines
 	maxVisible := height - reserved - 1
-	if maxVisible < 1 {
-		maxVisible = 1
+	if maxVisible < 3 {
+		// Too small for the full frame: frame() drops the spacers, help and
+		// counter, so give their rows to items. Keep the prompt and, while
+		// filtering, the input line.
+		essential := 1
+		if s.filterMode {
+			essential++
+		}
+		maxVisible = max(1, height-essential)
 	}
 	if !s.filterMode || resized {
 		h := maxVisible

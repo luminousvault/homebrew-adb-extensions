@@ -51,3 +51,21 @@ func Fit(line string, cols int) string {
 	}
 	return b.String()
 }
+
+// TextWidth is the number of terminal columns s takes: Hangul, CJK and emoji
+// count 2. Use it, not len([]rune(s)), to align columns.
+func TextWidth(s string) int {
+	n := 0
+	for _, r := range s {
+		n += runeWidth(r)
+	}
+	return n
+}
+
+// Pad appends spaces so s takes w columns (fmt's %-*s counts runes, not columns).
+func Pad(s string, w int) string {
+	if d := w - TextWidth(s); d > 0 {
+		return s + strings.Repeat(" ", d)
+	}
+	return s
+}

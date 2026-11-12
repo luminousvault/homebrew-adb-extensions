@@ -278,9 +278,13 @@ func runInstall(c *Ctx) error {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 	defer signal.Stop(sig)
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
-		if _, ok := <-sig; ok {
+		select {
+		case <-sig:
 			installStop.Store(true)
+		case <-done:
 		}
 	}()
 	r := &directReporter{}
@@ -506,7 +510,7 @@ func uninstallThenInstall(r reporter, serial, pkg string, opts []string, apkFile
 func apkListLines(list []string) []string {
 	nameW := 0
 	for _, f := range list {
-		nameW = max(nameW, len([]rune(filepath.Base(f))))
+		nameW = max(nameW, ui.TextWidth(filepath.Base(f)))
 	}
 	numW := len(strconv.Itoa(len(list)))
 	var lines []string
@@ -515,7 +519,7 @@ func apkListLines(list []string) []string {
 		if st, err := os.Stat(f); err == nil {
 			meta = humanSize(strconv.FormatInt(st.Size(), 10)) + " · " + st.ModTime().Format("2006-01-02 15:04")
 		}
-		lines = append(lines, fmt.Sprintf("  %*d. %-*s  %s", numW, i+1, nameW, filepath.Base(f), ui.Err.Dim(meta)))
+		lines = append(lines, fmt.Sprintf("  %*d. %s  %s", numW, i+1, ui.Pad(filepath.Base(f), nameW), ui.Err.Dim(meta)))
 	}
 	return lines
 }

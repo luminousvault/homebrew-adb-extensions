@@ -73,8 +73,11 @@ func Select(o Options) (Result, error) {
 	out := os.Stderr
 	s := newState(o)
 	fixedHeight := 0
-	// mu serializes drawing and state changes: a resize redraws from another goroutine.
+	// mu serializes drawing and state changes: a resize redraws from another
+	// goroutine. closed stops a resize that was already waiting on mu when the
+	// picker closed from drawing over the restored screen.
 	var mu sync.Mutex
+	closed := false
 	draw := func(wasResized bool) {
 		if wasResized {
 			io.WriteString(out, clearScreen)
@@ -96,13 +99,16 @@ func Select(o Options) (Result, error) {
 	}
 	stopResize := watchResize(func() {
 		mu.Lock()
-		draw(true)
-		mu.Unlock()
+		defer mu.Unlock()
+		if !closed {
+			draw(true)
+		}
 	})
 	restore := func() {
 		stopResize()
 		mu.Lock() // let a resize redraw finish before leaving the alternate screen
 		defer mu.Unlock()
+		closed = true
 		io.WriteString(out, showCursor+pasteModeOff)
 		screenMu.Lock()
 		if !held {

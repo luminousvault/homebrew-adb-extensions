@@ -175,3 +175,51 @@ func TestInstallStopsAfterInterrupt(t *testing.T) {
 		}
 	}
 }
+
+// Without a terminal nobody declined, so a skipped APK does not stop the
+// device: its other APKs still install.
+func TestParallelNoInputSkipKeepsGoing(t *testing.T) {
+	dir := t.TempDir()
+	first := writeAPK(t, dir, "a.apk", 0)
+	second := writeAPK(t, dir, "b.apk", 0)
+	conflict := adbtest.Response{Stdout: "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.example.app signatures do not match newer version; ignoring!]\n"}
+	f := twoDevices()
+	f.Responses["-s "+serial+" install -r "+first] = conflict
+	f.Responses["-s "+serial+" install -r "+second] = adbtest.Response{Stdout: "Success\n"}
+	f.Responses["-s SECOND install -r "+first] = adbtest.Response{Stdout: "Success\n"}
+	f.Responses["-s SECOND install -r "+second] = adbtest.Response{Stdout: "Success\n"}
+	r := ak(t, f, "install", first, second, "-a")
+	if r.code != 1 || !strings.Contains(r.err, "[Google Pixel 9 Pro] ✓ Installed 'b.apk'") ||
+		!strings.Contains(r.err, "– a.apk  skipped: uninstalling needs confirmation (pass -y)") {
+		t.Errorf("code %d\n%s", r.code, r.err)
+	}
+}
+
+func TestSummaryIconFailureOutranksSkip(t *testing.T) {
+	ui.Err = &ui.Stream{}
+	j := &installJob{name: "Pixel 7", files: []string{"a.apk", "b.apk"}}
+	got := summaryLines([]*installJob{j}, func(int) ([]int8, []string, bool) {
+		return []int8{-1, -1}, []string{"INSTALL_FAILED_INSUFFICIENT_STORAGE", "skipped"}, true
+	})
+	if !strings.HasPrefix(got[0], "  ✗ Pixel 7") {
+		t.Errorf("icon: %q", got[0])
+	}
+}
+
+func TestListsAlignWideNames(t *testing.T) {
+	ui.Err = &ui.Stream{}
+	dir := t.TempDir()
+	lines := apkListLines([]string{writeAPK(t, dir, "한글앱.apk", 0), writeAPK(t, dir, "app-debug.apk", 0)})
+	// Both size columns start at the same terminal column.
+	if a, b := ui.TextWidth(strings.Split(lines[0], "1 B")[0]), ui.TextWidth(strings.Split(lines[1], "1 B")[0]); a != b {
+		t.Errorf("not aligned (%d vs %d):\n%s", a, b, strings.Join(lines, "\n"))
+	}
+	jobs := []*installJob{
+		{name: "갤럭시 S24", files: []string{"a.apk"}, state: jobDone},
+		{name: "Pixel 7", files: []string{"a.apk"}, state: jobDone},
+	}
+	board := boardLines(jobs, 0)
+	if a, b := ui.TextWidth(strings.Split(board[0], "[1/1]")[0]), ui.TextWidth(strings.Split(board[1], "[1/1]")[0]); a != b {
+		t.Errorf("board not aligned:\n%s", strings.Join(board, "\n"))
+	}
+}

@@ -51,7 +51,8 @@ type installJob struct {
 	notes       []string // per APK: why it failed, for the summary
 	stepStart   time.Time
 	interrupted bool
-	skipped     bool // the user declined a confirmation
+	skipped     bool // a confirmation was declined, could not be asked, or was interrupted
+	stopped     bool // the user declined: later APKs of this device are not installed
 }
 
 func (j *installJob) with(f func()) {
@@ -121,6 +122,10 @@ func (r *jobReporter) fail(f string, a ...any) {
 		if strings.HasPrefix(text, "Skipped") {
 			r.j.skipped = true
 			note = strings.TrimSuffix("skipped: "+note, ": ")
+			// Declined by the user (or interrupted): stop this device, as later
+			// APKs may depend on this one. Without a terminal nobody declined,
+			// so the other APKs still install.
+			r.j.stopped = !strings.Contains(text, "(pass -y)")
 		}
 		r.j.notes[r.j.idx] = note
 	})
@@ -171,7 +176,7 @@ func runJob(j *installJob, opts []string, live bool) {
 		failed = failed || !ok
 		// A declined confirmation stops this device: later APKs may depend on this one.
 		stop := false
-		j.with(func() { stop = j.skipped })
+		j.with(func() { stop = j.stopped })
 		if stop {
 			break
 		}
@@ -191,16 +196,16 @@ var spinner = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 func boardLines(jobs []*installJob, frame int) []string {
 	nameW, apkW := 0, 0
 	for _, j := range jobs {
-		nameW = max(nameW, len([]rune(j.name)))
+		nameW = max(nameW, ui.TextWidth(j.name))
 		for _, f := range j.files {
-			apkW = max(apkW, len(filepath.Base(f)))
+			apkW = max(apkW, ui.TextWidth(filepath.Base(f)))
 		}
 	}
 	e := ui.Err
 	var lines []string
 	for _, j := range jobs {
 		j.mu.Lock()
-		apk := fmt.Sprintf("[%d/%d] %-*s", j.idx+1, len(j.files), apkW, filepath.Base(j.files[j.idx]))
+		apk := fmt.Sprintf("[%d/%d] %s", j.idx+1, len(j.files), ui.Pad(filepath.Base(j.files[j.idx]), apkW))
 		var icon, status string
 		switch {
 		case j.interrupted:
@@ -219,7 +224,7 @@ func boardLines(jobs []*installJob, frame int) []string {
 		default:
 			icon, status = e.Red("✗"), e.Red("Failed")
 		}
-		lines = append(lines, fmt.Sprintf("  %s %-*s  %s  %s", icon, nameW, j.name, apk, status))
+		lines = append(lines, fmt.Sprintf("  %s %s  %s  %s", icon, ui.Pad(j.name, nameW), apk, status))
 		j.mu.Unlock()
 	}
 	return lines
@@ -427,7 +432,7 @@ func summaryLines(jobs []*installJob, get func(int) ([]int8, []string, bool)) []
 	e := ui.Err
 	nameW := 0
 	for _, j := range jobs {
-		nameW = max(nameW, len([]rune(j.name)))
+		nameW = max(nameW, ui.TextWidth(j.name))
 	}
 	var lines []string
 	for n, j := range jobs {
@@ -438,15 +443,19 @@ func summaryLines(jobs []*installJob, get func(int) ([]int8, []string, bool)) []
 				ok++
 			}
 		}
+		failed := false
+		for i, r := range results {
+			failed = failed || (r == -1 && !strings.HasPrefix(notes[i], "skipped"))
+		}
 		icon := e.Green("✓")
 		switch {
 		case ok == len(results):
-		case skipped:
-			icon = e.Yellow("–")
+		case failed || !skipped:
+			icon = e.Red("✗") // a real failure outranks a skip
 		default:
-			icon = e.Red("✗")
+			icon = e.Yellow("–")
 		}
-		lines = append(lines, fmt.Sprintf("  %s %-*s  %d/%d installed", icon, nameW, j.name, ok, len(results)))
+		lines = append(lines, fmt.Sprintf("  %s %s  %d/%d installed", icon, ui.Pad(j.name, nameW), ok, len(results)))
 		if ok == len(results) {
 			continue
 		}

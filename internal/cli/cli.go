@@ -272,11 +272,15 @@ func parse(cmd *Command, args []string) (*Ctx, bool, error) {
 			c.Args = append(c.Args, a)
 			continue
 		}
-		// Bundled short options, as getopt allows: -ea is -e -a, -tl5 is -t -l=5.
-		if len(a) > 2 && a[1] != '-' && !strings.Contains(a, "=") {
-			split, err := splitShort(cmd, a, lookup)
+		// Bundled short options, as getopt allows: -ea is -e -a, -tl5 is -t -l=5,
+		// -cl=W is -c -l=W (the "=value" goes to the last option of the bundle).
+		if head, val, hasVal := strings.Cut(a, "="); len(head) > 2 && head[1] != '-' {
+			split, err := splitShort(cmd, head, lookup)
 			if err != nil {
 				return nil, false, err
+			}
+			if hasVal {
+				split[len(split)-1] += "=" + val
 			}
 			args = append(append(append([]string{}, args[:i]...), split...), args[i+1:]...)
 			a = args[i]

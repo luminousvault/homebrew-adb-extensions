@@ -94,8 +94,14 @@ func runDoctor(c *Ctx) error {
 		if devices == nil {
 			devices = []deviceFound{}
 		}
-		return ui.JSON(map[string]any{"adb": found, "versionConflict": versionConflict(found),
-			"devices": devices, "apksigner": apksigner, "problems": problems})
+		if err := ui.JSON(map[string]any{"adb": found, "versionConflict": versionConflict(found),
+			"devices": devices, "apksigner": apksigner, "problems": problems}); err != nil {
+			return err
+		}
+		if problems > 0 || len(found) == 0 {
+			return errReported // same exit code as the text report
+		}
+		return nil
 	}
 	if len(found) == 0 {
 		return failErr(adbInstallHint(), "adb not found")
@@ -168,12 +174,12 @@ func doctorChecks(found []adbFound, devices []deviceFound, envSerial, apksigner 
 	}
 	nameW := 0
 	for _, d := range ready {
-		nameW = max(nameW, len([]rune(d.Name)))
+		nameW = max(nameW, ui.TextWidth(d.Name))
 	}
 	if len(ready) > 0 {
 		ch := checkResult{status: checkOK, title: fmt.Sprintf("%d connected", len(ready))}
 		for _, d := range ready {
-			ch.details = append(ch.details, fmt.Sprintf("%-*s  %s", nameW, d.Name, d.Serial))
+			ch.details = append(ch.details, ui.Pad(d.Name, nameW)+"  "+d.Serial)
 		}
 		devSec.checks = append(devSec.checks, ch)
 	}
@@ -195,11 +201,12 @@ func doctorChecks(found []adbFound, devices []deviceFound, envSerial, apksigner 
 			hint: "Connect a device with USB debugging on"})
 	}
 	if envSerial != "" {
-		connected := false
-		for _, d := range ready {
-			connected = connected || d.Serial == envSerial
+		// A listed device (even unauthorized or offline) already has its own line.
+		listed := false
+		for _, d := range devices {
+			listed = listed || d.Serial == envSerial
 		}
-		if !connected {
+		if !listed {
 			devSec.checks = append(devSec.checks, checkResult{status: checkProblem,
 				title: "ANDROID_SERIAL=" + envSerial + " is not connected",
 				hint:  "Connect it, or unset ANDROID_SERIAL"})
