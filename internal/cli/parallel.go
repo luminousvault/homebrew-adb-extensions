@@ -423,7 +423,7 @@ func finishParallel(jobs []*installJob, board, interrupted bool) error {
 	// Details per device; live mode printed them already.
 	if board {
 		for i, j := range jobs {
-			for _, l := range detailLines(j, snaps[i].msgs) {
+			for _, l := range detailLines(j, snaps[i].msgs, snaps[i].results) {
 				ui.Err.Println(l)
 			}
 		}
@@ -507,10 +507,12 @@ func summaryLines(jobs []*installJob, get func(int) ([]int8, []string, bool)) []
 //	Samsung SM-S928N (SERIAL)
 //	  app.apk
 //	    Warning: Older than the installed version, retrying with -d; downgrade not allowed without uninstalling
-//	    ✓ Uninstalled 'com.example.app' (data removed) and reinstalled (24.9s)
+//	    ✓ Installed (24.9s), after uninstalling 'com.example.app' (its data was removed)
+//	  ✓ 4 other APK(s) installed
 //
-// APKs that installed without trouble are left to the summary.
-func detailLines(j *installJob, msgs []jobMsg) []string {
+// APKs without trouble are only counted on the last line, so the block does
+// not read as if the device stopped after the APK shown.
+func detailLines(j *installJob, msgs []jobMsg, results []int8) []string {
 	eventful := map[int]bool{}
 	for _, m := range msgs {
 		if m.kind == ui.KindWarn || m.kind == ui.KindError {
@@ -545,6 +547,22 @@ func detailLines(j *installJob, msgs []jobMsg) []string {
 			lines = append(lines, "    "+ui.Line(m.kind, m.short))
 		}
 		flush()
+	}
+	installed, notRun := 0, 0
+	for i, r := range results {
+		switch {
+		case eventful[i]:
+		case r == 1:
+			installed++
+		case r == 0:
+			notRun++
+		}
+	}
+	if installed > 0 {
+		lines = append(lines, "  "+ui.Line(ui.KindSuccess, fmt.Sprintf("%d other APK(s) installed", installed)))
+	}
+	if notRun > 0 {
+		lines = append(lines, "  "+ui.Err.Dim(fmt.Sprintf("– %d other APK(s) not installed", notRun)))
 	}
 	return lines
 }

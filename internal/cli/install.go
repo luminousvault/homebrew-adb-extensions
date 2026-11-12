@@ -437,7 +437,7 @@ func installOne(r reporter, serial string, opts []string, apkFile string) bool {
 			took := ui.Err.Dim("(" + elapsed(start) + ")")
 			short := "Installed " + took
 			if reinstalled != "" {
-				short = "Uninstalled " + q(reinstalled) + " (data removed) and reinstalled " + took
+				short = "Installed " + took + ", after uninstalling " + q(reinstalled) + " (its data was removed)"
 			}
 			r.success(sayf(short, "Installed %s on %s %s", q(base), dev, took))
 			return true

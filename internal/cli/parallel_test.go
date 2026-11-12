@@ -104,7 +104,7 @@ func TestParallelDetailAndSummaryLines(t *testing.T) {
 	msgs := []jobMsg{
 		{ui.KindWarn, "'a.apk' is older ...", "Older than the installed version, retrying with -d", 0},
 		{ui.KindWarn, "Pixel 7 does not allow ...", "Downgrade not allowed without uninstalling", 0},
-		{ui.KindSuccess, "Installed 'a.apk' on Pixel 7 (3.0s)", "Uninstalled 'com.example.a' (data removed) and reinstalled (3.0s)", 0},
+		{ui.KindSuccess, "Installed 'a.apk' on Pixel 7 (3.0s)", "Installed (3.0s), after uninstalling 'com.example.a' (its data was removed)", 0},
 		{ui.KindSuccess, "Installed 'b.apk' on Pixel 7 (1.0s)", "Installed (1.0s)", 1},
 		{ui.KindError, "Couldn't install 'c.apk' on Pixel 7: INSTALL_FAILED_X", "Couldn't install: INSTALL_FAILED_X", 2},
 		{ui.KindDetail, "Failure [INSTALL_FAILED_X]", "Failure [INSTALL_FAILED_X]", 2},
@@ -113,14 +113,15 @@ func TestParallelDetailAndSummaryLines(t *testing.T) {
 	want := []string{"", "Pixel 7 (emulator-5554)",
 		"  a.apk",
 		"    Warning: Older than the installed version, retrying with -d; downgrade not allowed without uninstalling",
-		"    ✓ Uninstalled 'com.example.a' (data removed) and reinstalled (3.0s)",
+		"    ✓ Installed (3.0s), after uninstalling 'com.example.a' (its data was removed)",
 		"  c.apk",
 		"    Error: Couldn't install: INSTALL_FAILED_X",
-		"      Failure [INSTALL_FAILED_X]"} // adb output, under the error
-	if got := detailLines(j, msgs); strings.Join(got, "\n") != strings.Join(want, "\n") {
+		"      Failure [INSTALL_FAILED_X]", // adb output, under the error
+		"  ✓ 1 other APK(s) installed"}     // b.apk: counted, so the block does not end at c.apk
+	if got := detailLines(j, msgs, []int8{1, 1, -1}); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("details:\n%s", strings.Join(got, "\n"))
 	}
-	if got := detailLines(j, msgs[3:4]); got != nil {
+	if got := detailLines(j, msgs[3:4], []int8{0, 1, 0}); got != nil {
 		t.Errorf("trouble-free APKs need no details: %q", got)
 	}
 
@@ -267,5 +268,15 @@ func TestParallelAsksWhileOthersInstall(t *testing.T) {
 	run([]string{"install", apkFile, "-a"})
 	if in.at.IsZero() || in.at.Sub(start) > 600*time.Millisecond || !strings.Contains(errb.String(), "[Y/n/a] y") {
 		t.Errorf("asked after %v\n%s", in.at.Sub(start), errb.String())
+	}
+}
+
+func TestDetailCountsOtherAPKs(t *testing.T) {
+	ui.Err = &ui.Stream{}
+	j := &installJob{serial: "emulator-5554", name: "Pixel 7", files: []string{"a.apk", "b.apk", "c.apk", "d.apk"}}
+	msgs := []jobMsg{{ui.KindError, "Stopped installing 'b.apk' on Pixel 7: interrupted", "Stopped: interrupted", 1}}
+	got := strings.Join(detailLines(j, msgs, []int8{1, -1, 0, 0}), "\n")
+	if !strings.HasSuffix(got, "  ✓ 1 other APK(s) installed\n  – 2 other APK(s) not installed") {
+		t.Errorf("details:\n%s", got)
 	}
 }

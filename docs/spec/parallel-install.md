@@ -57,14 +57,14 @@ Google Pixel 9 Pro — app-debug.apk
 
 상태판이 끝나면:
 
-1. 상세: 경고나 오류가 있었던 APK만, 단말별·APK별로 묶어 **경고 → 조치 → 결과** 순서로 출력한다. 단말 이름과 APK 이름은 머리글에 있으므로 각 줄은 짧은 문장으로 쓰고(이름을 반복하지 않음), 한 APK의 경고는 한 줄로 합치며, 제거·재설치 단계는 결과 한 줄(`✓ Uninstalled … and reinstalled`)로 줄인다. 질문 블록도 같은 짧은 문장을 쓴다. 경고만 덩그러니 남아 왜 나왔는지 헤매지 않도록, 그 뒤에 한 일(제거, 재설치)과 결과(`✓`/`Error:`)를 함께 보여 준다. 문제없이 설치된 APK는 요약에만 나온다.
+1. 상세: 경고나 오류가 있었던 APK만, 단말별·APK별로 묶어 **경고 → 조치 → 결과** 순서로 출력한다. 단말 이름과 APK 이름은 머리글에 있으므로 각 줄은 짧은 문장으로 쓰고(이름을 반복하지 않음), 한 APK의 경고는 한 줄로 합치며, 제거·재설치 단계는 결과 한 줄(`✓ Installed (시간), after uninstalling …`)로 줄인다. 결과(설치)를 앞에, 과정(제거)을 뒤에 둔다. 질문 블록도 같은 짧은 문장을 쓴다. 경고만 덩그러니 남아 왜 나왔는지 헤매지 않도록, 그 뒤에 한 일(제거, 재설치)과 결과(`✓`/`Error:`)를 함께 보여 준다. 문제없이 설치된 APK는 요약에만 나온다.
 2. 요약: 단말당 한 줄(`n/m installed`). 다 설치되지 않은 단말 아래에만 실패하거나 실행되지 않은 APK를 적는다. APK 이름을 한 줄에 늘어놓으면 터미널 폭을 넘어 줄이 깨지기 때문.
 
 ```
 Google Pixel 9 Pro (SERIAL)
   com.example.app.apk
     Warning: Older than the installed version, retrying with -d; downgrade not allowed without uninstalling
-    ✓ Uninstalled 'com.example.app' (data removed) and reinstalled (43.5s)
+    ✓ Installed (43.5s), after uninstalling 'com.example.app' (its data was removed)
 
 Summary
   ✓ Google Pixel 9 Pro  5/5 installed
