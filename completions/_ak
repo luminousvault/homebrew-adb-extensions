@@ -72,7 +72,7 @@ _ak() {
             '(- *)'{-h,--help}'[Show help for this command]' \
             {-s,--serial}'[Target device]:serial:_ak_serials' \
             '1:package name or file name:_message "package name or save file name"' \
-            '2:save file name or package name:_files -g "*.apk(-.)" -/'
+            '2:save file name or package name:_files -/'
           ;;
         info)
           _arguments -s \
