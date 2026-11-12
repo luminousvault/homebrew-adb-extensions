@@ -50,7 +50,7 @@ var (
 	stdin  *bufio.Reader = bufio.NewReader(os.Stdin)
 )
 
-func say(format string, args ...any) { fmt.Fprintf(stdout, format+"\n", args...) }
+func say(format string, args ...any)  { fmt.Fprintf(stdout, format+"\n", args...) }
 func sayf(format string, args ...any) { fmt.Fprintf(stdout, format, args...) }
 
 // exitCode is panicked by exit() and recovered in Main, so deferred

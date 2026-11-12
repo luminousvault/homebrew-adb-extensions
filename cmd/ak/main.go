@@ -16,6 +16,7 @@ var (
 
 func main() {
 	cli.Version, cli.ReleaseDate = version, date
+	enableVT()
 	debuglog.Init()
 	os.Exit(cli.Main(os.Args[1:]))
 }
