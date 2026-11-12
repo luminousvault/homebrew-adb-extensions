@@ -51,6 +51,7 @@ docs/spec/           v1 behavior record, parallel install design
 ```bash
 git checkout -b feature/your-feature
 go run ./cmd/ak <command>      # try it
+make install                   # build and install ak + zsh completion to /usr/local (make uninstall removes)
 go test ./...                  # unit tests
 go vet ./... && golangci-lint run
 goreleaser build --snapshot --clean   # optional: cross-platform build
