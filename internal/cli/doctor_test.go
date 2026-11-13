@@ -199,7 +199,8 @@ func TestDoctorCompletion(t *testing.T) {
 		writeFile(t, filepath.Join(root, "fpath1", "_ak"), "old")
 		writeFile(t, filepath.Join(e.home, ".zshrc"), "autoload -U compinit; compinit\nsource <(ak completion zsh)\n")
 		r := classifyCompletion(gatherCompletion(e))
-		if got := completionLines(r, false); r.Status != "ok" || got != "[✓] Shell completion (zsh, ~/.zshrc)" {
+		want := "[✓] Shell completion (zsh, " + filepath.Join("~", ".zshrc") + ")" // ~\.zshrc on Windows
+		if got := completionLines(r, false); r.Status != "ok" || got != want {
 			t.Errorf("%s:\n%s", r.Status, got)
 		}
 	})
