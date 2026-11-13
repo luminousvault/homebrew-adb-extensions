@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - `ak --help` has a short section for scripts and AI agents (name the package, no pickers without a terminal, `--json`); the README section is now "Scripts, CI and AI agents"
 
 ### Changed
+- Tab after `-s, --serial` shows what each device is: in zsh and fish the serials are listed one per line with the model and Android version (`R3CW80E6Y8Z  -- Samsung SM-S928N, Android 15 (API 35)`), and PowerShell shows the same in its menu and tooltip. bash still offers the serials alone, since it cannot show descriptions
 - `screenshot` warns when the device screen is off (asleep or dozing), since the image is then black or stale: `Warning: The screen of <device> is off; the image may be black` and a `Hint:` with the `adb shell input keyevent WAKEUP` command. The exit code stays 0
 - Commands that take the foreground app when no package is given (`info`, `restart`, `kill`, `clear`, `uninstall`, `logcat`, …) warn when the screen is off: the app found is the one that was on screen before it turned off
 - `record` fails right away when the screen is off, with a hint to turn it on. Before, it started `screenrecord`, waited about 10 seconds and then reported `UNASSIGNED_LAYER_STACK`

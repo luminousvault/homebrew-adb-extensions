@@ -135,3 +135,14 @@ func TestCompletionKnowsEveryArgument(t *testing.T) {
 		}
 	}
 }
+
+func TestSerialLine(t *testing.T) {
+	p := map[string]string{"ro.product.brand": "google", "ro.product.model": "Pixel 9 Pro",
+		"ro.build.version.release": "15", "ro.build.version.sdk": "35"}
+	if got, want := serialLine("emulator-5554", p), "emulator-5554\tGoogle Pixel 9 Pro, Android 15 (API 35)"; got != want {
+		t.Errorf("serialLine = %q, want %q", got, want)
+	}
+	if got := serialLine("emulator-5554", nil); got != "emulator-5554" {
+		t.Errorf("serialLine without props = %q, want the serial alone", got)
+	}
+}
