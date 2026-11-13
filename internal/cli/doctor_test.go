@@ -39,9 +39,7 @@ func TestDoctorReport(t *testing.T) {
 		"    ✗ ANDROID_SERIAL=emulator-5558 is not connected",
 		"      Hint: Connect it, or unset ANDROID_SERIAL",
 		"[✓] Shell completion (zsh, ~/.zshrc)",
-		"[!] apksigner (optional, not found)",
-		"    ! apksigner not found",
-		"      Only needed when 'ak signature' cannot parse an APK; comes with SDK build-tools",
+		"[✓] apksigner (optional, not installed)", // optional: not an issue, details only with -v
 	}, "\n")
 	if got != want {
 		t.Errorf("summary:\n%s\nwant:\n%s", got, want)
@@ -285,10 +283,31 @@ func TestDoctorCompletionIsNeverAProblem(t *testing.T) {
 
 func TestDoctorVerdict(t *testing.T) {
 	s := &ui.Stream{}
-	if got := doctorVerdict(s, 3); got != "! Doctor found issues in 3 categories." {
+	if got := doctorVerdict(s, 3, 4); got != "! 1/4 checks passed. Doctor found issues in 3 categories." {
 		t.Error(got)
 	}
-	if got := doctorVerdict(s, 1); got != "! Doctor found issues in 1 category." {
+	if got := doctorVerdict(s, 1, 4); got != "! 3/4 checks passed. Doctor found issues in 1 category." {
 		t.Error(got)
+	}
+}
+
+// The -v environment block: no serials, devices with their Android version.
+func TestDoctorEnvironmentLines(t *testing.T) {
+	ui.Out = &ui.Stream{}
+	got := strings.Join(environmentLines(environment{ak: "2.1.0 (2026-11-20)", osLine: "macOS 26.6.2 (darwin/arm64)",
+		shell: "zsh", adb: "37.0.1 (protocol 1.0.41)",
+		devices: []string{"Pixel 7 — Android 16 (API 36)", "Galaxy — Android 15 (API 35)"}}), "\n")
+	want := strings.Join([]string{"", "Environment (paste into a bug report):",
+		"  ak       2.1.0 (2026-11-20)",
+		"  OS       macOS 26.6.2 (darwin/arm64)",
+		"  Shell    zsh",
+		"  adb      37.0.1 (protocol 1.0.41)",
+		"  Devices  Pixel 7 — Android 16 (API 36)",
+		"           Galaxy — Android 15 (API 35)"}, "\n")
+	if got != want {
+		t.Errorf("environment:\n%s\nwant:\n%s", got, want)
+	}
+	if got := environmentLines(environment{ak: "dev", adb: "not found"}); got[len(got)-1] != "  Devices  none" {
+		t.Errorf("no devices: %q", got[len(got)-1])
 	}
 }

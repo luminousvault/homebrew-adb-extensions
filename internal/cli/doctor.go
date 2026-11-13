@@ -132,11 +132,16 @@ func runDoctor(c *Ctx) error {
 	for _, l := range doctorLines(cats, verbose) {
 		ui.Out.Println(l)
 	}
+	if verbose {
+		for _, l := range environmentLines(environmentFor(found, devices, comp)) {
+			ui.Out.Println(l)
+		}
+	}
 	ui.Err.Println("")
 	if issues > 0 {
-		ui.Err.Println(doctorVerdict(ui.Err, issues))
+		ui.Err.Println(doctorVerdict(ui.Err, issues, len(cats)))
 	} else {
-		ui.Success("No issues found!")
+		ui.Success("%d/%d checks passed. No issues found!", len(cats), len(cats))
 	}
 	if problems > 0 {
 		return errReported
@@ -144,9 +149,65 @@ func runDoctor(c *Ctx) error {
 	return nil
 }
 
-// doctorVerdict is the closing line when something needs attention.
-func doctorVerdict(s *ui.Stream, issues int) string {
-	return s.Yellow("!") + fmt.Sprintf(" Doctor found issues in %d %s.", issues, plural(issues, "category", "categories"))
+// doctorVerdict is the closing line when something needs attention:
+// "! 3/4 checks passed. Doctor found issues in 1 category."
+func doctorVerdict(s *ui.Stream, issues, total int) string {
+	return s.Yellow("!") + fmt.Sprintf(" %d/%d checks passed. Doctor found issues in %d %s.",
+		total-issues, total, issues, plural(issues, "category", "categories"))
+}
+
+// environment is what a bug report needs, without serials.
+type environment struct {
+	ak, osLine, shell, adb string
+	devices                []string // "Google Pixel 9 Pro — Android 16 (API 36)"
+}
+
+func environmentFor(found []adbFound, devices []deviceFound, comp completionReport) environment {
+	env := environment{ak: Version, osLine: osDescription(), shell: orDefault(comp.Shell, "unknown"), adb: "not found"}
+	if ReleaseDate != "unknown" {
+		env.ak += " (" + ReleaseDate + ")"
+	}
+	if len(found) > 0 {
+		env.adb = found[0].Version + " (protocol " + orDefault(found[0].Protocol, "unknown") + ")"
+	}
+	for _, d := range devices {
+		if d.State != "device" {
+			continue
+		}
+		line := d.Name
+		if p := deviceProps(d.Serial); p != nil && p["ro.build.version.release"] != "" {
+			line += " — Android " + p["ro.build.version.release"] + " (API " + p["ro.build.version.sdk"] + ")"
+		}
+		env.devices = append(env.devices, line)
+	}
+	return env
+}
+
+// environmentLines is the -v block to paste into a bug report:
+//
+//	Environment (paste into a bug report):
+//	  ak       2.1.0 (2026-11-20)
+//	  OS       macOS 26.6.2 (darwin/arm64)
+//	  Shell    zsh
+//	  adb      37.0.1 (protocol 1.0.41)
+//	  Devices  Google Pixel 9 Pro — Android 16 (API 36)
+func environmentLines(env environment) []string {
+	lines := []string{"", ui.Out.Bold("Environment") + " (paste into a bug report):",
+		"  ak       " + env.ak,
+		"  OS       " + env.osLine,
+		"  Shell    " + env.shell,
+		"  adb      " + env.adb}
+	if len(env.devices) == 0 {
+		return append(lines, "  Devices  none")
+	}
+	for i, d := range env.devices {
+		label := "         "
+		if i == 0 {
+			label = "Devices  "
+		}
+		lines = append(lines, "  "+label+d)
+	}
+	return lines
 }
 
 func versionConflict(found []adbFound) bool {
@@ -257,8 +318,9 @@ func apksignerCategory(apksigner string) checkCategory {
 		return checkCategory{name: "apksigner", summary: tildeHome(apksigner), items: []checkItem{
 			{text: "Fallback for 'ak signature' when it cannot parse an APK"}}}
 	}
-	return checkCategory{name: "apksigner", summary: "optional, not found", items: []checkItem{{level: levelWarn,
-		text:    "apksigner not found",
+	// Optional: ak reads signatures itself, so a missing apksigner is not an issue.
+	return checkCategory{name: "apksigner", summary: "optional, not installed", items: []checkItem{{
+		text:    "Not installed",
 		details: []string{"Only needed when 'ak signature' cannot parse an APK; comes with SDK build-tools"}}}}
 }
 

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- `ak doctor` looks like `flutter doctor`: a header box, one `[✓]` / `[!]` / `[✗]` line per category with the fix under it, `-v, --verbose` for every detail, and a closing count. New category: shell completion — whether ak's completion is set up for your shell and current (warning only, the exit code is unchanged)
+- `ak doctor` looks like `flutter doctor`: a header box, one `[✓]` / `[!]` / `[✗]` line per category with the fix under it, `-v, --verbose` for every detail, and a closing "N/M checks passed" count; `-v` ends with an environment block to paste into bug reports (ak, OS, shell, adb, devices with their Android version, no serials). A missing apksigner is no longer an issue (it is only a fallback). New category: shell completion — whether ak's completion is set up for your shell and current (warning only, the exit code is unchanged)
 - `ak completion zsh|bash|fish|powershell` prints a completion script generated from the command table; Homebrew installs bash, zsh and fish completion. Arguments complete only what they take (APK files and directories, directories only, fixed words) and `-s` lists connected serials through ak's own adb lookup
 - `screenshot -c, --copy` copies the image to the clipboard. Alone it saves no file; with a file or directory argument, or with `-o`, the file is saved too. One device at a time (macOS puts PNG plus a compressed TIFF on the pasteboard so clipboard history apps such as Raycast record it; Linux `wl-copy` or `xclip`; Windows PowerShell)
 
