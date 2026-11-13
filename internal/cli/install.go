@@ -36,7 +36,7 @@ var cmdInstall = &Command{
 		{"-r", "", "", "Replace the existing app, keeping its data (always on)"},
 		{"-t", "--test-only", "", "Allow test-only APKs"},
 		{"-d", "--downgrade", "", "Allow version downgrade"},
-		flagYes,
+		{"-y", "--yes", "", "Uninstall and reinstall without asking when a device refuses the update (removes the app's data)"},
 	},
 	Examples: []string{
 		"ak install", "ak install app-debug.apk", "ak install -l build/outputs/apk/debug",

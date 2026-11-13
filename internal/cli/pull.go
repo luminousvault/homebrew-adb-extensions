@@ -23,7 +23,7 @@ var cmdPull = &Command{
 		"and pull them. Files keep their names; existing local files are overwritten, and selected\n" +
 		"files with the same name get a ' (N)' suffix. Shows the " + strconv.Itoa(pullRecentLimit) + " newest files.",
 	ArgHelp:  [][2]string{{"directory", "Where to save (default: current directory; created after confirmation)"}},
-	Flags:    []Flag{flagYes},
+	Flags:    []Flag{{"-y", "--yes", "", "Create the destination directory without asking if it does not exist"}},
 	Examples: []string{"ak pull", "ak pull ~/Downloads/device", "ak pull new-dir -y"},
 	Device:   oneDevice, Run: runPull,
 }
@@ -110,7 +110,7 @@ func ensureDir(dest string) error {
 		}
 		return nil
 	}
-	ok, err := ui.Confirm("Directory "+dest+" does not exist. Create it?", false)
+	ok, err := ui.Confirm("Directory "+q(dest)+" does not exist. Create it?", false)
 	switch {
 	case errors.Is(err, ui.ErrNoInput):
 		return failErr("Pass -y to create it", "Directory does not exist: %s", q(dest))

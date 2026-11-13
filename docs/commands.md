@@ -45,7 +45,7 @@ If '&lt;file&gt;.apk.idsig' exists, --no-incremental is added.
 | `-r` | Replace the existing app, keeping its data (always on) |
 | `-t, --test-only` | Allow test-only APKs |
 | `-d, --downgrade` | Allow version downgrade |
-| `-y, --yes` | Answer yes to confirmations |
+| `-y, --yes` | Uninstall and reinstall without asking when a device refuses the update (removes the app's data) |
 | `-s, --serial ID` | Target device; repeat for more (default: $ANDROID_SERIAL, or ask) |
 | `-a, --all` | All connected devices |
 | `-h, --help` | Show this help |
@@ -512,7 +512,7 @@ files with the same name get a ' (N)' suffix. Shows the 300 newest files.
 
 | Option | Description |
 |---|---|
-| `-y, --yes` | Answer yes to confirmations |
+| `-y, --yes` | Create the destination directory without asking if it does not exist |
 | `-s, --serial ID` | Target device (default: $ANDROID_SERIAL, or ask) |
 | `-h, --help` | Show this help |
 

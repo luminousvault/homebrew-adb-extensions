@@ -63,7 +63,6 @@ var (
 	flagSerial = Flag{"-s", "--serial", "ID", "Target device (default: $ANDROID_SERIAL, or ask)"}
 	flagSerals = Flag{"-s", "--serial", "ID", "Target device; repeat for more (default: $ANDROID_SERIAL, or ask)"}
 	flagAll    = Flag{"-a", "--all", "", "All connected devices"}
-	flagYes    = Flag{"-y", "--yes", "", "Answer yes to confirmations"}
 )
 
 // AllFlags returns the command's options including the common ones.

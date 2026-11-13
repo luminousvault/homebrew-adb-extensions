@@ -98,7 +98,7 @@ _ak() {
             '-r[Replace the existing app, keeping its data]' \
             {-t,--test-only}'[Allow test-only APKs]' \
             {-d,--downgrade}'[Allow version downgrade]' \
-            {-y,--yes}'[Answer yes to confirmations]' \
+            {-y,--yes}'[Uninstall and reinstall without asking when a device refuses the update]' \
             '*'{-s,--serial}'[Target device]:serial:_ak_serials' \
             {-a,--all}'[All connected devices]' \
             '*:APK files or directories:_path_files -g "*.apk(-.)" -/'
@@ -140,7 +140,7 @@ _ak() {
         pull)
           _arguments -s \
             '(- *)'{-h,--help}'[Show help for this command]' \
-            {-y,--yes}'[Answer yes to confirmations]' \
+            {-y,--yes}'[Create the destination directory without asking if it does not exist]' \
             {-s,--serial}'[Target device]:serial:_ak_serials' \
             '1:destination directory:_path_files -/'
           ;;
