@@ -27,6 +27,10 @@ Without `-ldflags`, `ak doctor` shows the version as `dev`.
 in `~/my-app` (copies of `internal/apk/testdata/aktest.apk`) and points ak at the fake
 adb, so nothing from your own machine appears on screen.
 
+GIFs loop straight back to the first frame, so every tape ends with a `Sleep` that keeps
+the final screen up for 3–5 s after the last output appears, and leaves about 1 s
+between steps. If a command gets slower, lengthen that last `Sleep` too.
+
 ## fake-adb
 
 `fake-adb` is a small bash script that answers the adb calls the demos make:

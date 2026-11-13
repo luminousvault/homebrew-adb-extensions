@@ -17,4 +17,5 @@ Sleep 2.5s
 Ctrl+U Sleep 300ms
 Type "ak screenshot -s " Sleep 500ms Tab
 Sleep 800ms Tab
-Sleep 2.5s
+# Hold the last list before the GIF loops.
+Sleep 3.5s

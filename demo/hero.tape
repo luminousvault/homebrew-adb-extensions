@@ -15,4 +15,5 @@ Space Sleep 400ms Down Sleep 300ms Space Sleep 600ms Enter
 Sleep 1s
 # Device picker: both devices
 Space Sleep 400ms Down Sleep 300ms Space Sleep 600ms Enter
-Sleep 9s
+# Installs finish ~7.5 s after Enter; then hold the summary ~4.5 s before the GIF loops.
+Sleep 12s

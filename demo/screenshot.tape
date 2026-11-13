@@ -10,6 +10,7 @@ Sleep 1s
 Show
 
 Type "ak screenshot" Sleep 400ms Enter
-Sleep 2.5s
-Type "ak screenshot -c" Sleep 400ms Enter
 Sleep 3s
+Type "ak screenshot -c" Sleep 400ms Enter
+# Hold the result before the GIF loops.
+Sleep 4.5s

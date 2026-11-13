@@ -9,4 +9,5 @@ Sleep 1s
 Show
 
 Type "ak doctor" Sleep 400ms Enter
-Sleep 4s
+# Hold the result before the GIF loops.
+Sleep 4.5s

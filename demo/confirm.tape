@@ -12,4 +12,5 @@ Show
 Type "ak install app-debug.apk app-release.apk --all" Sleep 400ms Enter
 Sleep 4.5s
 Type "y"
-Sleep 10s
+# Uninstall + reinstall finish ~8 s after "y"; then hold the summary ~4.5 s before the GIF loops.
+Sleep 12.5s
