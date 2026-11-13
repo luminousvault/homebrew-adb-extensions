@@ -3,35 +3,31 @@
 class Ak < Formula
   desc "ADB extensions kit - Essential ADB utilities for Android development"
   homepage "https://github.com/luminousvault/homebrew-adb-extensions"
-  version "2.0.0"
+  version "2.1.0"
   license "MIT"
 
   # Prebuilt binaries from the GitHub release: no Go toolchain on the user's machine.
   on_macos do
-    on_arm do
-      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.0.0/ak_2.0.0_darwin_arm64.tar.gz"
-      sha256 "3a9779a7d34678a08ad0e4d010789d800904c5b5461705040e32d25613a9c2ee"
-    end
-    on_intel do
-      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.0.0/ak_2.0.0_darwin_amd64.tar.gz"
-      sha256 "9aa3b7074251c72fe45f31dfcbb72fbc437f265e4c714a841cc12a6c3aeeb068"
-    end
+    # Universal binary: Apple Silicon and Intel in one file.
+    url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.1.0/ak_2.1.0_macos.tar.gz"
+    sha256 "853732a3559b56f59f6f2e922754bb65d3d1fe58133bae49844d7caeaa8cb34d"
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.0.0/ak_2.0.0_linux_arm64.tar.gz"
-      sha256 "b3123cecb0a055aecd5e53ddbdacc0342dba35a8afbb6fd66de3f81a5638bca1"
+      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.1.0/ak_2.1.0_linux_arm64.tar.gz"
+      sha256 "7cadcdcdd06b0f1edb69056c7b52f461ef47112ee74f519ea293467d15b346d0"
     end
     on_intel do
-      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.0.0/ak_2.0.0_linux_amd64.tar.gz"
-      sha256 "f9685794b140adfe243afd4a86a5d743e17bbd3a6303236fa60cb7559919b598"
+      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.1.0/ak_2.1.0_linux_x86_64.tar.gz"
+      sha256 "a40db59c8611432c6949fd0fcebcd16ebb5e1e93f51ca9982c4a327d1beca73a"
     end
   end
 
   def install
     bin.install "ak"
-    zsh_completion.install "completions/_ak"
+    # bash, zsh and fish completion from `ak completion <shell>`
+    generate_completions_from_executable(bin/"ak", "completion")
   end
 
   def caveats
@@ -41,6 +37,7 @@ class Ak < Formula
       Run 'ak doctor' to see which adb ak uses.
 
       To enable tab completion, restart your terminal.
+      PowerShell and other setups: ak completion --help
     EOS
   end
 
