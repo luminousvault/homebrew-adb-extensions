@@ -126,19 +126,19 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 
 | | 명령 | 하는 일 |
 |---|---|---|
-| APK | [`install`](docs/commands.md#ak-install) | 한 대 또는 여러 대에 APK 설치, 실패 자동 복구 |
-| | [`extract`](docs/commands.md#ak-extract) | 설치된 앱의 APK 꺼내기 |
-| | [`signature`](docs/commands.md#ak-signature) | 앱 또는 APK 파일의 서명 인증서 해시 |
-| 앱 | [`info`](docs/commands.md#ak-info) · [`permissions`](docs/commands.md#ak-permissions) | 버전 · SDK 레벨 · 설치 출처 / 허용된 권한 |
-| | [`launch`](docs/commands.md#ak-launch) · [`kill`](docs/commands.md#ak-kill) · [`restart`](docs/commands.md#ak-restart) | 실행 · 강제 종료 · 재시작하며 실행 시간 측정 |
-| | [`clear`](docs/commands.md#ak-clear) · [`uninstall`](docs/commands.md#ak-uninstall) | 데이터 삭제 · 제거 |
-| | [`activities`](docs/commands.md#ak-activities) · [`logcat`](docs/commands.md#ak-logcat) | 액티비티 스택 · 앱 하나의 로그 |
-| 화면 | [`screenshot`](docs/commands.md#ak-screenshot) · [`record`](docs/commands.md#ak-record) | PNG를 파일이나 클립보드로 · MP4 녹화 |
-| 파일 | [`pull`](docs/commands.md#ak-pull) | 디바이스의 최근 파일을 골라 가져오기 |
-| 디바이스 | [`devices`](docs/commands.md#ak-devices) · [`mac`](docs/commands.md#ak-mac) · [`wifi`](docs/commands.md#ak-wifi) | 디바이스 목록 · MAC 주소 · Wi-Fi 디버깅 |
-| 설정 | [`doctor`](docs/commands.md#ak-doctor) · [`completion`](docs/commands.md#ak-completion) | 설정 점검 · 셸 자동 완성 스크립트 |
+| APK | [`install`](docs/commands.ko.md#ak-install) | 한 대 또는 여러 대에 APK 설치, 실패 자동 복구 |
+| | [`extract`](docs/commands.ko.md#ak-extract) | 설치된 앱의 APK 꺼내기 |
+| | [`signature`](docs/commands.ko.md#ak-signature) | 앱 또는 APK 파일의 서명 인증서 해시 |
+| 앱 | [`info`](docs/commands.ko.md#ak-info) · [`permissions`](docs/commands.ko.md#ak-permissions) | 버전 · SDK 레벨 · 설치 출처 / 허용된 권한 |
+| | [`launch`](docs/commands.ko.md#ak-launch) · [`kill`](docs/commands.ko.md#ak-kill) · [`restart`](docs/commands.ko.md#ak-restart) | 실행 · 강제 종료 · 재시작하며 실행 시간 측정 |
+| | [`clear`](docs/commands.ko.md#ak-clear) · [`uninstall`](docs/commands.ko.md#ak-uninstall) | 데이터 삭제 · 제거 |
+| | [`activities`](docs/commands.ko.md#ak-activities) · [`logcat`](docs/commands.ko.md#ak-logcat) | 액티비티 스택 · 앱 하나의 로그 |
+| 화면 | [`screenshot`](docs/commands.ko.md#ak-screenshot) · [`record`](docs/commands.ko.md#ak-record) | PNG를 파일이나 클립보드로 · MP4 녹화 |
+| 파일 | [`pull`](docs/commands.ko.md#ak-pull) | 디바이스의 최근 파일을 골라 가져오기 |
+| 디바이스 | [`devices`](docs/commands.ko.md#ak-devices) · [`mac`](docs/commands.ko.md#ak-mac) · [`wifi`](docs/commands.ko.md#ak-wifi) | 디바이스 목록 · MAC 주소 · Wi-Fi 디버깅 |
+| 설정 | [`doctor`](docs/commands.ko.md#ak-doctor) · [`completion`](docs/commands.ko.md#ak-completion) | 설정 점검 · 셸 자동 완성 스크립트 |
 
-모든 옵션과 예시는 **[docs/commands.md](docs/commands.md)**(영문)에 있고, `ak <명령> --help`로도 같은 내용을 볼 수 있습니다.
+모든 옵션과 예시는 **[docs/commands.ko.md](docs/commands.ko.md)**에 있고, `ak <명령> --help`로도 같은 내용을 볼 수 있습니다.
 
 ## 스크립트와 CI에서
 

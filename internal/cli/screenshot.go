@@ -19,8 +19,8 @@ var cmdScreenshot = &Command{
 	Long: "Capture the screen and save it as PNG on this computer (nothing is left on the device).\n" +
 		"The default name is screenshot-<model>-<time>.png in the current directory.\n" +
 		"With several devices, one file per device is saved. Saved paths are printed to stdout.\n" +
-		"-c copies the image to the clipboard instead of saving it; give a file or directory\n" +
-		"(or -o) to save it as well.",
+		"-c copies the image to the clipboard instead of saving it (one device only); give a file\n" +
+		"or directory (or -o) to save it as well.",
 	ArgHelp: [][2]string{{"file", "Output .png file (one device)"}, {"directory", "Save into this directory"}},
 	Flags:   []Flag{flagCopy, flagOpen},
 	Examples: []string{"ak screenshot", "ak screenshot -o", "ak screenshot -c", "ak screenshot -c ~/Desktop",

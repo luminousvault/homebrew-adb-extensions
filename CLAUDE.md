@@ -76,6 +76,8 @@ adb-extensions/
 ├── completions/_ak             # `ak completion zsh` 출력(직접 고치지 않음, `make completions`로 재생성 — 테스트가 일치 검사)
 ├── docs/
 │   ├── commands.md             # 명령 레퍼런스 (명령 정의에서 생성: make docs, 테스트가 일치 검사)
+│   ├── commands.<lang>.md      # 번역본: docs/i18n/<lang>.json을 넣으면 make docs가 생성. 옵션을 추가하면 번역 JSON에도 넣어야 테스트 통과
+│   ├── i18n/ko.json            # 한국어 번역 (ak 바이너리에는 들어가지 않음)
 │   ├── troubleshooting.md      # 사용자용 문제 해결
 │   └── dev/cli-design.md       # 개발 규칙: 출력 · 오류 · 종료 코드 · 옵션 이름 · 선택 UI · 동시 설치
 ├── demo/                       # README GIF: vhs tape + 데모용 가짜 adb (실기기 없이 같은 화면을 다시 녹화)

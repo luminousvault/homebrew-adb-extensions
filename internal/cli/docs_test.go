@@ -2,18 +2,54 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
+// docs/commands.md and every docs/commands.<lang>.md (one per
+// docs/i18n/<lang>.json) are generated; regenerate with: make docs
 func TestDocsMatchCommands(t *testing.T) {
-	data, err := os.ReadFile("../../docs/commands.md")
+	files, err := filepath.Glob("../../docs/i18n/*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := strings.ReplaceAll(string(data), "\r\n", "\n") // CRLF on a Windows checkout
-	if got != CommandsMarkdown() {
-		t.Error("docs/commands.md is out of date; run: make docs")
+	translations := map[string][]byte{}
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		translations[strings.TrimSuffix(filepath.Base(f), ".json")] = data
+	}
+	docs, err := CommandsDocs(translations) // also fails when a translation misses an entry
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range docs {
+		data, err := os.ReadFile("../../docs/" + name)
+		if err != nil {
+			t.Errorf("%s: %v; run: make docs", name, err)
+			continue
+		}
+		if strings.ReplaceAll(string(data), "\r\n", "\n") != want { // CRLF on a Windows checkout
+			t.Errorf("docs/%s is out of date; run: make docs", name)
+		}
+	}
+	// A translation removed from i18n/ must take its page with it.
+	pages, _ := filepath.Glob("../../docs/commands*.md")
+	for _, p := range pages {
+		if _, ok := docs[filepath.Base(p)]; !ok {
+			t.Errorf("docs/%s has no docs/i18n JSON; delete it or add the translation", filepath.Base(p))
+		}
+	}
+}
+
+// A translation that misses an entry is refused, with the missing keys.
+func TestDocsTranslationMustBeComplete(t *testing.T) {
+	_, err := CommandsDocs(map[string][]byte{"xx": []byte(`{"language": "X", "title": "T"}`)})
+	if err == nil || !strings.Contains(err.Error(), "commands.install\n") {
+		t.Errorf("incomplete translation accepted: %v", err)
 	}
 }
 

@@ -39,9 +39,10 @@ install: build/ak
 completions: build/ak
 	build/ak completion zsh > completions/_ak
 
-# docs/commands.md is generated from the command table (a test checks it).
+# docs/commands.md is generated from the command table, and docs/commands.<lang>.md for each
+# docs/i18n/<lang>.json (tests check all of them, and that each translation has every entry).
 docs:
-	go run ./cmd/gendocs > docs/commands.md
+	go run ./cmd/gendocs docs
 
 uninstall:
 	$(SUDO) rm -f $(BINDIR)/ak $(ZSHDIR)/_ak
