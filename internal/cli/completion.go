@@ -523,12 +523,15 @@ $global:__akCompletion = @{
 	}
 	b.WriteString(`}
 
-# PowerShell falls back to file names when a completer returns nothing, so an
-# empty string stands in for "no candidates".
+# PowerShell falls back to file names when a completer returns nothing, so
+# "no candidates" is answered with the typed word itself (a space when it is
+# empty; a result cannot be an empty string): Tab leaves the line as it is.
 Register-ArgumentCompleter -Native -CommandName 'ak', 'ak.exe' -ScriptBlock {
   param($wordToComplete, $commandAst, $cursorPosition)
   $out = @(& $global:__akComplete $wordToComplete $commandAst $cursorPosition)
-  if ($out.Count -eq 0) { '' } else { $out }
+  if ($out.Count -gt 0) { return $out }
+  $same = if ($wordToComplete) { $wordToComplete } else { ' ' }
+  [System.Management.Automation.CompletionResult]::new($same, $same, 'ParameterValue', $same)
 }
 
 $global:__akComplete = {
