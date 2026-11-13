@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# fake-adb: a stand-in for adb used to record the README demos.
+#
+# ak runs it through AK_ADB=/path/to/demo/fake-adb. It answers the adb calls
+# the demos make with fixed output, so no real device (and no real serial)
+# ever shows up, and anyone can re-record the GIFs.
+#
+# Devices:
+#   emulator-5554  Google Pixel 9       Android 16 (API 36)
+#   emulator-5556  Samsung Galaxy S25   Android 15 (API 35)
+#
+# Environment:
+#   AK_DEMO_DEVICES=1          only emulator-5554 is connected (default: both)
+#   AK_DEMO_SCENARIO=conflict  the Galaxy rejects the first install with
+#                              INSTALL_FAILED_UPDATE_INCOMPATIBLE; after
+#                              'uninstall' it succeeds
+#   AK_DEMO_STATE=<dir>        where the scenario keeps state between calls
+#                              (default: $TMPDIR/ak-demo)
+
+set -u
+self=$0
+[ -L "$self" ] && self=$(readlink "$self") # demo/setup.sh links it in as .../platform-tools/adb
+here=$(cd "$(dirname "$self")" && pwd)
+state=${AK_DEMO_STATE:-${TMPDIR:-/tmp}/ak-demo}
+
+# adb -s <serial> <command...>
+serial=""
+if [ "${1:-}" = "-s" ]; then
+  serial=$2
+  shift 2
+fi
+
+getprop() { # brand model release sdk
+  printf '[ro.build.version.release]: [%s]\n[ro.build.version.sdk]: [%s]\n' "$3" "$4"
+  printf '[ro.product.brand]: [%s]\n[ro.product.model]: [%s]\n' "$1" "$2"
+  printf '[ro.product.cpu.abi]: [arm64-v8a]\n[ro.product.cpu.abilist32]: []\n[ro.product.cpu.abilist64]: [arm64-v8a]\n'
+}
+
+# Seconds one install takes on each device, so the status board has something to show.
+install_time() {
+  case "$serial" in
+    emulator-5554) echo 2 ;;
+    *) echo 3.5 ;;
+  esac
+}
+
+case "${1:-}" in
+version)
+  echo "Android Debug Bridge version 1.0.41"
+  echo "Version 36.0.0-13206524"
+  ;;
+
+devices)
+  echo "List of devices attached"
+  echo "emulator-5554	device"
+  [ "${AK_DEMO_DEVICES:-2}" = 1 ] || echo "emulator-5556	device"
+  echo
+  ;;
+
+shell)
+  case "${2:-}" in
+  getprop)
+    case "$serial" in
+    emulator-5554) getprop google "Pixel 9" 16 36 ;;
+    emulator-5556) getprop samsung "Galaxy S25" 15 35 ;;
+    esac
+    ;;
+  esac
+  # Any other shell command: no output, like a quiet success.
+  ;;
+
+install)
+  apk="${*: -1}"
+  echo "Performing Streamed Install"
+  if [ "${AK_DEMO_SCENARIO:-}" = conflict ] && [ "$serial" = emulator-5556 ] &&
+    [ ! -e "$state/uninstalled" ]; then
+    sleep 1.5 # the signature check fails early
+    echo "adb: failed to install $apk: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.example.app signatures do not match newer version; ignoring!]" >&2
+    exit 1
+  fi
+  sleep "$(install_time)"
+  echo "Success"
+  ;;
+
+uninstall)
+  sleep 1
+  mkdir -p "$state" && touch "$state/uninstalled"
+  echo "Success"
+  ;;
+
+exec-out)
+  # exec-out screencap -p
+  sleep 0.8
+  cat "$here/assets/screen.png"
+  ;;
+
+*)
+  echo "fake-adb: not simulated: $*" >&2
+  exit 1
+  ;;
+esac

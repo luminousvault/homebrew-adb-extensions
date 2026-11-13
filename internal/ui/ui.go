@@ -1,7 +1,7 @@
 // Package ui is the single place that writes user-facing output.
 // Results go to stdout (Out); messages, prompts and progress go to stderr (Err).
 // Colors are used only on terminals, honoring NO_COLOR, --no-color, TERM=dumb
-// and CLICOLOR_FORCE. See docs/design/cli-output.md.
+// and CLICOLOR_FORCE. See docs/dev/cli-design.md.
 package ui
 
 import (

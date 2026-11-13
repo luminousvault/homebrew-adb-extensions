@@ -24,9 +24,9 @@
 * **자동 복구:** `install` 시 testOnly, 버전 다운그레이드, 서명 충돌을 자동 처리
 * **adb 자동 탐색 + `doctor`:** 여러 설치 경로에서 adb를 찾고 버전 충돌을 경고
 * **Zsh 탭 완성:** 커맨드·옵션 자동 완성
-* **정형화된 출력:** stdout은 결과, stderr은 메시지. `==>`/`✓`/`Warning:`/`Error:`/`Hint:` 다섯 가지 메시지, `--json`, 종료 코드 0/1/2/130 ([docs/design/cli-output.md](docs/design/cli-output.md))
+* **정형화된 출력:** stdout은 결과, stderr은 메시지. `==>`/`✓`/`Warning:`/`Error:`/`Hint:` 다섯 가지 메시지, `--json`, 종료 코드 0/1/2/130 ([docs/dev/cli-design.md](docs/dev/cli-design.md))
 * **디바이스 지정:** `-s/--serial`, `ANDROID_SERIAL`, `-a/--all`. 터미널이 아니면 선택 UI 대신 `-s`를 요구
-* **여러 디바이스 동시 설치:** 상태판 + 확인 질문 모아서 묻기 ([docs/spec/parallel-install.md](docs/spec/parallel-install.md))
+* **여러 디바이스 동시 설치:** 상태판, 확인이 필요하면 바로 묻고 겹치면 대기열 ([docs/dev/cli-design.md](docs/dev/cli-design.md))
 
 **지원 플랫폼:** macOS, Linux, Windows
 
@@ -64,7 +64,8 @@ adb-extensions/
 │   │   ├── activities.go, devices.go, mac.go, pull.go, signature.go, doctor.go
 │   │   ├── screenshot.go, record.go, logcat.go, restart.go, wifi.go  # adb 여러 단계를 묶은 커맨드
 │   │   ├── cli_test.go, parallel_test.go  # 가짜 adb로 커맨드 흐름 테스트
-│   │   └── completion_test.go  # completions/_ak ↔ 커맨드 정의 일치 검사
+│   │   ├── completion.go       # ak completion zsh|bash|fish|powershell — 커맨드 정의 + compArgs(인자 종류)에서 생성
+│   │   └── completion_test.go · completion_shell_test.go  # _ak = 생성 결과 검사, 설치된 셸(bash · fish · pwsh)에서 실제 Tab 결과 검사
 │   ├── ui/                     # 출력 규칙 구현: 스트림·색상 판단, 메시지, 표, JSON, 확인 질문, 스피너, 상태판, Fit
 │   ├── adb/                    # adb 실행·탐색(locate.go)·SDK build-tools 탐색(sdk.go)·파싱
 │   │   └── adbtest/            # 가짜 adb Runner
@@ -72,20 +73,22 @@ adb-extensions/
 │   ├── apk/                    # APK 패키지명·서명 인증서 (aapt/apksigner 대체), testdata/aktest.apk
 │   ├── style/                  # 선택 UI(tui) 내부 색상 상수
 │   └── debuglog/               # AK_DEBUG=1 로그
-├── completions/_ak             # Zsh completion (수동 관리, 테스트로 동기화 검증)
+├── completions/_ak             # `ak completion zsh` 출력(직접 고치지 않음, `make completions`로 재생성 — 테스트가 일치 검사)
 ├── docs/
-│   ├── go-migration-plan.md    # Go 전환 계획
-│   ├── design/cli-output.md    # CLI 출력 설계 가이드 (출력·오류·종료 코드·옵션 규칙)
-│   ├── spec/commands.md        # v1.4.0(Bash) 동작 기록
-│   └── spec/parallel-install.md # 동시 설치 설계
+│   ├── commands.md             # 명령 레퍼런스 (명령 정의에서 생성: make docs, 테스트가 일치 검사)
+│   ├── commands.<lang>.md      # 번역본: docs/i18n/<lang>.json을 넣으면 make docs가 생성. 옵션을 추가하면 번역 JSON에도 넣어야 테스트 통과
+│   ├── i18n/ko.json            # 한국어 번역 (ak 바이너리에는 들어가지 않음)
+│   ├── troubleshooting.md      # 사용자용 문제 해결
+│   └── dev/cli-design.md       # 개발 규칙: 출력 · 오류 · 종료 코드 · 옵션 이름 · 선택 UI · 동시 설치
+├── demo/                       # README GIF: vhs tape + 데모용 가짜 adb (실기기 없이 같은 화면을 다시 녹화)
 ├── Formula/ak.rb               # Homebrew formula (릴리즈 워크플로가 생성, 직접 수정 금지)
-├── .github/formula/ak.rb.tmpl  # Formula 템플릿 (소스 빌드)
+├── .github/formula/            # Formula 템플릿 + render.sh (릴리스 바이너리 · checksums로 생성)
 ├── .github/workflows/          # ci.yml (vet/test/lint/snapshot), release.yml (수동 릴리즈)
 ├── .goreleaser.yaml            # 멀티 플랫폼 바이너리
 ├── Makefile                    # 로컬 빌드·설치 (make install / uninstall)
 ├── .golangci.yml
 ├── VERSION                     # 버전 단일 소스 (릴리즈 워크플로가 이 값을 씀)
-├── CHANGELOG.md, README.md, README.ko.md, CONTRIBUTING.md
+├── CHANGELOG.md, README.md, README.ko.md
 ```
 
 ## 빌드·실행·테스트
@@ -107,15 +110,16 @@ goreleaser build --snapshot --clean   # 멀티 플랫폼 빌드 확인
    - `Summary`(전체 도움말·completion 설명), `Args`, `Long`, `ArgHelp`, `Flags`, `Examples`, `Device`, `JSON`, `Run func(*Ctx) error`
    - 도움말은 정의에서 자동 생성됩니다. 디바이스는 `c.Device()`/`c.Devices()`, 옵션은 `c.Bool/String/Strings`, 인자 개수는 `tooMany(c, n)`
 2. `internal/cli/cli.go`의 `Commands`에 추가
-3. `completions/_ak`에 커맨드와 옵션 추가 (`TestCompletionMatchesCommands`가 불일치를 잡음)
+3. 인자가 있으면 `completion.go`의 `compArgs`에 종류(패키지 · APK · 폴더 · 단어)를 적고, 값을 고를 수 있는 옵션은 `compValues`에. 그다음 `make completions` (`TestCompletionFileIsGenerated` · `TestCompletionKnowsEveryArgument`가 빠진 것을 잡음)
 4. `cli_test.go`에 가짜 adb 기반 테스트 추가
-5. `README.md`, `README.ko.md`, `CHANGELOG.md` 갱신
+5. `make docs`(docs/commands.md 재생성), `README.md` · `README.ko.md`의 명령 표, `CHANGELOG.md` `[Unreleased]` 갱신
+6. 확인: 디바이스 0 · 1 · 여러 대에서 실행, `ak <명령> --help`, Tab 자동완성, 오류 메시지에 고칠 방법(Hint)이 있는지
 
 ## 코드 스타일 (Go)
 
 * `gofmt`, `go vet`, `golangci-lint` 통과 필수
-* 옵션 이름은 [docs/design/cli-output.md](docs/design/cli-output.md) §5.7 규칙을 따릅니다: 짧은 이름 = 긴 이름 첫 글자, `-s`·`-a`·`-y`·`-h`는 전 커맨드 공통 의미로 예약, 커맨드 항목 전부는 `-e, --every-…`
-* 출력은 [docs/design/cli-output.md](docs/design/cli-output.md)를 따릅니다: 결과는 stdout, 메시지는 stderr, 메시지 기호 다섯 가지, 실패하면 0이 아닌 종료 코드, 고칠 방법을 알면 `Hint`
+* 옵션 이름은 [docs/dev/cli-design.md](docs/dev/cli-design.md)의 옵션 이름 규칙을 따릅니다: 짧은 이름 = 긴 이름 첫 글자, `-s`·`-a`·`-y`·`-h`는 전 커맨드 공통 의미로 예약, 커맨드 항목 전부는 `-e, --every-…`
+* 출력은 [docs/dev/cli-design.md](docs/dev/cli-design.md)를 따릅니다: 결과는 stdout, 메시지는 stderr, 메시지 기호 다섯 가지, 실패하면 0이 아닌 종료 코드, 고칠 방법을 알면 `Hint`
 * 터미널이 아닐 때(파이프·CI)도 동작해야 합니다: 선택 UI와 확인 질문은 `-s`, `-y`, 인자로 대신할 수 있어야 합니다
 * adb 출력 파싱은 순수 함수(`parse...`)로 분리해 테스트합니다
 * 테스트 fixture에 실제 시리얼·MAC·SSID 등 기기 식별 정보를 넣지 않습니다 (공개 저장소)
@@ -185,4 +189,4 @@ tail -f "${TMPDIR:-/tmp}/ak-debug.log"    # AK_DEBUG_LOG로 경로 변경 가능
 
 ## 상세 가이드
 
-기여 절차, PR 프로세스는 [CONTRIBUTING.md](CONTRIBUTING.md)를 참고합니다.
+혼자 개발하는 개인 프로젝트입니다. PR은 받지 않고, 버그 제보는 GitHub Issue로 받습니다. 개발 규칙의 자세한 내용과 이유는 [docs/dev/cli-design.md](docs/dev/cli-design.md)에 있습니다.

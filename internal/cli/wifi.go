@@ -11,7 +11,7 @@ import (
 )
 
 var cmdWifi = &Command{
-	Name: "wifi", Summary: "Debug over Wi-Fi", Args: "[off]",
+	Name: "wifi", Summary: "Switch a device to Wi-Fi debugging", Args: "[off]",
 	Long: "Switch a USB-connected device to Wi-Fi debugging (adb tcpip) and connect to it, so the\n" +
 		"cable can be unplugged. The computer and the device must be on the same network.\n" +
 		"'ak wifi off' switches Wi-Fi devices back to USB mode and disconnects them.\n" +

@@ -1,5 +1,5 @@
 // Package cli implements the ak commands.
-// Output rules: docs/design/cli-output.md.
+// Output rules: docs/dev/cli-design.md.
 package cli
 
 import (
@@ -63,7 +63,6 @@ var (
 	flagSerial = Flag{"-s", "--serial", "ID", "Target device (default: $ANDROID_SERIAL, or ask)"}
 	flagSerals = Flag{"-s", "--serial", "ID", "Target device; repeat for more (default: $ANDROID_SERIAL, or ask)"}
 	flagAll    = Flag{"-a", "--all", "", "All connected devices"}
-	flagYes    = Flag{"-y", "--yes", "", "Answer yes to confirmations"}
 )
 
 // AllFlags returns the command's options including the common ones.
@@ -85,7 +84,7 @@ func (cmd *Command) AllFlags() []Flag {
 var Commands = []*Command{
 	cmdInstall, cmdPull, cmdExtract, cmdInfo, cmdPermissions, cmdUninstall, cmdClear,
 	cmdKill, cmdLaunch, cmdRestart, cmdSignature, cmdActivities, cmdLogcat, cmdScreenshot, cmdRecord,
-	cmdDevices, cmdMac, cmdWifi, cmdDoctor, cmdVerifier,
+	cmdDevices, cmdMac, cmdWifi, cmdDoctor, cmdCompletion, cmdVerifier, cmdSerials,
 }
 
 func find(name string) *Command {

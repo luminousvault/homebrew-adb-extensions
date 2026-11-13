@@ -65,11 +65,6 @@ build/
 out/
 target/
 
-# Node modules (if any)
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
 # Environment files
 .env
@@ -83,3 +78,7 @@ yarn-error.log*
 
 # Go
 /ak
+
+# Demo recording (demo/README.md)
+demo/bin/
+demo/home/

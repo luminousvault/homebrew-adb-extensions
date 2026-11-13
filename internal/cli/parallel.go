@@ -13,10 +13,11 @@ import (
 )
 
 // Multi-device install: devices in parallel, APKs of one device in order.
-// On a terminal a status board is redrawn in place and confirmations are
-// collected and asked after the other devices finish. Without a terminal
-// every message is printed as it happens with a "[device]" prefix.
-// Design: docs/spec/parallel-install.md.
+// On a terminal a status board is redrawn in place; a device that needs
+// confirmation is asked right away while the others keep installing, and
+// further questions queue up. Without a terminal every message is printed as
+// it happens with a "[device]" prefix.
+// Design: docs/dev/cli-design.md (parallel install).
 
 type jobState int
 

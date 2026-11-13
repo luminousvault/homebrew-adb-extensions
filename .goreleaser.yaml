@@ -18,9 +18,22 @@ builds:
     ldflags:
       - -s -w -X main.version={{ .Version }} -X main.date={{ time "2006-01-02" }}
 
+# macOS gets one universal binary (Apple Silicon + Intel in one file), so Mac
+# users do not pick a chip.
+universal_binaries:
+  - id: ak
+    name_template: ak # default is the project name (homebrew-adb-extensions)
+    replace: true
+
 archives:
   - id: ak
-    name_template: "ak_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Names as users see their machine: macos (universal), windows_x64 /
+    # windows_arm64 (Windows settings), linux_x86_64 / linux_arm64 (uname -m).
+    name_template: >-
+      ak_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macos
+      {{- else if eq .Arch "amd64" }}{{ .Os }}_{{ if eq .Os "windows" }}x64{{ else }}x86_64{{ end }}
+      {{- else }}{{ .Os }}_{{ .Arch }}{{ end }}
     formats: [tar.gz]
     format_overrides:
       - goos: windows

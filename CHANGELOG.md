@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-11-13
+
+### Added
+- `ak doctor` looks like `flutter doctor`: a header box, one `[✓]` / `[!]` / `[✗]` line per category with the fix under it, `-v, --verbose` for every detail, and a closing "N/M checks passed" count; `-v` ends with an environment block to paste into bug reports (ak, OS, shell, adb, devices with their Android version, no serials). A missing apksigner is no longer an issue (it is only a fallback). New category: shell completion — whether ak's completion is set up for your shell and current (warning only, the exit code is unchanged)
+- `ak completion zsh|bash|fish|powershell` prints a completion script generated from the command table; Homebrew installs bash, zsh and fish completion. Arguments complete only what they take (APK files and directories, directories only, fixed words) and `-s` lists connected serials through ak's own adb lookup
+- `screenshot -c, --copy` copies the image to the clipboard. Alone it saves no file; with a file or directory argument, or with `-o`, the file is saved too. One device at a time (macOS puts PNG plus a compressed TIFF on the pasteboard so clipboard history apps such as Raycast record it; Linux `wl-copy` or `xclip`; Windows PowerShell)
+
+### Changed
+- Release archives are named as users see their machine: `ak_<version>_macos.tar.gz` holds one universal binary (Apple Silicon and Intel), Windows is `windows_x64` / `windows_arm64`, Linux is `linux_x86_64` / `linux_arm64` (was `darwin_amd64`, `darwin_arm64`, `windows_amd64`, `linux_amd64`, …). Homebrew picks the right one as before
+- README rewritten (what ak saves you over plain adb, install incl. the macOS quarantine note, demo GIFs recorded with a fake adb), with a generated command reference (`docs/commands.md`, Korean `docs/commands.ko.md` from `docs/i18n/ko.json`; any `docs/i18n/<lang>.json` adds a language) and `docs/troubleshooting.md`. Help texts say what each command and `-y` do
+- Personal project: CONTRIBUTING.md removed; pull requests are not accepted, issues are welcome
+
+### Fixed
+- Tab completion offers only what an argument takes: directories for `screenshot`, `record`, `pull` and the save name of `extract`; APK files and directories for `install` and `signature` (any path, not only the current folder). It never falls back to listing every file
+- With one device, declining the uninstall-and-reinstall question stops the remaining APKs, as it does with several devices
+
 ## [2.0.0] - 2026-11-12
 
 ### Changed
@@ -12,11 +28,11 @@ All notable changes to this project will be documented in this file.
 - Prebuilt binaries for macOS, Linux and Windows (amd64/arm64) are attached to each GitHub release; the Homebrew formula installs them, so no Go toolchain is needed
 
 ### Changed (Breaking)
-- New output design for every command (`docs/design/cli-output.md`): results on stdout and messages on stderr; `==>`, `✓`, `Warning:`, `Error:`, `Hint:` messages; colors only on terminals (`NO_COLOR`, `--no-color`, `CLICOLOR_FORCE`). Scripts that parsed v1.x output need updating
+- New output design for every command (`docs/dev/cli-design.md`): results on stdout and messages on stderr; `==>`, `✓`, `Warning:`, `Error:`, `Hint:` messages; colors only on terminals (`NO_COLOR`, `--no-color`, `CLICOLOR_FORCE`). Scripts that parsed v1.x output need updating
 - Exit codes: `0` success (including `--help`), `1` failure including partial failure (e.g. one of several packages, failed installs), `2` usage error, `130` interrupted. v1.x exited 1 for `--help` and 0 for several failures
 - Help is generated from command definitions and printed to stdout; options may come before or after arguments; `--opt=value` and `--` are supported; short options can be combined (`-ea`, `-clW`)
 - `devices` prints a table (`SERIAL MODEL ANDROID ABI STATE`) with bold headers and, on a terminal, a rule under them; piped output is plain columns; `activities`, `signature`, `mac` and `info` print aligned plain output
-- Option names follow one rule (`docs/design/cli-output.md` §5.7): `-a, --all` always means all devices, `-e, --every-…` means every item of the command
+- Option names follow one rule (`docs/dev/cli-design.md`): `-a, --all` always means all devices, `-e, --every-…` means every item of the command
   - All devices: `-m` is now `-a, --all` (`install`, `mac`, `screenshot`)
   - `install -a, --all-apks` is now `-e, --every-apk`; `activities --all` is now `-e, --every-task`
   - `restart -n` is now `-r, --repeat`; `install -t`/`-d` gain `--test-only`/`--downgrade`

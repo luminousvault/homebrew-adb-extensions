@@ -16,7 +16,7 @@ var argPackage = [2]string{"package", "Package name (default: the foreground app
 // ── info ─────────────────────────────────────────────
 
 var cmdInfo = &Command{
-	Name: "info", Summary: "Show package information", Args: "[package]",
+	Name: "info", Summary: "Show app version and SDK levels", Args: "[package]",
 	Long:     "Show the version, SDK levels, debuggable flag and installer of a package.",
 	ArgHelp:  [][2]string{argPackage},
 	Examples: []string{"ak info", "ak info com.example.app", "ak info --json | jq .versionName"},
@@ -138,7 +138,7 @@ func runInfo(c *Ctx) error {
 // ── permissions ──────────────────────────────────────
 
 var cmdPermissions = &Command{
-	Name: "permissions", Summary: "List package permissions", Args: "[package]",
+	Name: "permissions", Summary: "List granted permissions of an app", Args: "[package]",
 	Long:     "List the permissions granted to a package.",
 	ArgHelp:  [][2]string{argPackage},
 	Examples: []string{"ak permissions", "ak permissions com.example.app --json"},
@@ -185,7 +185,7 @@ func runPermissions(c *Ctx) error {
 // ── launch ───────────────────────────────────────────
 
 var cmdLaunch = &Command{
-	Name: "launch", Summary: "Launch package", Args: "<package>",
+	Name: "launch", Summary: "Launch an app", Args: "<package>",
 	Long:     "Start the launcher activity of a package.",
 	ArgHelp:  [][2]string{{"package", "Package name"}},
 	Examples: []string{"ak launch com.example.app"},
@@ -226,8 +226,8 @@ func runLaunch(c *Ctx) error {
 // ── kill / clear ─────────────────────────────────────
 
 var cmdKill = &Command{
-	Name: "kill", Summary: "Force-stop package", Args: "[package...]",
-	Long:     "Force-stop one or more packages.",
+	Name: "kill", Summary: "Force-stop apps", Args: "[package...]",
+	Long:     "Force-stop one or more apps. Without a package name, the app on screen is used.",
 	ArgHelp:  [][2]string{{"package", "Package names (default: the foreground app)"}},
 	Examples: []string{"ak kill", "ak kill com.example.app com.example.other"},
 	Device:   oneDevice, Run: runKill,
@@ -235,7 +235,8 @@ var cmdKill = &Command{
 
 var cmdClear = &Command{
 	Name: "clear", Summary: "Clear app data and cache", Args: "[package...]",
-	Long:     "Clear the data and cache of one or more packages.",
+	Long: "Clear the data and cache of one or more apps, like reinstalling them fresh.\n" +
+		"Without a package name, the app on screen is used. It does not ask first.",
 	ArgHelp:  [][2]string{{"package", "Package names (default: the foreground app)"}},
 	Examples: []string{"ak clear", "ak clear com.example.app"},
 	Device:   oneDevice, Run: runClear,
@@ -311,8 +312,9 @@ func runClear(c *Ctx) error {
 // ── uninstall ────────────────────────────────────────
 
 var cmdUninstall = &Command{
-	Name: "uninstall", Summary: "Uninstall package", Args: "[package]",
-	Long:     "Uninstall a package.",
+	Name: "uninstall", Summary: "Uninstall an app", Args: "[package]",
+	Long: "Uninstall an app (its data is removed too).\n" +
+		"Without a package name, the app on screen is used. It does not ask first.",
 	ArgHelp:  [][2]string{argPackage},
 	Examples: []string{"ak uninstall", "ak uninstall com.example.app"},
 	Device:   oneDevice, Run: runUninstall,
@@ -343,7 +345,7 @@ func runUninstall(c *Ctx) error {
 // ── extract ──────────────────────────────────────────
 
 var cmdExtract = &Command{
-	Name: "extract", Summary: "Extract APK file from device", Args: "[package] [file]",
+	Name: "extract", Summary: "Save the APK of an installed app", Args: "[package] [file]",
 	Long: "Save the APK of an installed package to a local file.\n" +
 		"The arguments can be given in either order: a value ending in .apk or containing '/' is the file.",
 	ArgHelp: [][2]string{argPackage, {"file", "Output file (default: <package>.apk)"}},

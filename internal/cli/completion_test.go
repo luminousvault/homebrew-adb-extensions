@@ -105,3 +105,33 @@ func TestCompletionMatchesCommands(t *testing.T) {
 		}
 	}
 }
+
+// completions/_ak is the checked-in output of `ak completion zsh` (archives and
+// make install ship it). Regenerate with: make completions
+func TestCompletionFileIsGenerated(t *testing.T) {
+	data, err := os.ReadFile("../../completions/_ak")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ReplaceAll(string(data), "\r\n", "\n") != zshCompletion() {
+		t.Error("completions/_ak differs from `ak completion zsh`; run: make completions")
+	}
+}
+
+// Every visible command that takes arguments says what they are, so each
+// shell offers the right thing (directories, APKs, words or nothing).
+func TestCompletionKnowsEveryArgument(t *testing.T) {
+	for _, c := range visibleCommands() {
+		if c.Args != "" && compArgs[c.Name] == nil {
+			t.Errorf("%s takes %s but compArgs has no entry", c.Name, c.Args)
+		}
+		if c.Args == "" && compArgs[c.Name] != nil {
+			t.Errorf("%s takes no arguments but compArgs has an entry", c.Name)
+		}
+	}
+	for _, shell := range completionShells {
+		if s, ok := completionScript(shell); !ok || !strings.Contains(s, "screenshot") {
+			t.Errorf("%s: no script", shell)
+		}
+	}
+}

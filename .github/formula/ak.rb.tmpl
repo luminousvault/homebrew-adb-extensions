@@ -8,14 +8,9 @@ class Ak < Formula
 
   # Prebuilt binaries from the GitHub release: no Go toolchain on the user's machine.
   on_macos do
-    on_arm do
-      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v@VERSION@/ak_@VERSION@_darwin_arm64.tar.gz"
-      sha256 "@SHA256_DARWIN_ARM64@"
-    end
-    on_intel do
-      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v@VERSION@/ak_@VERSION@_darwin_amd64.tar.gz"
-      sha256 "@SHA256_DARWIN_AMD64@"
-    end
+    # Universal binary: Apple Silicon and Intel in one file.
+    url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v@VERSION@/ak_@VERSION@_macos.tar.gz"
+    sha256 "@SHA256_MACOS@"
   end
 
   on_linux do
@@ -24,14 +19,15 @@ class Ak < Formula
       sha256 "@SHA256_LINUX_ARM64@"
     end
     on_intel do
-      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v@VERSION@/ak_@VERSION@_linux_amd64.tar.gz"
-      sha256 "@SHA256_LINUX_AMD64@"
+      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v@VERSION@/ak_@VERSION@_linux_x86_64.tar.gz"
+      sha256 "@SHA256_LINUX_X86_64@"
     end
   end
 
   def install
     bin.install "ak"
-    zsh_completion.install "completions/_ak"
+    # bash, zsh and fish completion from `ak completion <shell>`
+    generate_completions_from_executable(bin/"ak", "completion")
   end
 
   def caveats
@@ -41,6 +37,7 @@ class Ak < Formula
       Run 'ak doctor' to see which adb ak uses.
 
       To enable tab completion, restart your terminal.
+      PowerShell and other setups: ak completion --help
     EOS
   end
 

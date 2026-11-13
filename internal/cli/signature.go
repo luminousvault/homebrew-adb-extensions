@@ -15,7 +15,7 @@ import (
 )
 
 var cmdSignature = &Command{
-	Name: "signature", Summary: "Extract signature hash", Args: "[package|file.apk]",
+	Name: "signature", Summary: "Show signing certificate hashes", Args: "[package|file.apk]",
 	Long: "Show the signing certificate (DN, SHA-256, SHA-1, MD5) of an installed package or a local APK.\n" +
 		"No Android SDK is needed; apksigner is used only if the APK cannot be parsed.\n" +
 		"Without an argument, pick from the foreground apps of connected devices and APKs in the current directory.",
