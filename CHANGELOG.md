@@ -22,11 +22,11 @@ All notable changes to this project will be documented in this file.
 - Prebuilt binaries for macOS, Linux and Windows (amd64/arm64) are attached to each GitHub release; the Homebrew formula installs them, so no Go toolchain is needed
 
 ### Changed (Breaking)
-- New output design for every command (`docs/design/cli-output.md`): results on stdout and messages on stderr; `==>`, `✓`, `Warning:`, `Error:`, `Hint:` messages; colors only on terminals (`NO_COLOR`, `--no-color`, `CLICOLOR_FORCE`). Scripts that parsed v1.x output need updating
+- New output design for every command (`docs/dev/cli-design.md`): results on stdout and messages on stderr; `==>`, `✓`, `Warning:`, `Error:`, `Hint:` messages; colors only on terminals (`NO_COLOR`, `--no-color`, `CLICOLOR_FORCE`). Scripts that parsed v1.x output need updating
 - Exit codes: `0` success (including `--help`), `1` failure including partial failure (e.g. one of several packages, failed installs), `2` usage error, `130` interrupted. v1.x exited 1 for `--help` and 0 for several failures
 - Help is generated from command definitions and printed to stdout; options may come before or after arguments; `--opt=value` and `--` are supported; short options can be combined (`-ea`, `-clW`)
 - `devices` prints a table (`SERIAL MODEL ANDROID ABI STATE`) with bold headers and, on a terminal, a rule under them; piped output is plain columns; `activities`, `signature`, `mac` and `info` print aligned plain output
-- Option names follow one rule (`docs/design/cli-output.md` §5.7): `-a, --all` always means all devices, `-e, --every-…` means every item of the command
+- Option names follow one rule (`docs/dev/cli-design.md`): `-a, --all` always means all devices, `-e, --every-…` means every item of the command
   - All devices: `-m` is now `-a, --all` (`install`, `mac`, `screenshot`)
   - `install -a, --all-apks` is now `-e, --every-apk`; `activities --all` is now `-e, --every-task`
   - `restart -n` is now `-r, --repeat`; `install -t`/`-d` gain `--test-only`/`--downgrade`

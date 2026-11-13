@@ -290,7 +290,7 @@ func runInstall(c *Ctx) error {
 	r := &directReporter{}
 	ok := true
 	for _, f := range files {
-		if installStop.Load() {
+		if installStop.Load() || r.stopped {
 			break
 		}
 		if !installOne(r, devices[0], o.adbOpts, f) {
@@ -339,8 +339,9 @@ var slowStep = 10 * time.Second
 const slowHint = "(check the device screen)"
 
 type directReporter struct {
-	sp   *ui.Spinner
-	slow *time.Timer
+	sp      *ui.Spinner
+	slow    *time.Timer
+	stopped bool // the user declined: later APKs are not installed (as with several devices)
 }
 
 func (r *directReporter) progress(m say) {
@@ -360,9 +361,17 @@ func (r *directReporter) done() {
 		r.sp = nil
 	}
 }
-func (r *directReporter) success(m say)               { r.done(); ui.Success("%s", m.full) }
-func (r *directReporter) warn(m say)                  { r.done(); ui.Warn("%s", m.full) }
-func (r *directReporter) fail(m say)                  { r.done(); ui.Errorf("%s", m.full) }
+func (r *directReporter) success(m say) { r.done(); ui.Success("%s", m.full) }
+func (r *directReporter) warn(m say)    { r.done(); ui.Warn("%s", m.full) }
+func (r *directReporter) fail(m say) {
+	r.done()
+	ui.Errorf("%s", m.full)
+	// A declined confirmation stops here: later APKs may depend on this one.
+	// Without a terminal nobody declined ("pass -y"), so the others still install.
+	if strings.HasPrefix(m.short, "Skipped") && !strings.Contains(m.short, "(pass -y)") {
+		r.stopped = true
+	}
+}
 func (r *directReporter) detail(t string)             { ui.Detail("%s", t) }
 func (r *directReporter) confirm(m say) (bool, error) { r.done(); return ui.Confirm(m.full, true) }
 

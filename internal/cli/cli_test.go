@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"os"
@@ -659,5 +660,38 @@ func TestBundledShortOptions(t *testing.T) {
 	}
 	if _, help, _ := parse(cmdInstall, []string{"-eh"}); !help {
 		t.Error("-h in a bundle shows help")
+	}
+}
+
+// One device: declining the uninstall stops there, like with several devices
+// (later APKs may depend on the declined one).
+func TestInstallDeclineStopsOneDevice(t *testing.T) {
+	dir := t.TempDir()
+	first := writeAPK(t, dir, "a.apk", time.Hour)
+	second := writeAPK(t, dir, "b.apk", 0)
+	conflict := "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.example.app signatures do not match newer version; ignoring!]\n"
+	f := baseFake()
+	f.Responses["-s "+serial+" install -r "+first] = adbtest.Response{Stdout: conflict}
+	f.Responses["-s "+serial+" install -r "+second] = adbtest.Response{Stdout: "Success\n"}
+	var errb bytes.Buffer
+	ui.Out, ui.Err = &ui.Stream{W: &bytes.Buffer{}}, &ui.Stream{W: &errb}
+	ui.In, ui.InTTY, ui.AssumeYes = bufio.NewReader(strings.NewReader("n\n")), true, false
+	adb.Default = f
+	resetDeviceCache()
+	t.Setenv("ANDROID_SERIAL", "")
+	defer func() {
+		adb.Default = nil
+		ui.InTTY = false
+		ui.In = bufio.NewReader(os.Stdin)
+		ui.Out, ui.Err = &ui.Stream{W: os.Stdout}, &ui.Stream{W: os.Stderr}
+	}()
+	code := run([]string{"install", first, second})
+	for _, c := range f.Calls {
+		if strings.Contains(c, second) {
+			t.Errorf("b.apk installed after declining a.apk:\n%s", errb.String())
+		}
+	}
+	if code != 1 || !strings.Contains(errb.String(), "Error: Skipped 'a.apk'") {
+		t.Errorf("code %d\n%s", code, errb.String())
 	}
 }

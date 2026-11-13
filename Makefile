@@ -18,7 +18,7 @@ SUDO    := $(shell for d in $(BINDIR) $(ZSHDIR); do \
              while [ ! -e "$$d" ]; do d=$$(dirname "$$d"); done; \
              [ -w "$$d" ] || { echo sudo; break; }; done)
 
-.PHONY: build install uninstall completions FORCE
+.PHONY: build install uninstall completions docs FORCE
 
 build: build/ak
 
@@ -38,6 +38,10 @@ install: build/ak
 # completions/_ak is generated from the command table (a test checks it).
 completions: build/ak
 	build/ak completion zsh > completions/_ak
+
+# docs/commands.md is generated from the command table (a test checks it).
+docs:
+	go run ./cmd/gendocs > docs/commands.md
 
 uninstall:
 	$(SUDO) rm -f $(BINDIR)/ak $(ZSHDIR)/_ak
