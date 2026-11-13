@@ -14,7 +14,7 @@ import (
 )
 
 var cmdDoctor = &Command{
-	Name: "doctor", Summary: "Diagnose adb setup",
+	Name: "doctor", Summary: "Check adb, devices and shell setup",
 	Long: "Check the adb ak uses, other adb binaries, connected devices, shell completion and optional tools.\n" +
 		"Lookup order: AK_ADB, ANDROID_HOME, ANDROID_SDK_ROOT, PATH, Android Studio default SDK, ~/.ak/platform-tools.\n" +
 		"Running adb binaries of different versions side by side restarts the adb server and drops device connections.\n" +

@@ -15,7 +15,7 @@ import (
 )
 
 var cmdScreenshot = &Command{
-	Name: "screenshot", Summary: "Save a screenshot", Args: "[file|directory]",
+	Name: "screenshot", Summary: "Capture the screen to a file or the clipboard", Args: "[file|directory]",
 	Long: "Capture the screen and save it as PNG on this computer (nothing is left on the device).\n" +
 		"The default name is screenshot-<model>-<time>.png in the current directory.\n" +
 		"With several devices, one file per device is saved. Saved paths are printed to stdout.\n" +

@@ -248,7 +248,7 @@ func TestHelpAndUsageErrors(t *testing.T) {
 		out, err string
 	}{
 		{nil, 0, "ak - ADB extensions kit", ""},
-		{[]string{"--help"}, 0, "  install      Install APK files\n", ""},
+		{[]string{"--help"}, 0, "  install      Install APKs on one or more devices\n", ""},
 		{[]string{"info", "-h"}, 0, "Usage:\n  ak info [options] [package]", ""},
 		{[]string{"install", "--help"}, 0, "  -f, --filter WORDS", ""},
 		{[]string{"nope"}, 2, "", "Error: Unknown command: nope\nHint: Run 'ak --help' to see all commands\n"},

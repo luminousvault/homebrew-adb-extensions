@@ -22,11 +22,13 @@ import (
 )
 
 var cmdInstall = &Command{
-	Name: "install", Summary: "Install APK files", Args: "[apk|directory...]",
+	Name: "install", Summary: "Install APKs on one or more devices", Args: "[apk|directory...]",
 	Long: "Install APK files on one or more devices.\n" +
 		"APK files given by name are installed; with a directory or no argument, pick APKs (newest first).\n" +
 		"Common failures are handled automatically: test-only APKs are retried with -t, downgrades\n" +
 		"with -d, and when that is not allowed or the signature differs, ak offers to uninstall first.\n" +
+		"Several devices install in parallel with a status board; a device that needs that answer\n" +
+		"is asked right away while the others keep going, and declining stops that device.\n" +
 		"If '<file>.apk.idsig' exists, --no-incremental is added.",
 	ArgHelp: [][2]string{{"apk", "APK files to install"}, {"directory", "Pick APKs from these directories"}},
 	Flags: []Flag{
@@ -34,8 +36,8 @@ var cmdInstall = &Command{
 		{"-e", "--every-apk", "", "Install every APK (in the current or given directory)"},
 		{"-f", "--filter", "WORDS", "Pick among APKs whose names contain all the words"},
 		{"-r", "", "", "Replace the existing app, keeping its data (always on)"},
-		{"-t", "--test-only", "", "Allow test-only APKs"},
-		{"-d", "--downgrade", "", "Allow version downgrade"},
+		{"-t", "--test-only", "", "Allow test-only APKs (otherwise retried with -t when needed)"},
+		{"-d", "--downgrade", "", "Allow version downgrade (otherwise retried with -d when needed)"},
 		{"-y", "--yes", "", "Uninstall and reinstall without asking when a device refuses the update (removes the app's data)"},
 	},
 	Examples: []string{

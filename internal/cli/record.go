@@ -20,7 +20,8 @@ var cmdRecord = &Command{
 	Name: "record", Summary: "Record the screen", Args: "[file|directory]",
 	Long: "Record the screen to MP4 until you press Ctrl+C or the time limit is reached, then save the\n" +
 		"video on this computer and delete it from the device. Android limits one recording to\n" +
-		"180 seconds and does not record audio. The saved path is printed to stdout.",
+		"180 seconds and does not record audio. The saved path is printed to stdout.\n" +
+		"Records one device at a time (pick it with -s).",
 	ArgHelp: [][2]string{{"file", "Output .mp4 file (default: record-<model>-<time>.mp4)"}, {"directory", "Save into this directory"}},
 	Flags: []Flag{
 		{"-t", "--time-limit", "SECONDS", "Stop after this many seconds (1-180, default 180)"},

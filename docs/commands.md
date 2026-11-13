@@ -16,7 +16,7 @@ Usage: `ak <command> [options] [arguments]`. Options may come before or after ar
 
 ## ak install
 
-Install APK files.
+Install APKs on one or more devices.
 
 ```
 ak install [options] [apk|directory...]
@@ -26,6 +26,8 @@ Install APK files on one or more devices.
 APK files given by name are installed; with a directory or no argument, pick APKs (newest first).
 Common failures are handled automatically: test-only APKs are retried with -t, downgrades
 with -d, and when that is not allowed or the signature differs, ak offers to uninstall first.
+Several devices install in parallel with a status board; a device that needs that answer
+is asked right away while the others keep going, and declining stops that device.
 If '&lt;file&gt;.apk.idsig' exists, --no-incremental is added.
 
 **Arguments**
@@ -43,8 +45,8 @@ If '&lt;file&gt;.apk.idsig' exists, --no-incremental is added.
 | `-e, --every-apk` | Install every APK (in the current or given directory) |
 | `-f, --filter WORDS` | Pick among APKs whose names contain all the words |
 | `-r` | Replace the existing app, keeping its data (always on) |
-| `-t, --test-only` | Allow test-only APKs |
-| `-d, --downgrade` | Allow version downgrade |
+| `-t, --test-only` | Allow test-only APKs (otherwise retried with -t when needed) |
+| `-d, --downgrade` | Allow version downgrade (otherwise retried with -d when needed) |
 | `-y, --yes` | Uninstall and reinstall without asking when a device refuses the update (removes the app's data) |
 | `-s, --serial ID` | Target device; repeat for more (default: $ANDROID_SERIAL, or ask) |
 | `-a, --all` | All connected devices |
@@ -64,7 +66,7 @@ ak install app.apk -s emulator-5554 -y
 
 ## ak extract
 
-Extract APK file from device.
+Save the APK of an installed app.
 
 ```
 ak extract [options] [package] [file]
@@ -98,7 +100,7 @@ ak extract com.example.app out.apk
 
 ## ak signature
 
-Extract signature hash.
+Show signing certificate hashes.
 
 ```
 ak signature [options] [package|file.apk]
@@ -134,7 +136,7 @@ ak signature app.apk --json | jq -r '.signers[0].sha256'
 
 ## ak info
 
-Show package information.
+Show app version and SDK levels.
 
 ```
 ak info [options] [package]
@@ -166,7 +168,7 @@ ak info --json | jq .versionName
 
 ## ak permissions
 
-List package permissions.
+List granted permissions of an app.
 
 ```
 ak permissions [options] [package]
@@ -197,7 +199,7 @@ ak permissions com.example.app --json
 
 ## ak launch
 
-Launch package.
+Launch an app.
 
 ```
 ak launch [options] <package>
@@ -226,13 +228,13 @@ ak launch com.example.app
 
 ## ak kill
 
-Force-stop package.
+Force-stop apps.
 
 ```
 ak kill [options] [package...]
 ```
 
-Force-stop one or more packages.
+Force-stop one or more apps. Without a package name, the app on screen is used.
 
 **Arguments**
 
@@ -262,7 +264,8 @@ Clear app data and cache.
 ak clear [options] [package...]
 ```
 
-Clear the data and cache of one or more packages.
+Clear the data and cache of one or more apps, like reinstalling them fresh.
+Without a package name, the app on screen is used. It does not ask first.
 
 **Arguments**
 
@@ -286,13 +289,14 @@ ak clear com.example.app
 
 ## ak uninstall
 
-Uninstall package.
+Uninstall an app.
 
 ```
 ak uninstall [options] [package]
 ```
 
-Uninstall a package.
+Uninstall an app (its data is removed too).
+Without a package name, the app on screen is used. It does not ask first.
 
 **Arguments**
 
@@ -412,7 +416,7 @@ ak logcat -c > app.log
 
 ## ak screenshot
 
-Save a screenshot.
+Capture the screen to a file or the clipboard.
 
 ```
 ak screenshot [options] [file|directory]
@@ -463,6 +467,7 @@ ak record [options] [file|directory]
 Record the screen to MP4 until you press Ctrl+C or the time limit is reached, then save the
 video on this computer and delete it from the device. Android limits one recording to
 180 seconds and does not record audio. The saved path is printed to stdout.
+Records one device at a time (pick it with -s).
 
 **Arguments**
 
@@ -492,7 +497,7 @@ ak record -t 30 --size 720x1600
 
 ## ak pull
 
-Pull recent files from device.
+Pick recent files on a device and copy them here.
 
 ```
 ak pull [options] [directory]
@@ -581,7 +586,7 @@ ak mac --json
 
 ## ak wifi
 
-Debug over Wi-Fi.
+Switch a device to Wi-Fi debugging.
 
 ```
 ak wifi [options] [off]
@@ -616,7 +621,7 @@ ak wifi off
 
 ## ak doctor
 
-Diagnose adb setup.
+Check adb, devices and shell setup.
 
 ```
 ak doctor [options]

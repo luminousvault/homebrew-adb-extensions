@@ -18,7 +18,7 @@ import (
 const pullRecentLimit = 300
 
 var cmdPull = &Command{
-	Name: "pull", Summary: "Pull recent files from device", Args: "[directory]",
+	Name: "pull", Summary: "Pick recent files on a device and copy them here", Args: "[directory]",
 	Long: "Pick recently modified files on the device (like the Files app 'Recents' tab, via MediaStore)\n" +
 		"and pull them. Files keep their names; existing local files are overwritten, and selected\n" +
 		"files with the same name get a ' (N)' suffix. Shows the " + strconv.Itoa(pullRecentLimit) + " newest files.",
