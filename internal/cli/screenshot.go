@@ -22,7 +22,7 @@ var cmdScreenshot = &Command{
 		"-c copies the image to the clipboard instead of saving it (one device only); give a file\n" +
 		"or directory (or -o) to save it as well.",
 	ArgHelp: [][2]string{{"file", "Output .png file (one device)"}, {"directory", "Save into this directory"}},
-	Flags:   []Flag{flagCopy, flagOpen},
+	Flags:   []Flag{flagClipboard, flagOpen},
 	Examples: []string{"ak screenshot", "ak screenshot -o", "ak screenshot -c", "ak screenshot -c ~/Desktop",
 		"ak screenshot home.png", "ak screenshot ~/Desktop --all"},
 	Device: manyDevices, Run: runScreenshot,
@@ -74,7 +74,7 @@ func runScreenshot(c *Ctx) error {
 	}
 	// -c alone copies without saving; a path or -o (which opens the saved file)
 	// asks for the file too.
-	copyImg := c.Bool("--copy")
+	copyImg := c.Bool("--clipboard")
 	save := !copyImg || arg != "" || c.Bool("--open")
 	if copyImg && len(serials) > 1 {
 		return usageErr(c.Cmd, "-c copies one screenshot; choose one device with -s")
