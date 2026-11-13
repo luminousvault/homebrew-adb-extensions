@@ -8,11 +8,13 @@ against a fake adb, so no real device (and no real serial number) is needed or s
 From the repository root:
 
 ```bash
-go build -ldflags "-X main.version=$(cat VERSION)" -o demo/bin/ak ./cmd/ak
+go build -ldflags "-X main.version=2.x" -o demo/bin/ak ./cmd/ak
 vhs demo/hero.tape        # or confirm, doctor, screenshot, logcat, completion
 ```
 
-Without `-ldflags`, `ak doctor` shows the version as `dev`.
+The demo binary is built as version `2.x`, not the release number, so `doctor.gif` (the
+only GIF that shows a version) stays right across releases. Re-record it when the doctor
+screen changes or the major version does. Without `-ldflags` the version shows as `dev`.
 
 | Tape | GIF | Shows |
 |------|-----|-------|
