@@ -143,6 +143,8 @@ _ak() {
         pull)
           _arguments -s \
             '(- *)'{-h,--help}'[Show help for this command]' \
+            {-l,--latest}'[Pull the newest file without asking]' \
+            {-f,--filter}'[Only files whose names contain all the words]:words' \
             {-y,--yes}'[Create the destination directory without asking if it does not exist]' \
             {-s,--serial}'[Target device]:serial:_ak_serials' \
             '1:destination directory:_path_files -/'

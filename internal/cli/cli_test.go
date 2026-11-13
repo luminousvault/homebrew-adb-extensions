@@ -407,6 +407,59 @@ func TestPullNeedsYesForNewDirWithoutTerminal(t *testing.T) {
 		t.Errorf("%d %q", r.code, r.err)
 	}
 }
+func TestPullChoosesWithoutTerminal(t *testing.T) {
+	dest := t.TempDir()
+	recent := "Row: 0 _data=/storage/emulated/0/Pictures/Screenshot_2.png, date_modified=3, _size=2048\n" +
+		"Row: 1 _data=/storage/emulated/0/Download/report.pdf, date_modified=2, _size=10\n" +
+		"Row: 2 _data=/storage/emulated/0/Pictures/Screenshot_1.png, date_modified=1, _size=10\n"
+	fake := func() *adbtest.Fake {
+		f := baseFake()
+		f.Responses["-s "+serial+" shell "+recentFilesQuery] = adbtest.Response{Stdout: recent}
+		for _, p := range []string{"Pictures/Screenshot_2.png", "Download/report.pdf", "Pictures/Screenshot_1.png"} {
+			f.Responses["-s "+serial+" pull /storage/emulated/0/"+p+" "+filepath.Join(dest, filepath.Base(p))] = adbtest.Response{}
+		}
+		return f
+	}
+	pulled := func(f *adbtest.Fake) []string {
+		var got []string
+		for _, c := range f.Calls {
+			if strings.HasPrefix(c, "-s "+serial+" pull ") {
+				got = append(got, filepath.Base(c))
+			}
+		}
+		return got
+	}
+
+	f := fake()
+	r := ak(t, f, "pull", dest)
+	if r.code != 1 || !strings.Contains(r.err, "interactive selection needs a terminal\nHint: Use -l for the newest file, or -f to narrow it to one") || len(pulled(f)) != 0 {
+		t.Errorf("no choice: %d %q", r.code, r.err)
+	}
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-l"}, "Screenshot_2.png"},
+		{[]string{"-f", "report"}, "report.pdf"},
+		{[]string{"-l", "-f", "screenshot png"}, "Screenshot_2.png"},
+	} {
+		f = fake()
+		r = ak(t, f, append([]string{"pull", dest}, c.args...)...)
+		if got := pulled(f); r.code != 0 || len(got) != 1 || got[0] != c.want {
+			t.Errorf("%v: %d pulled %v\n%s", c.args, r.code, got, r.err)
+		}
+	}
+	f = fake()
+	r = ak(t, f, "pull", dest, "-f", "screenshot")
+	if r.code != 1 || len(pulled(f)) != 0 {
+		t.Errorf("two matches without terminal: %d %q", r.code, r.err)
+	}
+	r = ak(t, fake(), "pull", dest, "-f", "nothing")
+	if r.code != 1 || !strings.Contains(r.err, "Error: No recent files on Google Pixel 9 Pro match 'nothing'") {
+		t.Errorf("no match: %d %q", r.code, r.err)
+	}
+}
+
 func TestParseForegroundPackage(t *testing.T) {
 	if got := parseForegroundPackage(activitiesOut); got != "com.example.app" {
 		t.Errorf("got %q", got)

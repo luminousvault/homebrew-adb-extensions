@@ -518,7 +518,8 @@ ak pull [options] [directory]
 
 디바이스에서 최근 수정된 파일을 골라 가져옵니다(파일 앱의 '최근' 탭처럼 MediaStore 기준).
 파일 이름은 그대로 둡니다. 같은 이름의 로컬 파일은 덮어쓰고, 고른 파일끼리 이름이 같으면
-' (N)'을 붙입니다. 최신 파일 300개를 보여 줍니다.
+' (N)'을 붙입니다. 최신 파일을 최대 300개까지 보여 줍니다.
+터미널이 아니면 -l이나, 파일 하나만 맞는 -f로 고릅니다.
 
 **인자**
 
@@ -530,6 +531,8 @@ ak pull [options] [directory]
 
 | 옵션 | 설명 |
 |---|---|
+| `-l, --latest` | 묻지 않고 최신 파일 가져오기 (-f와 함께면 맞는 것 중 최신) |
+| `-f, --filter WORDS` | 이름에 모든 단어가 들어간 파일만. 하나만 맞으면 묻지 않고 가져옴 |
 | `-y, --yes` | 저장할 폴더가 없으면 묻지 않고 생성 |
 | `-s, --serial ID` | 대상 디바이스 (기본: $ANDROID_SERIAL, 없으면 물어봄) |
 | `-h, --help` | 이 도움말 보기 |
@@ -540,6 +543,8 @@ ak pull [options] [directory]
 ak pull
 ak pull ~/Downloads/device
 ak pull new-dir -y
+ak pull -l
+ak pull -l -f Screenshot
 ```
 
 ## ak devices

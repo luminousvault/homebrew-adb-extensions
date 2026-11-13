@@ -145,9 +145,10 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 
 모든 옵션과 예시는 **[docs/commands.ko.md](docs/commands.ko.md)**에 있고, `ak <명령> --help`로도 같은 내용을 볼 수 있습니다.
 
-## 스크립트와 CI에서
+## 스크립트, CI, AI 에이전트에서
 
-- 디바이스는 `-s <시리얼>`, `ANDROID_SERIAL`, `-a`(전부)로 고릅니다. 터미널이 아니면 선택 화면을 띄우지 않고 `-s`를 요구합니다
+- 패키지 이름을 적습니다. 없으면 `info`, `kill`, `clear`, `uninstall` 등 앱 명령은 화면에 떠 있는 앱을 쓰고, `clear`와 `uninstall`은 묻지 않습니다
+- 디바이스는 `-s <시리얼>`, `ANDROID_SERIAL`, `-a`(전부)로 고릅니다. 터미널이 아니면 선택 화면을 띄우지 않고 `-s`를 요구합니다. 파일과 APK도 선택 화면 대신 인자나 옵션으로 고릅니다: `install -l`, `pull -l`, `pull -f <단어>`
 - 결과는 stdout, 메시지는 stderr. `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `restart`, `doctor`는 `--json`을 지원합니다
 - 종료 코드: `0` 성공, `1` 실패(일부 실패 포함), `2` 사용법 오류, `130` 중단
 - 짧은 옵션은 묶어 쓸 수 있고(`-ea` = `-e -a`) 인자 앞뒤 어디에 와도 됩니다. 색은 터미널에서만(`NO_COLOR`, `--no-color`)

@@ -363,6 +363,11 @@ func showHelp() {
 	o.Println("  AK_ADB          Path to the adb binary")
 	o.Println("  NO_COLOR        Disable colored output")
 	o.Println("")
+	o.Println(o.Bold("Scripts and AI agents:"))
+	o.Println("  Name the package: without one, app commands use the app on screen,")
+	o.Println("  and clear and uninstall do not ask. Without a terminal there are no pickers")
+	o.Println("  or questions; pass -s, -y, or the command's own options. --json for data.")
+	o.Println("")
 	o.Println("Run 'ak <command> --help' for details.")
 }
 

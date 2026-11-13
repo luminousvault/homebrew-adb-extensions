@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `pull -l, --latest` pulls the newest file and `pull -f, --filter WORDS` keeps the files whose names contain all the words (like `install -f`); one match is pulled without asking, and with `-l` the newest match. `pull` can now run without a terminal; without these options the error says so
+- `ak --help` has a short section for scripts and AI agents (name the package, no pickers without a terminal, `--json`); the README section is now "Scripts, CI and AI agents"
+
 ### Fixed
 - `logcat` and `record` stop cleanly when ak is ended by `kill` or `timeout` (SIGTERM) or by closing the terminal (SIGHUP), as they do on Ctrl+C. Before, `adb logcat` kept running in the background, and `record` left the recording going on the device without saving it
 

@@ -145,9 +145,10 @@ Commands, options, device serials — and for arguments only what they take: APK
 
 Every option and example is in **[docs/commands.md](docs/commands.md)**; `ak <command> --help` shows the same.
 
-## Scripts and CI
+## Scripts, CI and AI agents
 
-- Choose devices with `-s <serial>`, `ANDROID_SERIAL`, or `-a` (all). Without a terminal ak never opens a picker; it asks for `-s` instead
+- Name the package. Without one, `info`, `kill`, `clear`, `uninstall` and the other app commands use the app on screen, and `clear` and `uninstall` do not ask first
+- Choose devices with `-s <serial>`, `ANDROID_SERIAL`, or `-a` (all). Without a terminal ak never opens a picker; it asks for `-s` instead. Files and APKs are chosen with arguments or options instead of the picker: `install -l`, `pull -l`, `pull -f <words>`
 - Results go to stdout, messages to stderr; `--json` on `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `restart` and `doctor`
 - Exit codes: `0` success, `1` failure (also partial), `2` usage error, `130` interrupted
 - Short options combine (`-ea` is `-e -a`) and may come before or after arguments; colors only on terminals (`NO_COLOR`, `--no-color`)
