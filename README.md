@@ -99,13 +99,18 @@ Devices install in parallel while a status board shows each one. Common failures
 
 ![ak doctor](demo/doctor.gif)
 
-### Screen, logs and more
+### Read your app's logs, not the framework's
+
+`ak logcat` follows one or more apps across restarts and colors lines like Android Studio's Logcat. What Android's framework logs from inside your app (views, input method, graphics) is hidden unless it is an error; `-e` shows everything, `-t` / `-i` pick or hide tags.
+
+![ak logcat merging two apps](demo/logcat.gif)
+
+### Screen and more
 
 ![ak screenshot](demo/screenshot.gif)
 
 - `ak screenshot` saves a PNG on this computer; `-c` copies it to the clipboard, `-o` opens it
 - `ak record` records until Ctrl+C (up to 180 s) and pulls the MP4
-- `ak logcat` shows one app's logs (or several apps' merged) and keeps following them when they restart, colored like Android Studio, without the framework's own chatter (`-e` shows it; `-t` / `-i` pick or hide tags)
 - `ak restart -r 5` restarts the app five times and reports launch times
 - `ak wifi` switches a USB device to Wi-Fi debugging; `ak wifi off` switches back
 

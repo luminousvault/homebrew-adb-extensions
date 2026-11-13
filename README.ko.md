@@ -99,13 +99,18 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 
 ![ak doctor](demo/doctor.gif)
 
-### 화면, 로그, 그 밖에
+### 프레임워크 말고 내 앱의 로그만
+
+`ak logcat`은 앱 하나 또는 여러 개를 재시작해도 이어서 따라가고, Android Studio Logcat처럼 색을 입힙니다. 안드로이드 프레임워크가 앱 안에서 남기는 로그(뷰, 입력기, 그래픽)는 오류가 아니면 숨깁니다. `-e`로 전부 보고, `-t` / `-i`로 태그를 고르거나 숨깁니다.
+
+![ak logcat으로 두 앱의 로그를 합쳐 보는 화면](demo/logcat.gif)
+
+### 화면, 그 밖에
 
 ![ak screenshot](demo/screenshot.gif)
 
 - `ak screenshot`은 PNG를 이 컴퓨터에 저장합니다. `-c`는 클립보드에 복사, `-o`는 저장 후 열기
 - `ak record`는 Ctrl+C까지(최대 180초) 녹화하고 MP4를 가져옵니다
-- `ak logcat`은 앱 하나(또는 여러 앱을 합쳐서)의 로그만 보여 주고, 앱이 재시작해도 이어서 따라갑니다. Android Studio처럼 색을 입히고, 프레임워크가 남기는 잡음은 숨깁니다(`-e`로 보기, `-t` / `-i`로 태그 고르기 · 숨기기)
 - `ak restart -r 5`는 앱을 다섯 번 재시작하며 실행 시간을 잽니다
 - `ak wifi`는 USB 디바이스를 Wi-Fi 디버깅으로 바꾸고, `ak wifi off`로 되돌립니다
 

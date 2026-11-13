@@ -16,6 +16,9 @@
 #                              'uninstall' it succeeds
 #   AK_DEMO_STATE=<dir>        where the scenario keeps state between calls
 #                              (default: $TMPDIR/ak-demo)
+#
+# logcat: com.example.app (pid 4321) is running; com.example.shop starts
+# (pid 4410) partway through the log, and only then shows up in 'ps'.
 
 set -u
 self=$0
@@ -59,6 +62,12 @@ devices)
 
 shell)
   case "${2:-}" in
+  "ps -A -o PID,NAME")
+    echo "PID NAME"
+    echo "1000 system_server"
+    echo "4321 com.example.app"
+    [ -e "$state/shop-started" ] && echo "4410 com.example.shop"
+    ;;
   getprop)
     case "$serial" in
     emulator-5554) getprop google "Pixel 9" 16 36 ;;
@@ -86,6 +95,34 @@ uninstall)
   sleep 1
   mkdir -p "$state" && touch "$state/uninstalled"
   echo "Success"
+  ;;
+
+logcat)
+  # logcat -v threadtime: the buffer first, then new lines as they come.
+  line() { # delay time pid tid level tag message
+    sleep "$1"
+    printf '11-13 10:28:%s  %s  %s %s %s: %s\n' "$2" "$3" "$4" "$5" "$6" "$7"
+  }
+  [ "${2:-}" = -c ] && exit 0 # logcat -c: clear the buffer
+  mkdir -p "$state"
+  line 0 26.008 4321 4321 I SplashActivity "onCreate: savedInstanceState=null"
+  line 0 26.041 4321 4350 D ViewRootImpl "relayoutWindow: viewVisibility=0"
+  line 0 26.052 4321 4321 D Billing "connecting to the store (timeout 15 s)"
+  line 0 26.090 4321 4380 D HWUI "Using FreeType backend"
+  line 0.6 26.702 1000 1100 I ActivityManager "Start proc 4410:com.example.shop/u0a124 for service {com.example.shop/.BillingService}"
+  touch "$state/shop-started"
+  line 0.5 27.214 4410 4410 D StoreService "bind from com.example.app"
+  line 0.4 27.618 4410 4430 D StoreApi "GET /v1/products?ids=coin_small,coin_large"
+  line 0.5 28.120 4410 4430 I StoreApi "200 OK 142ms"
+  line 0.3 28.433 4321 4321 D Billing "connected 328ms"
+  line 0.4 28.837 4321 4321 D Billing "→ queryProductDetails ids=[coin_small, coin_large]"
+  line 0.5 29.342 4321 4360 V BillingClient 'Got product details: {"productId":"coin_small","price":"1200","priceCurrencyCode":"KRW","title":"Small coin pack","type":"inapp"}'
+  line 0.2 29.551 4321 4321 I Choreographer "Skipped 31 frames!  The application may be doing too much work on its main thread."
+  line 0.8 30.360 4321 4321 D Billing "→ launchPurchaseFlow productId=coin_small"
+  line 0.6 30.962 4410 4430 W StoreApi "slow response: POST /v1/purchases took 1840ms"
+  line 0.5 31.470 4321 4321 E Billing "purchase failed: responseCode=1 (USER_CANCELED)"
+  line 0 31.475 4321 4380 W qdgralloc "getInterlacedFlag: getMetaData returned 3"
+  exec sleep 3600 # follow: wait for more, like the real logcat (exec: stopping adb closes the output)
   ;;
 
 exec-out)
