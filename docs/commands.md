@@ -518,7 +518,8 @@ ak pull [options] [directory]
 
 Pick recently modified files on the device (like the Files app 'Recents' tab, via MediaStore)
 and pull them. Files keep their names; existing local files are overwritten, and selected
-files with the same name get a ' (N)' suffix. Shows the 300 newest files.
+files with the same name get a ' (N)' suffix. Lists up to the 300 newest files.
+Without a terminal, choose with -l or with a -f that matches one file.
 
 **Arguments**
 
@@ -530,6 +531,8 @@ files with the same name get a ' (N)' suffix. Shows the 300 newest files.
 
 | Option | Description |
 |---|---|
+| `-l, --latest` | Pull the newest file without asking (with -f: the newest match) |
+| `-f, --filter WORDS` | Only files whose names contain all the words; one match is pulled without asking |
 | `-y, --yes` | Create the destination directory without asking if it does not exist |
 | `-s, --serial ID` | Target device (default: $ANDROID_SERIAL, or ask) |
 | `-h, --help` | Show this help |
@@ -540,6 +543,8 @@ files with the same name get a ' (N)' suffix. Shows the 300 newest files.
 ak pull
 ak pull ~/Downloads/device
 ak pull new-dir -y
+ak pull -l
+ak pull -l -f Screenshot
 ```
 
 ## ak devices

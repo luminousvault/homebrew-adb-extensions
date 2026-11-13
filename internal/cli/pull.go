@@ -17,14 +17,25 @@ import (
 
 const pullRecentLimit = 300
 
+// recentFilesQuery lists the newest files in MediaStore, like the Files app 'Recents' tab.
+var recentFilesQuery = "content query --uri content://media/external/file" +
+	" --projection _data:date_modified:_size" +
+	` --where "(format IS NULL OR format != 12289) AND _size > 0 AND _data NOT LIKE '%/Android/%' AND _data NOT LIKE '%/.%'"` +
+	" --sort 'date_modified DESC' 2>&1 | head -n " + strconv.Itoa(pullRecentLimit)
+
 var cmdPull = &Command{
 	Name: "pull", Summary: "Pick recent files on a device and copy them here", Args: "[directory]",
 	Long: "Pick recently modified files on the device (like the Files app 'Recents' tab, via MediaStore)\n" +
 		"and pull them. Files keep their names; existing local files are overwritten, and selected\n" +
-		"files with the same name get a ' (N)' suffix. Shows the " + strconv.Itoa(pullRecentLimit) + " newest files.",
-	ArgHelp:  [][2]string{{"directory", "Where to save (default: current directory; created after confirmation)"}},
-	Flags:    []Flag{{"-y", "--yes", "", "Create the destination directory without asking if it does not exist"}},
-	Examples: []string{"ak pull", "ak pull ~/Downloads/device", "ak pull new-dir -y"},
+		"files with the same name get a ' (N)' suffix. Lists up to the " + strconv.Itoa(pullRecentLimit) + " newest files.\n" +
+		"Without a terminal, choose with -l or with a -f that matches one file.",
+	ArgHelp: [][2]string{{"directory", "Where to save (default: current directory; created after confirmation)"}},
+	Flags: []Flag{
+		{"-l", "--latest", "", "Pull the newest file without asking (with -f: the newest match)"},
+		{"-f", "--filter", "WORDS", "Only files whose names contain all the words; one match is pulled without asking"},
+		{"-y", "--yes", "", "Create the destination directory without asking if it does not exist"},
+	},
+	Examples: []string{"ak pull", "ak pull ~/Downloads/device", "ak pull new-dir -y", "ak pull -l", "ak pull -l -f Screenshot"},
 	Device:   oneDevice, Run: runPull,
 }
 
@@ -103,6 +114,17 @@ func uniqueName(base string, used map[string]bool) string {
 	}
 }
 
+// filterRecentFiles keeps the files whose names match every word of filter (see matchesFilter).
+func filterRecentFiles(files []recentFile, filter string) []recentFile {
+	var out []recentFile
+	for _, f := range files {
+		if matchesFilter(path.Base(f.path), filter) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 func ensureDir(dest string) error {
 	if st, err := os.Stat(dest); err == nil {
 		if !st.IsDir() {
@@ -142,11 +164,7 @@ func runPull(c *Ctx) error {
 	if err != nil {
 		return err
 	}
-	query := "content query --uri content://media/external/file" +
-		" --projection _data:date_modified:_size" +
-		` --where "(format IS NULL OR format != 12289) AND _size > 0 AND _data NOT LIKE '%/Android/%' AND _data NOT LIKE '%/.%'"` +
-		" --sort 'date_modified DESC' 2>&1 | head -n " + strconv.Itoa(pullRecentLimit)
-	raw := adb.Shell(serial, query)
+	raw := adb.Shell(serial, recentFilesQuery)
 	files := parseRecentFiles(raw)
 	if len(files) == 0 {
 		if raw == "" || strings.Contains(raw, "No result found") {
@@ -159,20 +177,31 @@ func runPull(c *Ctx) error {
 		return errReported
 	}
 
-	items := make([]string, len(files))
-	for i, f := range files {
-		items[i] = path.Base(f.path) + "\t(" + fileMeta(f.path, f.size) + ")"
+	if filter := c.String("--filter"); c.Bool("--filter") {
+		files = filterRecentFiles(files, filter)
+		if len(files) == 0 {
+			return failErr("", "No recent files on %s match %s", deviceName(serial), q(filter))
+		}
 	}
-	r, err := pick(tui.Options{Multi: true, Prompt: "Select files to pull",
-		Location: []string{"Recent files on " + deviceName(serial) + " (newest first)"}, Items: items}, "")
-	if err != nil {
-		return err
+	chosen := []int{0} // -l, or -f with one match
+	if !c.Bool("--latest") && (!c.Bool("--filter") || len(files) > 1) {
+		items := make([]string, len(files))
+		for i, f := range files {
+			items[i] = path.Base(f.path) + "\t(" + fileMeta(f.path, f.size) + ")"
+		}
+		r, err := pick(tui.Options{Multi: true, Prompt: "Select files to pull",
+			Location: []string{"Recent files on " + deviceName(serial) + " (newest first)"}, Items: items},
+			"Use -l for the newest file, or -f to narrow it to one")
+		if err != nil {
+			return err
+		}
+		chosen = r.Indices
 	}
 	release()
 
 	used := map[string]bool{}
 	ok, failed := 0, 0
-	for _, i := range r.Indices {
+	for _, i := range chosen {
 		remote := files[i].path
 		base := uniqueName(path.Base(remote), used)
 		used[base] = true
