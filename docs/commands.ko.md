@@ -645,7 +645,7 @@ adb, 디바이스, 셸 설정 점검.
 ak doctor [options]
 ```
 
-ak가 쓰는 adb, 그 밖의 adb 실행 파일, 연결된 디바이스, 셸 자동 완성, 선택 도구를 점검합니다.
+ak가 쓰는 adb, 그 밖의 adb 실행 파일, 연결된 디바이스, 셸 자동 완성, 선택 도구, AI 에이전트용 ak 스킬을 점검합니다.
 adb를 찾는 순서: AK_ADB, ANDROID_HOME, ANDROID_SDK_ROOT, PATH, Android Studio 기본 SDK, ~/.ak/platform-tools.
 버전이 다른 adb를 함께 쓰면 adb 서버가 재시작되면서 디바이스 연결이 끊깁니다.
 [✓] 정상, [!] 고치는 편이 좋음, [✗] 문제. 문제가 있으면 종료 코드 1로 끝납니다.
@@ -710,5 +710,6 @@ ak completion powershell | Out-String | Invoke-Expression   # in $PROFILE
 |---|---|
 | `ANDROID_SERIAL` | 기본 대상 디바이스 |
 | `AK_ADB` | adb 실행 파일 경로 |
+| `AK_NO_SKILL` | AI 에이전트용 ak 스킬을 추가하지 않음 |
 | `NO_COLOR` | 색 끄기 |
 | `AK_DEBUG` | 1이면 $TMPDIR/ak-debug.log에 디버그 로그 기록 (경로는 AK_DEBUG_LOG로 변경) |

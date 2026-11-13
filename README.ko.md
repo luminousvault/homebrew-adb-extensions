@@ -153,6 +153,8 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 - 종료 코드: `0` 성공, `1` 실패(일부 실패 포함), `2` 사용법 오류, `130` 중단
 - 짧은 옵션은 묶어 쓸 수 있고(`-ea` = `-e -a`) 인자 앞뒤 어디에 와도 됩니다. 색은 터미널에서만(`NO_COLOR`, `--no-color`)
 
+**AI 에이전트용 스킬.** ak를 처음 실행하면 `~/.claude/skills/ak`와 `~/.agents/skills/ak`에 스킬을 추가합니다(`~/.claude`나 `~/.agents`가 있을 때만). 그래서 Claude Code 같은 코딩 에이전트가 adb 대신 ak를 씁니다. 스킬은 에이전트에게 `ak --help`를 읽게 하므로 설치된 버전을 따르고, 업그레이드하면 ak가 파일을 갱신합니다. 지우려면 폴더를 삭제하고(다시 추가하지 않음), 직접 고친 내용을 지키려면 `managed-by: ak` 줄을 지우고, 아예 추가하지 않으려면 `AK_NO_SKILL=1`을 설정합니다. 위치는 `ak doctor`로 볼 수 있습니다.
+
 ## 문제 해결
 
 먼저 `ak doctor`를 실행하세요. 자주 겪는 경우는 **[docs/troubleshooting.md](docs/troubleshooting.md)**(영문)에 있습니다: macOS가 받은 실행 파일을 막을 때, Android Studio를 켜면 디바이스 연결이 끊길 때, 설치가 Play 프로텍트 확인을 기다릴 때, 자동 완성이 예전 것일 때.

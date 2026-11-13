@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- ak adds a skill for AI coding agents the first time it runs: `~/.claude/skills/ak/SKILL.md` and `~/.agents/skills/ak/SKILL.md`, only where `~/.claude` or `~/.agents` exists, with one `✓ Added the ak skill for AI agents` line per folder. The skill tells agents to use ak instead of raw adb and to read `ak --help` first. ak updates its copy after upgrades, leaves a copy alone once its `managed-by: ak` line is removed, and does not add a deleted one back (it remembers in `~/.ak/skills-installed`). `AK_NO_SKILL=1` turns it off; `ak completion` never adds it. `ak doctor` has a new "AI agent skill" category (never an issue) and `agentSkill` in `--json`
+
 ## [2.3.0] - 2026-11-13
 
 ### Added

@@ -70,6 +70,7 @@ adb-extensions/
 │   ├── adb/                    # adb 실행·탐색(locate.go)·SDK build-tools 탐색(sdk.go)·파싱
 │   │   └── adbtest/            # 가짜 adb Runner
 │   ├── tui/                    # 인터랙티브 선택 UI (state.go 로직, render.go 화면, keys.go 키 파싱, term.go 터미널)
+│   ├── agentskill/             # AI 에이전트용 SKILL.md(go:embed): 첫 실행 시 ~/.claude · ~/.agents에 설치, 업그레이드 시 갱신, 삭제하면 다시 넣지 않음
 │   ├── apk/                    # APK 패키지명·서명 인증서 (aapt/apksigner 대체), testdata/aktest.apk
 │   ├── style/                  # 선택 UI(tui) 내부 색상 상수
 │   └── debuglog/               # AK_DEBUG=1 로그

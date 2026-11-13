@@ -132,6 +132,9 @@ func Main(args []string) int {
 		rest = append(rest, a)
 	}
 	ui.Setup(noColor)
+	if len(rest) == 0 || rest[0] != "completion" { // run by shell startup files and package builds
+		installAgentSkill()
+	}
 	return run(rest)
 }
 
@@ -361,6 +364,7 @@ func showHelp() {
 	o.Println(o.Bold("Environment:"))
 	o.Println("  ANDROID_SERIAL  Default target device")
 	o.Println("  AK_ADB          Path to the adb binary")
+	o.Println("  AK_NO_SKILL     Do not add the ak skill for AI agents")
 	o.Println("  NO_COLOR        Disable colored output")
 	o.Println("")
 	o.Println(o.Bold("Scripts and AI agents:"))

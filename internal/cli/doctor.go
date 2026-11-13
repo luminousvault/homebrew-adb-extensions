@@ -10,12 +10,13 @@ import (
 	"time"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/agentskill"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 var cmdDoctor = &Command{
 	Name: "doctor", Summary: "Check adb, devices and shell setup",
-	Long: "Check the adb ak uses, other adb binaries, connected devices, shell completion and optional tools.\n" +
+	Long: "Check the adb ak uses, other adb binaries, connected devices, shell completion, optional tools and the ak skill for AI agents.\n" +
 		"Lookup order: AK_ADB, ANDROID_HOME, ANDROID_SDK_ROOT, PATH, Android Studio default SDK, ~/.ak/platform-tools.\n" +
 		"Running adb binaries of different versions side by side restarts the adb server and drops device connections.\n" +
 		"[✓] fine, [!] worth fixing, [✗] a problem. Exits 1 when a problem is found.",
@@ -97,6 +98,9 @@ func runDoctor(c *Ctx) error {
 	apksigner := adb.FindBuildTool("apksigner")
 	comp := classifyCompletion(gatherCompletion(systemCompletionEnv()))
 	cats := doctorChecks(found, devices, os.Getenv("ANDROID_SERIAL"), apksigner, comp)
+	home, _ := os.UserHomeDir()
+	skillOff, skills := os.Getenv("AK_NO_SKILL") != "", agentskill.Check(home)
+	cats = append(cats, agentSkillCategory(skillOff, home, skills))
 	problems, issues := 0, 0
 	for _, cat := range cats {
 		if cat.level() > levelOK {
@@ -117,7 +121,8 @@ func runDoctor(c *Ctx) error {
 			devices = []deviceFound{}
 		}
 		if err := ui.JSON(map[string]any{"adb": found, "versionConflict": versionConflict(found),
-			"devices": devices, "apksigner": apksigner, "completion": comp, "problems": problems}); err != nil {
+			"devices": devices, "apksigner": apksigner, "completion": comp,
+			"agentSkill": map[string]any{"off": skillOff, "files": skills}, "problems": problems}); err != nil {
 			return err
 		}
 		if problems > 0 {

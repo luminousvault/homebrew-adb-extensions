@@ -645,7 +645,7 @@ Check adb, devices and shell setup.
 ak doctor [options]
 ```
 
-Check the adb ak uses, other adb binaries, connected devices, shell completion and optional tools.
+Check the adb ak uses, other adb binaries, connected devices, shell completion, optional tools and the ak skill for AI agents.
 Lookup order: AK_ADB, ANDROID_HOME, ANDROID_SDK_ROOT, PATH, Android Studio default SDK, ~/.ak/platform-tools.
 Running adb binaries of different versions side by side restarts the adb server and drops device connections.
 [✓] fine, [!] worth fixing, [✗] a problem. Exits 1 when a problem is found.
@@ -710,5 +710,6 @@ ak completion powershell | Out-String | Invoke-Expression   # in $PROFILE
 |---|---|
 | `ANDROID_SERIAL` | Default target device |
 | `AK_ADB` | Path to the adb binary |
+| `AK_NO_SKILL` | Do not add the ak skill for AI agents |
 | `NO_COLOR` | Disable colored output |
 | `AK_DEBUG` | Set to 1 to write a debug log to $TMPDIR/ak-debug.log (AK_DEBUG_LOG changes the path) |
