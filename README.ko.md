@@ -116,7 +116,7 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 
 ### 탭 자동 완성
 
-명령, 옵션, 디바이스 시리얼을 완성하고, 인자는 받는 것만 보여 줍니다. `install`은 APK 파일과 폴더, `screenshot`은 폴더만 나옵니다.
+명령, 옵션, 디바이스 시리얼(zsh · fish · PowerShell에서는 모델과 Android 버전을 함께 표시)을 완성하고, 인자는 받는 것만 보여 줍니다. `install`은 APK 파일과 폴더, `screenshot`은 폴더만 나옵니다.
 
 ![탭 자동 완성](demo/completion.gif)
 

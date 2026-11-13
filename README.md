@@ -116,7 +116,7 @@ Devices install in parallel while a status board shows each one. Common failures
 
 ### Tab completion
 
-Commands, options, device serials — and for arguments only what they take: APK files and folders for `install`, folders for `screenshot`.
+Commands, options, device serials (each with its model and Android version in zsh, fish and PowerShell) — and for arguments only what they take: APK files and folders for `install`, folders for `screenshot`.
 
 ![Tab completion](demo/completion.gif)
 
