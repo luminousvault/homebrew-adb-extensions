@@ -9,7 +9,7 @@ From the repository root:
 
 ```bash
 go build -ldflags "-X main.version=$(cat VERSION)" -o demo/bin/ak ./cmd/ak
-vhs demo/hero.tape        # or confirm, doctor, screenshot, completion
+vhs demo/hero.tape        # or confirm, doctor, screenshot, logcat, completion
 ```
 
 Without `-ldflags`, `ak doctor` shows the version as `dev`.
@@ -20,6 +20,7 @@ Without `-ldflags`, `ak doctor` shows the version as `dev`.
 | `confirm.tape` | `confirm.gif` | A signature conflict on one device asks to uninstall and reinstall |
 | `doctor.tape` | `doctor.gif` | `ak doctor` |
 | `screenshot.tape` | `screenshot.gif` | `ak screenshot` and `ak screenshot -c` (writes your real clipboard) |
+| `logcat.tape` | `logcat.gif` | `ak logcat` with two apps: colors, app bars, a wrapped line, framework lines hidden |
 | `completion.tape` | `completion.gif` | zsh Tab completion of commands, APK files and serials |
 
 `settings.tape` holds the shared look (font, size, theme). Every tape first runs
@@ -35,7 +36,10 @@ between steps. If a command gets slower, lengthen that last `Sleep` too.
 
 `fake-adb` is a small bash script that answers the adb calls the demos make:
 `version`, `devices`, `shell getprop`, `install` (with a delay per device, so the status
-board animates), `uninstall` and `exec-out screencap -p` (returns `assets/screen.png`).
+board animates), `uninstall`, `exec-out screencap -p` (returns `assets/screen.png`),
+`shell ps -A -o PID,NAME` and `logcat -v threadtime` (a scripted log: `com.example.app`
+is running, `com.example.shop` starts partway through, and a few framework lines that
+ak hides; it then waits like the real logcat).
 Other `shell` commands succeed with no output; anything else fails.
 
 | Serial | Device |
