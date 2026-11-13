@@ -102,7 +102,7 @@ func runRecord(c *Ctx) error {
 	go func() { exited <- cmd.Wait() }()
 
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
+	signal.Notify(sig, adb.StopSignals...)
 	defer signal.Stop(sig)
 
 	start := time.Now()
