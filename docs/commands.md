@@ -441,7 +441,7 @@ or directory (or -o) to save it as well.
 
 | Option | Description |
 |---|---|
-| `-c, --copy` | Copy the image to the clipboard (alone: no file is saved) |
+| `-c, --clipboard` | Copy the image to the clipboard (alone: no file is saved) |
 | `-o, --open` | Open the saved file with the default app |
 | `-s, --serial ID` | Target device; repeat for more (default: $ANDROID_SERIAL, or ask) |
 | `-a, --all` | All connected devices |

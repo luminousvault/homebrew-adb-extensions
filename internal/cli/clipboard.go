@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var flagCopy = Flag{"-c", "--copy", "", "Copy the image to the clipboard (alone: no file is saved)"}
+var flagClipboard = Flag{"-c", "--clipboard", "", "Copy the image to the clipboard (alone: no file is saved)"}
 
 // copyImageFn puts a PNG file on the system clipboard as an image; tests
 // replace it.

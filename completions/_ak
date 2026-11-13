@@ -164,7 +164,7 @@ _ak() {
         screenshot)
           _arguments -s \
             '(- *)'{-h,--help}'[Show help for this command]' \
-            {-c,--copy}'[Copy the image to the clipboard]' \
+            {-c,--clipboard}'[Copy the image to the clipboard]' \
             {-o,--open}'[Open the saved file with the default app]' \
             '*'{-s,--serial}'[Target device]:serial:_ak_serials' \
             {-a,--all}'[All connected devices]' \

@@ -285,7 +285,7 @@ Error: 1 of 2 devices failed
 
 ## 14. 클립보드와 열기
 
-- `-c, --copy`(`screenshot`): 이미지를 클립보드에 복사합니다.
+- `-c, --clipboard`(`screenshot`): 이미지를 클립보드에 복사합니다.
   - **혼자 쓰면 파일을 저장하지 않습니다**(임시 파일을 쓰고 지움). 경로 인자나 `-o`를 함께 주면 저장도 합니다.
   - 클립보드는 하나라서 여러 디바이스와 함께 쓰면 사용법 오류입니다(`choose one device with -s`).
   - macOS: PNG + LZW TIFF를 한 항목으로 씁니다. 클립보드 기록 앱이 TIFF가 있어야 이미지를 기록하기 때문입니다.
