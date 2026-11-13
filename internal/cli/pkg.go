@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 var (
@@ -16,9 +17,15 @@ var (
 )
 
 // foregroundPackage returns the package of the top activity
-// (first "Hist" line of `dumpsys activity activities`).
+// (first "Hist" line of `dumpsys activity activities`). When the screen is
+// off, that is the app shown before it turned off, so it warns.
 func foregroundPackage(serial string) string {
-	return parseForegroundPackage(adb.Shell(serial, "dumpsys activity activities"))
+	pkg := parseForegroundPackage(adb.Shell(serial, "dumpsys activity activities"))
+	if pkg != "" && pkg != "null" && screenOff(serial) {
+		ui.Warn("The screen of %s is off; %s is the app that was on screen before it turned off", deviceName(serial), q(pkg))
+		ui.Hint("Pass a package name, or turn the screen on: %s", wakeCmd(serial))
+	}
+	return pkg
 }
 
 func parseForegroundPackage(dumpsys string) string {

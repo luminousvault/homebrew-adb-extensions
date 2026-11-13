@@ -97,6 +97,10 @@ func runScreenshot(c *Ctx) error {
 			failed = true
 			continue
 		}
+		if screenOff(s) {
+			ui.Warn("The screen of %s is off; the image may be black", deviceName(s))
+			ui.Hint("%s", wakeHint(s))
+		}
 		meta := ui.Err.Dim("(" + deviceName(s) + ", " + humanSize(strconv.Itoa(len(data))) + ")")
 		if save {
 			if err := os.WriteFile(path, data, 0o644); err != nil {
