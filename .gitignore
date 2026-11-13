@@ -78,3 +78,7 @@ target/
 
 # Go
 /ak
+
+# Demo recording (demo/README.md)
+demo/bin/
+demo/home/
