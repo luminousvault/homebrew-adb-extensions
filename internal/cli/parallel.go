@@ -16,7 +16,7 @@ import (
 // On a terminal a status board is redrawn in place and confirmations are
 // collected and asked after the other devices finish. Without a terminal
 // every message is printed as it happens with a "[device]" prefix.
-// Design: docs/spec/parallel-install.md.
+// Design: docs/dev/cli-design.md (parallel install).
 
 type jobState int
 

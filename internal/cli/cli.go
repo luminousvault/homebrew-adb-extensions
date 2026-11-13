@@ -1,5 +1,5 @@
 // Package cli implements the ak commands.
-// Output rules: docs/design/cli-output.md.
+// Output rules: docs/dev/cli-design.md.
 package cli
 
 import (
