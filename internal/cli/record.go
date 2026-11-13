@@ -78,6 +78,12 @@ func runRecord(c *Ctx) error {
 	if err != nil {
 		return err
 	}
+	// screenrecord can't record a screen that is off (UNASSIGNED_LAYER_STACK),
+	// and finding that out after it exits takes several seconds.
+	if screenOff(serial) {
+		return failErr(wakeHint(serial),
+			"The screen of %s is off; it can't be recorded", deviceName(serial))
+	}
 	arg := ""
 	if len(c.Args) == 1 {
 		arg = c.Args[0]
@@ -146,7 +152,7 @@ wait:
 		if s := strings.TrimSpace(log.String()); s != "" {
 			ui.Detail("%s", s)
 			if strings.Contains(s, "UNASSIGNED_LAYER_STACK") {
-				ui.Hint("Turn on the device screen and try again")
+				ui.Hint("%s", wakeHint(serial))
 			}
 		}
 		_, _ = adb.Combined("-s", serial, "shell", "rm", "-f", remote)

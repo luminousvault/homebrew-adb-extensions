@@ -748,3 +748,78 @@ func TestInstallDeclineStopsOneDevice(t *testing.T) {
 		t.Errorf("code %d\n%s", code, errb.String())
 	}
 }
+
+const (
+	powerDozing = `POWER MANAGER (dumpsys power)
+
+Power Manager State:
+  mDirty=0x0
+  mWakefulness=Dozing
+  mWakefulnessChanging=false
+  mIsPowered=true
+
+Power Manager Constants:
+mWakefulness=3
+`
+	powerAwake = "Power Manager State:\n  mDirty=0x0\n  mWakefulness=Awake\n  mWakefulnessChanging=false\n"
+)
+
+func TestParseWakefulness(t *testing.T) {
+	for in, want := range map[string]string{
+		powerDozing:               "dozing",
+		powerAwake:                "awake",
+		"  mWakefulness=Asleep\n": "asleep",
+		"mWakefulness=3\n":        "",
+		"":                        "",
+	} {
+		if got := parseWakefulness(in); got != want {
+			t.Errorf("parseWakefulness(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestScreenOffWarnings(t *testing.T) {
+	t.Chdir(t.TempDir())
+	png := string(pngMagic) + "rest-of-image"
+	for _, c := range []struct {
+		power string
+		warn  bool
+	}{{powerDozing, true}, {powerAwake, false}, {"", false}} {
+		f := baseFake()
+		f.Responses["-s "+serial+" shell dumpsys power"] = adbtest.Response{Stdout: c.power}
+		f.Responses["-s "+serial+" exec-out screencap -p"] = adbtest.Response{Stdout: png}
+
+		r := ak(t, f, "screenshot", "shot.png")
+		want := "Warning: The screen of Google Pixel 9 Pro is off; the image may be black\n" +
+			"Hint: Turn the screen on: 'adb -s " + serial + " shell input keyevent WAKEUP'\n"
+		if r.code != 0 || r.out != "shot.png\n" || strings.Contains(r.err, want) != c.warn {
+			t.Errorf("screenshot (%q): code %d out %q err %q", c.power, r.code, r.out, r.err)
+		}
+
+		r = ak(t, f, "info")
+		want = "Warning: The screen of Google Pixel 9 Pro is off; 'com.example.app' is the app that was on screen before it turned off\n" +
+			"Hint: Pass a package name, or turn the screen on: 'adb -s " + serial + " shell input keyevent WAKEUP'\n"
+		if r.code != 0 || strings.Contains(r.err, want) != c.warn {
+			t.Errorf("info (%q): code %d err %q", c.power, r.code, r.err)
+		}
+		if r := ak(t, f, "info", "com.example.app"); strings.Contains(r.err, "Warning") {
+			t.Errorf("info with a package must not warn: %q", r.err)
+		}
+	}
+}
+
+func TestRecordFailsFastWhenScreenOff(t *testing.T) {
+	f := baseFake()
+	f.Responses["-s "+serial+" shell dumpsys power"] = adbtest.Response{Stdout: powerDozing}
+	r := ak(t, f, "record", "-t", "3")
+	want := "Error: The screen of Google Pixel 9 Pro is off; it can't be recorded\n" +
+		"Hint: Turn the screen on: 'adb -s " + serial + " shell input keyevent WAKEUP'\n"
+	if r.code != 1 || r.err != want {
+		t.Errorf("code %d err %q", r.code, r.err)
+	}
+	for _, call := range f.Calls {
+		if strings.Contains(call, "screenrecord") {
+			t.Errorf("screenrecord started: %s", call)
+		}
+	}
+}
