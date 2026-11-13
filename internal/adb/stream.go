@@ -3,8 +3,10 @@ package adb
 import (
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/debuglog"
 )
@@ -34,6 +36,12 @@ func (e Exec) Start(args ...string) (*exec.Cmd, io.ReadCloser, error) {
 	}
 	return cmd, out, nil
 }
+
+// StopSignals are the signals a caller of Start should watch to stop the
+// command. A started command is in its own process group, so it outlives ak
+// when ak is ended by anything other than Ctrl+C: `timeout` or `kill` (SIGTERM),
+// or the terminal closing (SIGHUP).
+var StopSignals = []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP}
 
 // Start starts a long-running adb command with the default runner.
 func Start(args ...string) (*exec.Cmd, io.ReadCloser, error) {

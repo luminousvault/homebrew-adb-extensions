@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- `logcat` and `record` stop cleanly when ak is ended by `kill` or `timeout` (SIGTERM) or by closing the terminal (SIGHUP), as they do on Ctrl+C. Before, `adb logcat` kept running in the background, and `record` left the recording going on the device without saving it
+
 ## [2.2.0] - 2026-11-13
 
 ### Added

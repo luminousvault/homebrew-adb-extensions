@@ -468,7 +468,7 @@ func runLogcat(c *Ctx) error {
 		return err
 	}
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
+	signal.Notify(sig, adb.StopSignals...)
 	defer signal.Stop(sig)
 	done := make(chan struct{})
 	go func() {
