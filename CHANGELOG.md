@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.1] - 2026-11-13
+
+### Changed
+- `screenshot --copy` is renamed `--clipboard`, the name screenshot tools use for this; `-c` is unchanged. `--copy` is no longer accepted
+
 ## [2.1.0] - 2026-11-13
 
 ### Added
