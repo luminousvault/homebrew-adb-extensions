@@ -60,7 +60,7 @@ go install github.com/luminousvault/homebrew-adb-extensions/cmd/ak@latest
 
 ### Prebuilt Binaries
 
-Download the archive for your OS (macOS, Linux, Windows; amd64/arm64) from [GitHub Releases](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest). Each archive includes the `ak` binary and the zsh completion file; for other shells see [Tab Completion](#tab-completion).
+Download the archive for your machine — `macos` (Apple Silicon and Intel in one), `windows_x64` / `windows_arm64`, `linux_x86_64` / `linux_arm64` (as `uname -m` shows) — from [GitHub Releases](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest). Each archive includes the `ak` binary and the zsh completion file; for other shells see [Tab Completion](#tab-completion).
 
 ### Requirements
 

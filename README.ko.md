@@ -60,7 +60,7 @@ go install github.com/luminousvault/homebrew-adb-extensions/cmd/ak@latest
 
 ### 빌드된 바이너리
 
-[GitHub Releases](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest)에서 OS별(macOS, Linux, Windows / amd64·arm64) 압축 파일을 받으세요. `ak` 실행 파일과 zsh 자동 완성 파일이 들어 있습니다. 다른 셸은 [탭 자동 완성](#탭-자동-완성)을 보세요.
+[GitHub Releases](https://github.com/luminousvault/homebrew-adb-extensions/releases/latest)에서 기기에 맞는 압축 파일을 받으세요: `macos`(Apple Silicon · Intel 하나로), `windows_x64` / `windows_arm64`, `linux_x86_64` / `linux_arm64`(`uname -m` 기준). `ak` 실행 파일과 zsh 자동 완성 파일이 들어 있습니다. 다른 셸은 [탭 자동 완성](#탭-자동-완성)을 보세요.
 
 ### 요구 사항
 

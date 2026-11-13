@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.
 - `ak completion zsh|bash|fish|powershell` prints a completion script generated from the command table; Homebrew installs bash, zsh and fish completion. Arguments complete only what they take (APK files and directories, directories only, fixed words) and `-s` lists connected serials through ak's own adb lookup
 - `screenshot -c, --copy` copies the image to the clipboard. Alone it saves no file; with a file or directory argument, or with `-o`, the file is saved too. One device at a time (macOS puts PNG plus a compressed TIFF on the pasteboard so clipboard history apps such as Raycast record it; Linux `wl-copy` or `xclip`; Windows PowerShell)
 
+### Changed
+- Release archives are named as users see their machine: `ak_<version>_macos.tar.gz` holds one universal binary (Apple Silicon and Intel), Windows is `windows_x64` / `windows_arm64`, Linux is `linux_x86_64` / `linux_arm64` (was `darwin_amd64`, `darwin_arm64`, `windows_amd64`, `linux_amd64`, …). Homebrew picks the right one as before
+
 ## [2.0.0] - 2026-11-12
 
 ### Changed

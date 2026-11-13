@@ -20,8 +20,7 @@ sha() {
 }
 
 sed -e "s|@VERSION@|${version}|g" \
-    -e "s|@SHA256_DARWIN_ARM64@|$(sha darwin_arm64)|" \
-    -e "s|@SHA256_DARWIN_AMD64@|$(sha darwin_amd64)|" \
+    -e "s|@SHA256_MACOS@|$(sha macos)|" \
     -e "s|@SHA256_LINUX_ARM64@|$(sha linux_arm64)|" \
-    -e "s|@SHA256_LINUX_AMD64@|$(sha linux_amd64)|" \
+    -e "s|@SHA256_LINUX_X86_64@|$(sha linux_x86_64)|" \
     "$template"
