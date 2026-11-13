@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [2.1.0] - 2026-11-13
 
 ### Added
 - `ak doctor` looks like `flutter doctor`: a header box, one `[✓]` / `[!]` / `[✗]` line per category with the fix under it, `-v, --verbose` for every detail, and a closing "N/M checks passed" count; `-v` ends with an environment block to paste into bug reports (ak, OS, shell, adb, devices with their Android version, no serials). A missing apksigner is no longer an issue (it is only a fallback). New category: shell completion — whether ak's completion is set up for your shell and current (warning only, the exit code is unchanged)
@@ -11,6 +11,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Release archives are named as users see their machine: `ak_<version>_macos.tar.gz` holds one universal binary (Apple Silicon and Intel), Windows is `windows_x64` / `windows_arm64`, Linux is `linux_x86_64` / `linux_arm64` (was `darwin_amd64`, `darwin_arm64`, `windows_amd64`, `linux_amd64`, …). Homebrew picks the right one as before
+- README rewritten (what ak saves you over plain adb, install incl. the macOS quarantine note, demo GIFs recorded with a fake adb), with a generated command reference (`docs/commands.md`, Korean `docs/commands.ko.md` from `docs/i18n/ko.json`; any `docs/i18n/<lang>.json` adds a language) and `docs/troubleshooting.md`. Help texts say what each command and `-y` do
+- Personal project: CONTRIBUTING.md removed; pull requests are not accepted, issues are welcome
+
+### Fixed
+- Tab completion offers only what an argument takes: directories for `screenshot`, `record`, `pull` and the save name of `extract`; APK files and directories for `install` and `signature` (any path, not only the current folder). It never falls back to listing every file
+- With one device, declining the uninstall-and-reinstall question stops the remaining APKs, as it does with several devices
 
 ## [2.0.0] - 2026-11-12
 
