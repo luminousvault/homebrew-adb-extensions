@@ -523,7 +523,15 @@ $global:__akCompletion = @{
 	}
 	b.WriteString(`}
 
+# PowerShell falls back to file names when a completer returns nothing, so an
+# empty string stands in for "no candidates".
 Register-ArgumentCompleter -Native -CommandName 'ak', 'ak.exe' -ScriptBlock {
+  param($wordToComplete, $commandAst, $cursorPosition)
+  $out = @(& $global:__akComplete $wordToComplete $commandAst $cursorPosition)
+  if ($out.Count -eq 0) { '' } else { $out }
+}
+
+$global:__akComplete = {
   param($wordToComplete, $commandAst, $cursorPosition)
   $spec = $global:__akCompletion
   $before = @($commandAst.CommandElements |
