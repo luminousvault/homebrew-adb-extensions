@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [2.2.0] - 2026-11-13
 
 ### Added
 - `logcat` takes several packages: `ak logcat com.example.app com.example.store` merges their lines in time order, each marked with a bar in the app's color and its package name (in a terminal as much as fits in a fifth of the width, up to 16 columns, shortened from the front, e.g. `…onesdk.demo.android`)
