@@ -21,7 +21,7 @@ _ak() {
     'install:Install APKs on one or more devices'
     'kill:Force-stop apps'
     'launch:Launch an app'
-    'logcat:Show logs of one app'
+    'logcat:Show logs of one or more apps'
     'mac:Show device MAC addresses'
     'permissions:List granted permissions of an app'
     'pull:Pick recent files on a device and copy them here'
@@ -120,8 +120,11 @@ _ak() {
             '(- *)'{-h,--help}'[Show help for this command]' \
             {-l,--level}'[Minimum level\: V, D, I, W, E or F]:level:(V D I W E F)' \
             {-c,--clear}'[Clear the device log buffer first]' \
+            {-t,--tag}'[Show only this tag, repeatable]:tag' \
+            {-i,--ignore-tag}'[Hide this tag, repeatable]:tag' \
+            {-e,--every-tag}'[Also show framework and driver logs]' \
             {-s,--serial}'[Target device]:serial:_ak_serials' \
-            '1:package name:_message "package name"'
+            '*:package name:_message "package name"'
           ;;
         mac)
           _arguments -s \

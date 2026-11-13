@@ -105,7 +105,7 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 
 - `ak screenshot`은 PNG를 이 컴퓨터에 저장합니다. `-c`는 클립보드에 복사, `-o`는 저장 후 열기
 - `ak record`는 Ctrl+C까지(최대 180초) 녹화하고 MP4를 가져옵니다
-- `ak logcat`은 앱 하나의 로그만 보여 주고, 앱이 재시작해도 이어서 따라갑니다
+- `ak logcat`은 앱 하나(또는 여러 앱을 합쳐서)의 로그만 보여 주고, 앱이 재시작해도 이어서 따라갑니다. Android Studio처럼 색을 입히고, 프레임워크가 남기는 잡음은 숨깁니다(`-e`로 보기, `-t` / `-i`로 태그 고르기 · 숨기기)
 - `ak restart -r 5`는 앱을 다섯 번 재시작하며 실행 시간을 잽니다
 - `ak wifi`는 USB 디바이스를 Wi-Fi 디버깅으로 바꾸고, `ak wifi off`로 되돌립니다
 
@@ -132,7 +132,7 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 | 앱 | [`info`](docs/commands.ko.md#ak-info) · [`permissions`](docs/commands.ko.md#ak-permissions) | 버전 · SDK 레벨 · 설치 출처 / 허용된 권한 |
 | | [`launch`](docs/commands.ko.md#ak-launch) · [`kill`](docs/commands.ko.md#ak-kill) · [`restart`](docs/commands.ko.md#ak-restart) | 실행 · 강제 종료 · 재시작하며 실행 시간 측정 |
 | | [`clear`](docs/commands.ko.md#ak-clear) · [`uninstall`](docs/commands.ko.md#ak-uninstall) | 데이터 삭제 · 제거 |
-| | [`activities`](docs/commands.ko.md#ak-activities) · [`logcat`](docs/commands.ko.md#ak-logcat) | 액티비티 스택 · 앱 하나의 로그 |
+| | [`activities`](docs/commands.ko.md#ak-activities) · [`logcat`](docs/commands.ko.md#ak-logcat) | 액티비티 스택 · 앱 하나 또는 여러 개의 로그 |
 | 화면 | [`screenshot`](docs/commands.ko.md#ak-screenshot) · [`record`](docs/commands.ko.md#ak-record) | PNG를 파일이나 클립보드로 · MP4 녹화 |
 | 파일 | [`pull`](docs/commands.ko.md#ak-pull) | 디바이스의 최근 파일을 골라 가져오기 |
 | 디바이스 | [`devices`](docs/commands.ko.md#ak-devices) · [`mac`](docs/commands.ko.md#ak-mac) · [`wifi`](docs/commands.ko.md#ak-wifi) | 디바이스 목록 · MAC 주소 · Wi-Fi 디버깅 |
