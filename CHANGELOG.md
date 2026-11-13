@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-13
+
 ### Added
 - `pull -l, --latest` pulls the newest file and `pull -f, --filter WORDS` keeps the files whose names contain all the words (like `install -f`); one match is pulled without asking, and with `-l` the newest match. `pull` can now run without a terminal; without these options the error says so
 - `ak --help` has a short section for scripts and AI agents (name the package, no pickers without a terminal, `--json`); the README section is now "Scripts, CI and AI agents"
