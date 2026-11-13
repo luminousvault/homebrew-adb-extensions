@@ -11,9 +11,12 @@ import (
 var cmdVerifier = &Command{
 	Name: "verifier", Summary: "Show or turn Play Protect scans of adb installs on or off", Args: "[on|off]",
 	Long: "Show or change whether Google Play Protect scans apps installed with adb\n" +
-		"(settings global " + verifierKey + "). The setting stays after a reboot.\n" +
-		"'off' sets it to 0; 'on' deletes it, which restores the default (scans on).",
-	ArgHelp:  [][2]string{{"on", "Scan adb installs again (default)"}, {"off", "Skip scans of adb installs"}},
+		"(settings global " + verifierKey + "). Without an argument, show the current state.\n" +
+		"Turning scans off avoids the 'send this app for a security check?' prompt that can hold\n" +
+		"an install until someone answers on the device (not confirmed to cover every prompt).\n" +
+		"It is a device security setting and stays after a reboot; use it on test devices.\n" +
+		"'off' sets it to 0; 'on' deletes it, back to the device default (scans on, shown as null).",
+	ArgHelp:  [][2]string{{"on", "Scan adb installs again (removes the setting)"}, {"off", "Skip scans of adb installs (sets it to 0)"}},
 	Examples: []string{"ak verifier", "ak verifier off --all", "ak verifier on -s emulator-5554"},
 	Device:   manyDevices, Hidden: true, Run: runVerifier,
 }

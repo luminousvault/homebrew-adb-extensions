@@ -37,7 +37,7 @@ var cmdCompletion = &Command{
 // cmdSerials prints ready device serials for the completion scripts, using
 // ak's own adb lookup (adb need not be on PATH).
 var cmdSerials = &Command{
-	Name: "__serials", Summary: "Ready device serials (for completion)", Hidden: true,
+	Name: "__serials", Summary: "Print ready device serials, one per line (used by the completion scripts)", Hidden: true,
 	Run: func(c *Ctx) error {
 		for _, s := range adb.ReadySerials() {
 			ui.Out.Println(s)
