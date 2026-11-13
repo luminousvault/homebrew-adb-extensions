@@ -108,7 +108,7 @@ Examples:                                      ← Examples (없으면 생략)
    | `-y, --yes` | 확인 질문에 예 |
    | `-h, --help` | 도움말 |
 
-4. **커맨드가 다루는 항목 전부는 `-e, --every-<항목>`** 입니다(`install -e, --every-apk`, `activities -e, --every-task`). `-a`는 디바이스 전용이라 겹치지 않습니다: `ak install -ea` = 모든 APK를 모든 디바이스에.
+4. **커맨드가 다루는 항목 전부는 `-e, --every-<항목>`** 입니다(`install -e, --every-apk`, `activities -e, --every-task`, `logcat -e, --every-tag`). `-a`는 디바이스 전용이라 겹치지 않습니다: `ak install -ea` = 모든 APK를 모든 디바이스에.
 5. **짧은 이름이 있으면 긴 이름도 둡니다.** 예외: 항상 켜져 있는 호환 옵션 `install -r`.
 6. 예약 이름이 아니면 커맨드마다 같은 글자가 다른 뜻일 수 있습니다(`install -t, --test-only` / `record -t, --time-limit`).
 

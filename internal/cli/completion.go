@@ -107,7 +107,7 @@ var compArgs = map[string][]compArg{
 	"launch":      {{desc: "package name", kind: argPkg}},
 	"restart":     {{desc: "package name", kind: argPkg}},
 	"signature":   {{desc: "package name or APK file", kind: argAPK}},
-	"logcat":      {{desc: "package name", kind: argPkg}},
+	"logcat":      {{desc: "package name", kind: argPkg, many: true}},
 	"screenshot":  {{desc: "output directory", kind: argDir}},
 	"record":      {{desc: "output directory", kind: argDir}},
 	"wifi":        {{desc: "action", kind: argWords, words: []string{"off"}}},

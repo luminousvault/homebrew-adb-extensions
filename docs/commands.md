@@ -383,15 +383,19 @@ ak activities --json
 
 ## ak logcat
 
-Show logs of one app.
+Show logs of one or more apps.
 
 ```
-ak logcat [options] [package]
+ak logcat [options] [package...]
 ```
 
 Show the logcat lines of one app and keep following it when it restarts (new process IDs
 are picked up automatically; processes like 'pkg:remote' are included). The app's lines still
 in the device log buffer are shown first (use -c to start empty). Press Ctrl+C to stop.
+With several packages their lines are merged in time order, each marked with its app.
+Android framework code running in the app (views, input method, graphics, class loading)
+logs under its own tags; those lines are hidden except errors (E, F), and GPU driver lines
+except F. -e shows them. -t and -i take a tag name; '*' matches any text (-t 'My*').
 
 **Arguments**
 
@@ -405,6 +409,9 @@ in the device log buffer are shown first (use -c to start empty). Press Ctrl+C t
 |---|---|
 | `-l, --level LEVEL` | Minimum level: V, D, I, W, E or F (default V) |
 | `-c, --clear` | Clear the device log buffer first |
+| `-t, --tag TAG` | Show only this tag, repeatable (framework tags too) |
+| `-i, --ignore-tag TAG` | Hide this tag, repeatable |
+| `-e, --every-tag` | Also show framework and driver logs |
 | `-s, --serial ID` | Target device (default: $ANDROID_SERIAL, or ask) |
 | `-h, --help` | Show this help |
 
@@ -413,6 +420,10 @@ in the device log buffer are shown first (use -c to start empty). Press Ctrl+C t
 ```bash
 ak logcat
 ak logcat com.example.app -l W
+ak logcat com.example.app com.example.store
+ak logcat -t OkHttp -t 'MyApp*'
+ak logcat -i Glide
+ak logcat -e
 ak logcat -c > app.log
 ```
 

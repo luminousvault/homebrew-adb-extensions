@@ -383,15 +383,19 @@ ak activities --json
 
 ## ak logcat
 
-앱 하나의 로그 보기.
+앱 하나 또는 여러 개의 로그 보기.
 
 ```
-ak logcat [options] [package]
+ak logcat [options] [package...]
 ```
 
 앱 하나의 logcat 로그를 보여 주고, 앱이 재시작해도 이어서 따라갑니다(새 프로세스 ID를
 자동으로 잡고, 'pkg:remote' 같은 프로세스도 포함합니다). 디바이스 로그 버퍼에 남아 있는
 그 앱의 로그를 먼저 보여 줍니다(-c를 주면 비우고 시작). Ctrl+C로 멈춥니다.
+패키지를 여러 개 주면 시간순으로 합쳐 보여 주고, 줄마다 어느 앱인지 표시합니다.
+앱 안에서 도는 안드로이드 프레임워크 코드(뷰, 입력기, 그래픽, 클래스 로딩)는 자기 태그로
+로그를 남기는데, 오류(E, F)만 보여 주고 나머지는 숨깁니다. GPU 드라이버 로그는 F만 보여 줍니다.
+-e를 주면 모두 보여 줍니다. -t와 -i는 태그 이름을 받고, '*'는 아무 글자에나 맞습니다(-t 'My*').
 
 **인자**
 
@@ -405,6 +409,9 @@ ak logcat [options] [package]
 |---|---|
 | `-l, --level LEVEL` | 최소 레벨: V, D, I, W, E, F (기본 V) |
 | `-c, --clear` | 디바이스 로그 버퍼를 먼저 비우기 |
+| `-t, --tag TAG` | 이 태그만 보기, 여러 번 지정 가능 (프레임워크 태그도 가능) |
+| `-i, --ignore-tag TAG` | 이 태그 숨기기, 여러 번 지정 가능 |
+| `-e, --every-tag` | 프레임워크와 드라이버 로그도 보기 |
 | `-s, --serial ID` | 대상 디바이스 (기본: $ANDROID_SERIAL, 없으면 물어봄) |
 | `-h, --help` | 이 도움말 보기 |
 
@@ -413,6 +420,10 @@ ak logcat [options] [package]
 ```bash
 ak logcat
 ak logcat com.example.app -l W
+ak logcat com.example.app com.example.store
+ak logcat -t OkHttp -t 'MyApp*'
+ak logcat -i Glide
+ak logcat -e
 ak logcat -c > app.log
 ```
 

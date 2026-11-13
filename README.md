@@ -6,13 +6,13 @@
 
 # ak — ADB Extensions Kit
 
+**Languages:** English | [한국어](README.ko.md)
+
 **The Android tasks you would otherwise script with adb, as one command each.**
 
 Install APKs on every connected device at once, see an app's info without typing its package name, copy a screenshot to the clipboard, follow one app's logs across restarts. ak is a single binary for macOS, Linux and Windows; the only thing it needs is adb.
 
 ![Installing two APKs on two devices with ak](demo/hero.gif)
-
-**Languages:** English | [한국어](README.ko.md)
 
 ## Why ak
 
@@ -105,7 +105,7 @@ Devices install in parallel while a status board shows each one. Common failures
 
 - `ak screenshot` saves a PNG on this computer; `-c` copies it to the clipboard, `-o` opens it
 - `ak record` records until Ctrl+C (up to 180 s) and pulls the MP4
-- `ak logcat` shows one app's logs and keeps following it when it restarts
+- `ak logcat` shows one app's logs (or several apps' merged) and keeps following them when they restart, colored like Android Studio, without the framework's own chatter (`-e` shows it; `-t` / `-i` pick or hide tags)
 - `ak restart -r 5` restarts the app five times and reports launch times
 - `ak wifi` switches a USB device to Wi-Fi debugging; `ak wifi off` switches back
 
@@ -132,7 +132,7 @@ Commands, options, device serials — and for arguments only what they take: APK
 | App | [`info`](docs/commands.md#ak-info) · [`permissions`](docs/commands.md#ak-permissions) | Version, SDK levels, installer · granted permissions |
 | | [`launch`](docs/commands.md#ak-launch) · [`kill`](docs/commands.md#ak-kill) · [`restart`](docs/commands.md#ak-restart) | Start · force-stop · restart and time the launch |
 | | [`clear`](docs/commands.md#ak-clear) · [`uninstall`](docs/commands.md#ak-uninstall) | Clear data · uninstall |
-| | [`activities`](docs/commands.md#ak-activities) · [`logcat`](docs/commands.md#ak-logcat) | Activity stack · logs of one app |
+| | [`activities`](docs/commands.md#ak-activities) · [`logcat`](docs/commands.md#ak-logcat) | Activity stack · logs of one or more apps |
 | Screen | [`screenshot`](docs/commands.md#ak-screenshot) · [`record`](docs/commands.md#ak-record) | PNG to a file or the clipboard · MP4 recording |
 | Files | [`pull`](docs/commands.md#ak-pull) | Pick recent files on the device and copy them here |
 | Device | [`devices`](docs/commands.md#ak-devices) · [`mac`](docs/commands.md#ak-mac) · [`wifi`](docs/commands.md#ak-wifi) | Device list · MAC addresses · Wi-Fi debugging |

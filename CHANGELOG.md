@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - 2026-11-13
+
+### Added
+- `logcat` takes several packages: `ak logcat com.example.app com.example.store` merges their lines in time order, each marked with a bar in the app's color and its package name (in a terminal as much as fits in a fifth of the width, up to 16 columns, shortened from the front, e.g. `…onesdk.demo.android`)
+- `logcat -t, --tag` shows only the given tags and `-i, --ignore-tag` hides tags (both repeatable, exact names, `*` matches any text)
+
+### Changed
+- `logcat` hides what Android framework code logs from inside the app (views, input method, graphics, class loading, ART's GC lines, Samsung's additions) except errors, and GPU driver lines (Adreno, gralloc) except fatal ones; crashes and `Choreographer` stay. `-e, --every-tag` shows them; a hint says so the first time a line is hidden
+- `logcat` colors lines like Android Studio's Logcat: the level as a badge, the message in the level's color, and each tag bold in its own color (the same hue Android Studio picks for it). In a terminal tags line up in a column that grows to the longest tag so far (up to 23 columns; longer tags are shortened in the middle), and a long message wraps with its next lines indented to where the message starts. Output to a pipe or file is unchanged
+
 ## [2.1.1] - 2026-11-13
 
 ### Changed
