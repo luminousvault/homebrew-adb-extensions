@@ -6,13 +6,13 @@
 
 # ak — ADB Extensions Kit
 
+**언어:** [English](README.md) | 한국어
+
 **adb로 여러 단계를 거치던 안드로이드 작업을 명령 하나씩으로.**
 
 연결된 모든 디바이스에 APK를 한 번에 설치하고, 패키지 이름을 몰라도 지금 화면의 앱 정보를 보고, 스크린샷을 클립보드로 바로 복사하고, 앱이 재시작해도 그 앱의 로그만 따라갑니다. macOS · Linux · Windows용 단일 실행 파일이고, 필요한 것은 adb 하나뿐입니다.
 
 ![ak로 APK 두 개를 디바이스 두 대에 설치하는 화면](demo/hero.gif)
-
-**언어:** [English](README.md) | 한국어
 
 ## 왜 ak인가
 

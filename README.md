@@ -6,13 +6,13 @@
 
 # ak — ADB Extensions Kit
 
+**Languages:** English | [한국어](README.ko.md)
+
 **The Android tasks you would otherwise script with adb, as one command each.**
 
 Install APKs on every connected device at once, see an app's info without typing its package name, copy a screenshot to the clipboard, follow one app's logs across restarts. ak is a single binary for macOS, Linux and Windows; the only thing it needs is adb.
 
 ![Installing two APKs on two devices with ak](demo/hero.gif)
-
-**Languages:** English | [한국어](README.ko.md)
 
 ## Why ak
 

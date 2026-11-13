@@ -176,6 +176,24 @@ Homebrew installs completion for bash, zsh and fish. Otherwise add one line for 
 - **Several devices:** the clipboard holds one image, so `-c` needs one device (`-s <serial>`).
 - `-c` alone does not save a file. Add a path or `-o` to save it too.
 
+## `logcat` does not show a line I expected
+
+**Cause:** Android framework code that runs inside your app (views, input method, graphics, class loading, ART, Samsung's additions) logs under its own tags, such as `ViewRootImpl`, `ImeTracker` or `HWUI`. `ak logcat` hides those lines unless they are errors (E, F), and GPU driver lines (`Adreno*`, `qdgralloc`) unless they are fatal. The first time it hides one it says so:
+
+```
+Hint: Framework and driver logs are hidden (errors are kept); -e shows them
+```
+
+**Fix:**
+
+```bash
+ak logcat -e                  # everything from the app's processes, as before 2.2.0
+ak logcat -t HWUI -t MyTag    # only these tags, framework ones included
+ak logcat -i Glide            # hide one more tag
+```
+
+`-t` and `-i` take exact tag names (`View` does not match `MyView`); `*` matches any text (`-t 'MyApp*'`). Crashes (`AndroidRuntime`, `DEBUG`, native `libc` fatal signals) and dropped frames (`Choreographer`) are never hidden.
+
 ## Debug log
 
 ```bash
