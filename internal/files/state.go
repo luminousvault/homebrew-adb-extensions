@@ -994,7 +994,7 @@ func pastedItems(done []Entry, as []string) string {
 	// looks the same: it is not "renamed".
 	renamed := 0
 	for i, e := range done {
-		if i < len(as) && norm.NFC.String(as[i]) != norm.NFC.String(e.Name) {
+		if i < len(as) && shown(as[i]) != shown(e.Name) {
 			renamed++
 		}
 	}
@@ -1002,7 +1002,7 @@ func pastedItems(done []Entry, as []string) string {
 	case renamed == 0:
 		return countItems(done)
 	case len(done) == 1:
-		return "'" + norm.NFC.String(done[0].Name) + "' as '" + as[0] + "'"
+		return "'" + shown(done[0].Name) + "' as '" + as[0] + "'"
 	}
 	return fmt.Sprintf("%s (%d renamed)", countItems(done), renamed)
 }
@@ -1020,7 +1020,7 @@ func withoutPaths(list, gone []Entry) []Entry {
 // countItems is "'a.txt'", "3 files", "2 folders" or "4 items".
 func countItems(list []Entry) string {
 	if len(list) == 1 {
-		return "'" + norm.NFC.String(list[0].Name) + "'"
+		return "'" + shown(list[0].Name) + "'"
 	}
 	dirs := 0
 	for _, e := range list {
@@ -1428,11 +1428,11 @@ func (s *state) addDone(line string, items []string) {
 func itemNames(done []Entry, as []string) []string {
 	names := make([]string, len(done))
 	for i, e := range done {
-		n := norm.NFC.String(e.Name)
+		n := shown(e.Name)
 		if e.Dir {
 			n += "/"
 		}
-		if i < len(as) && norm.NFC.String(as[i]) != norm.NFC.String(e.Name) {
+		if i < len(as) && shown(as[i]) != shown(e.Name) {
 			n += " → " + as[i]
 		}
 		names[i] = n

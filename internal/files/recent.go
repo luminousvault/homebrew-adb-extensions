@@ -105,13 +105,17 @@ func recentEntries(rows []RecentFile) []Entry {
 // FillUnknownSizes asks the device for the size and modification time of
 // the rows MediaStore has not scanned yet (size -1), with one stat for all of
 // them (in batches of 100), so a fresh file shows its real size instead of
-// "?". A row stat cannot read keeps size -1.
-func FillUnknownSizes(serial string, rows []RecentFile) {
+// "?". A row stat cannot read keeps size -1. Rows that turn out empty are
+// dropped, as the query drops scanned empty files.
+func FillUnknownSizes(serial string, rows []RecentFile) []RecentFile {
 	var idx []int
 	for i, r := range rows {
 		if r.Size < 0 {
 			idx = append(idx, i)
 		}
+	}
+	if len(idx) == 0 {
+		return rows
 	}
 	for len(idx) > 0 {
 		n := min(len(idx), 100)
@@ -137,4 +141,11 @@ func FillUnknownSizes(serial string, rows []RecentFile) {
 		}
 		idx = idx[n:]
 	}
+	kept := rows[:0]
+	for _, r := range rows {
+		if r.Size != 0 {
+			kept = append(kept, r)
+		}
+	}
+	return kept
 }

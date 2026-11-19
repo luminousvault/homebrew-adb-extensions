@@ -286,7 +286,7 @@ func (d *deviceFS) Recent() ([]Entry, error) {
 	if len(rows) == 0 && raw != "" && !strings.Contains(raw, "No result found") {
 		return nil, errors.New(firstLines(raw))
 	}
-	FillUnknownSizes(d.serial, rows)
+	rows = FillUnknownSizes(d.serial, rows)
 	return recentEntries(rows), nil
 }
 

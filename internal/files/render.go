@@ -2,7 +2,6 @@ package files
 
 import (
 	"fmt"
-	"golang.org/x/text/unicode/norm"
 	"strings"
 	"time"
 
@@ -252,7 +251,7 @@ func helpSections() []helpSection {
 			{"v", "", "One pane: one wide column (whole long names) or two columns"},
 			{"9 Show computer", "w", "The computer pane beside the device on or off"},
 			{"4 Recent", "t", "The device's recent files ↔ its folder"},
-			{"2 Sort", "s", "Name → newest → size"},
+			{"2 Sort", "s", "Name → newest → size, for the pane with the cursor only; the recent view keeps its own order (newest first to start). Each pane's header shows its order"},
 			{".", "", "Hidden files on or off"},
 			{"1 Help", "?", "This help"},
 			{"0 Quit", "q", "Quit (Ctrl+C too)"},
@@ -531,7 +530,7 @@ func (s *state) scrollColumns(p *pane, h int) {
 
 func (s *state) header(p *pane, w int, active bool) string {
 	label := p.fs.Label()
-	where := norm.NFC.String(displayPath(p.fs, p.dir))
+	where := shown(displayPath(p.fs, p.dir))
 	if p.recent {
 		where = "Recent files"
 	}
@@ -608,14 +607,14 @@ func (s *state) row(p *pane, i, w int, active, compact, brief bool) string {
 		sizeW = 5 // "430M"
 	}
 	right := fmt.Sprintf("%*s %*s ", sizeW, size, ageW, when)
-	nameW := w - 6 - len(right)     // marks take 6 columns
-	name := norm.NFC.String(e.Name) // a macOS NFD name shows as its syllables
+	nameW := w - 6 - len(right) // marks take 6 columns
+	name := shown(e.Name)       // a macOS NFD name shows as its syllables
 	if e.Dir && !s.isUp(p, i) {
 		name += "/"
 	}
 	suffix := ""
 	if e.Folder != "" {
-		suffix = "  " + norm.NFC.String(e.Folder)
+		suffix = "  " + shown(e.Folder)
 	}
 	if focused && ui.TextWidth(name) > nameW && w-6 > nameW {
 		// The cursor's row shows the whole name over the size and date

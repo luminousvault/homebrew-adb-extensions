@@ -291,11 +291,24 @@ func TestFillUnknownSizes(t *testing.T) {
 		shellKey("stat -c '%s|%Y|%n' " + ShellQuote(a) + " " + ShellQuote(b) + " 2>/dev/null"): {Stdout: "3|1795067900|" + a + "\n"},
 	})
 	rows := []RecentFile{{Path: a, Size: -1}, {Path: "/storage/emulated/0/ui.xml", Size: 21}, {Path: b, Size: -1}}
-	FillUnknownSizes(serial, rows)
+	rows = FillUnknownSizes(serial, rows)
 	if rows[0].Size != 3 || !rows[0].Modified.Equal(time.Unix(1795067900, 0)) {
 		t.Errorf("filled: %+v", rows[0])
 	}
 	if rows[1].Size != 21 || rows[2].Size != -1 {
 		t.Errorf("others: %+v %+v", rows[1], rows[2])
+	}
+}
+
+// An unscanned file that stat finds empty is dropped, as the query drops
+// scanned empty files: ak pull -l never picks a 0 B placeholder.
+func TestFillUnknownSizesDropsEmpty(t *testing.T) {
+	a, b := "/storage/emulated/0/Download/empty.lock", "/storage/emulated/0/Download/real.txt"
+	fakeADB(t, map[string]adbtest.Response{
+		shellKey("stat -c '%s|%Y|%n' " + ShellQuote(a) + " " + ShellQuote(b) + " 2>/dev/null"): {Stdout: "0|1|" + a + "\n5|2|" + b + "\n"},
+	})
+	rows := FillUnknownSizes(serial, []RecentFile{{Path: a, Size: -1}, {Path: b, Size: -1}})
+	if len(rows) != 1 || rows[0].Path != b || rows[0].Size != 5 {
+		t.Errorf("rows %+v", rows)
 	}
 }
