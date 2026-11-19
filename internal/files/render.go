@@ -2,6 +2,7 @@ package files
 
 import (
 	"fmt"
+	"golang.org/x/text/unicode/norm"
 	"strings"
 
 	. "github.com/luminousvault/homebrew-adb-extensions/internal/style"
@@ -220,7 +221,7 @@ func helpSections() []helpSection {
 		}},
 		{"Select", []helpItem{
 			{"Space", "", "Select or unselect, then move down"},
-			{"*", "", "Select or unselect everything here"},
+			{"a", "", "Select or unselect everything here (as in the install and pull pickers)"},
 			{"/", "", "Filter by name as you type; Esc turns it off"},
 			{"", "", "A selection is used by 5 and 8 only; selected items a filter or hidden files hide are left out"},
 		}},
@@ -527,7 +528,7 @@ func (s *state) scrollColumns(p *pane, h int) {
 
 func (s *state) header(p *pane, w int, active bool) string {
 	label := p.fs.Label()
-	where := displayPath(p.fs, p.dir)
+	where := norm.NFC.String(displayPath(p.fs, p.dir))
 	if p.recent {
 		where = "Recent files"
 	}
@@ -600,14 +601,14 @@ func (s *state) row(p *pane, i, w int, active, compact, brief bool) string {
 		sizeW = 5 // "430M"
 	}
 	right := fmt.Sprintf("%*s %*s ", sizeW, size, ageW, when)
-	nameW := w - 6 - len(right) // marks take 6 columns
-	name := e.Name
+	nameW := w - 6 - len(right)     // marks take 6 columns
+	name := norm.NFC.String(e.Name) // a macOS NFD name shows as its syllables
 	if e.Dir && !s.isUp(p, i) {
 		name += "/"
 	}
 	suffix := ""
 	if e.Folder != "" {
-		suffix = "  " + e.Folder
+		suffix = "  " + norm.NFC.String(e.Folder)
 	}
 	name = truncate(name, max(nameW, 1))
 	suffix = truncate(suffix, max(nameW-ui.TextWidth(name), 0))
@@ -972,7 +973,7 @@ func (s *state) letterKeys() []string {
 	} else {
 		out = append(out, k("←→", "Up/Open"))
 	}
-	out = append(out, k("Space", "Select"), k("*", "All"), k("/", "Filter"))
+	out = append(out, k("Space", "Select"), k("a", "All"), k("/", "Filter"))
 	if !p.recent {
 		out = append(out, k(":", "Go to"))
 	}

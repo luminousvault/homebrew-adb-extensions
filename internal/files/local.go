@@ -3,6 +3,7 @@ package files
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -40,7 +41,8 @@ func (l localFS) List(dir string) ([]Entry, error) {
 	}
 	list := make([]Entry, 0, len(des))
 	for _, de := range des {
-		e, err := l.Stat(filepath.Join(dir, de.Name()))
+		// The listing already tells a link apart: no Lstat per entry.
+		e, err := statEntry(filepath.Join(dir, de.Name()), de.Type()&fs.ModeSymlink != 0)
 		if err != nil {
 			continue // a broken symlink, or removed meanwhile
 		}
@@ -51,14 +53,20 @@ func (l localFS) List(dir string) ([]Entry, error) {
 
 // Stat follows symlinks, so a linked folder opens like a folder.
 func (localFS) Stat(p string) (Entry, error) {
+	li, err := os.Lstat(p)
+	if err != nil {
+		return Entry{}, err
+	}
+	return statEntry(p, li.Mode()&os.ModeSymlink != 0)
+}
+
+// statEntry reads p (following a link) and what this user may do with it.
+func statEntry(p string, link bool) (Entry, error) {
 	fi, err := os.Stat(p)
 	if err != nil {
 		return Entry{}, err
 	}
-	e := Entry{Name: filepath.Base(p), Path: p, Dir: fi.IsDir(), Size: fi.Size(), ModTime: fi.ModTime()}
-	if li, err := os.Lstat(p); err == nil {
-		e.Link = li.Mode()&os.ModeSymlink != 0
-	}
+	e := Entry{Name: filepath.Base(p), Path: p, Dir: fi.IsDir(), Size: fi.Size(), ModTime: fi.ModTime(), Link: link}
 	r, w, x := access(p, fi)
 	e.NoRead = !r || (e.Dir && !x)
 	e.ReadOnly = !e.NoRead && !w
@@ -79,7 +87,16 @@ func (localFS) Remove(p string) error { return deleteLocal(p) }
 func deleteLocal(p string) error { return os.RemoveAll(p) }
 
 // Rename renames p within its folder.
-func (localFS) Rename(from, to string) error { return os.Rename(from, to) }
+// Rename renames p within its folder. It fails when to exists: os.Rename
+// writes over a file on Unix (and, on a case-insensitive disk, a name that
+// differs only in case is the same file; renameEntry goes through a free
+// temporary name for that).
+func (localFS) Rename(from, to string) error {
+	if _, err := os.Lstat(to); err == nil {
+		return fmt.Errorf("%s: %w", filepath.Base(to), errExists)
+	}
+	return os.Rename(from, to)
+}
 
 // copyLocal copies a file or folder between two local folders: tests use a
 // local folder in place of the device. On failure it leaves what it wrote;

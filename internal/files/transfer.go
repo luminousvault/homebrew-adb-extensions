@@ -51,12 +51,17 @@ func adbTransfer(ctx context.Context, serial, verb, src, dst string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	if err != nil || strings.Contains(out, "error:") {
-		msg := strings.TrimSpace(out)
-		if i := strings.LastIndex(msg, "error: "); i >= 0 {
-			msg = msg[i+len("error: "):]
+	// adb's own error lines start with "adb: error:"; "error:" elsewhere may
+	// be part of a file name. Old adb exits 0 even on errors, so look for
+	// the line as well as the exit code.
+	for _, line := range strings.Split(out, "\n") {
+		if msg, ok := strings.CutPrefix(strings.TrimSpace(line), "adb: error: "); ok {
+			return errors.New(firstLines(msg))
 		}
-		if msg == "" && err != nil {
+	}
+	if err != nil {
+		msg := strings.TrimSpace(out)
+		if msg == "" {
 			msg = err.Error()
 		}
 		return errors.New(firstLines(msg))
@@ -129,7 +134,8 @@ type copyOp struct {
 	conflict  bool   // name exists there; resolved into overwrite, skip or a new name
 	overwrite bool
 	skip      bool
-	dstDir    bool // the existing destination is a folder
+	dstDir    bool   // the existing destination is a folder
+	existing  string // its path: it may differ from name in case or normalization
 }
 
 // copyJob copies the ops from one storage to a folder on the other.
@@ -237,7 +243,11 @@ func (j *copyJob) one(ctx context.Context, op copyOp, size usage, report func(in
 	}
 	if err == nil && op.overwrite {
 		if err = j.check(target, size); err == nil { // before anything is replaced
-			err = j.replace(ctx, target, dst)
+			old := op.existing
+			if old == "" {
+				old = dst
+			}
+			err = j.replace(ctx, target, old, dst)
 		}
 	}
 	if err != nil {
@@ -262,16 +272,16 @@ func (j *copyJob) check(p string, want usage) error {
 // replace puts the complete copy tmp in place of dst: dst is renamed aside,
 // tmp takes its name, and only then the old item is deleted. If a step
 // fails, dst is put back.
-func (j *copyJob) replace(ctx context.Context, tmp, dst string) error {
+func (j *copyJob) replace(ctx context.Context, tmp, existing, dst string) error {
 	old, err := j.freeName(ctx, ".ak-old-"+j.to.Base(dst))
 	if err != nil {
 		return err
 	}
-	if err := j.to.Rename(dst, old); err != nil {
+	if err := j.to.Rename(existing, old); err != nil {
 		return fmt.Errorf("couldn't replace the existing item: %w", err)
 	}
 	if err := j.to.Rename(tmp, dst); err != nil {
-		_ = j.to.Rename(old, dst)
+		_ = j.to.Rename(old, existing)
 		return fmt.Errorf("couldn't replace the existing item: %w", err)
 	}
 	if err := j.to.Remove(old); err != nil {

@@ -153,7 +153,7 @@ func TestHiddenSelectionIsNotTargeted(t *testing.T) {
 	s, dev, _ := testState(t)
 	write(t, dev, "apple", "banana")
 	s.open(s.cur(), dev, "")
-	press(t, s, "*/app"+enter)
+	press(t, s, "a/app"+enter)
 	got := s.targets(s.cur())
 	if len(got) != 1 || got[0].Name != "apple" {
 		t.Fatalf("filtered targets %+v", got)

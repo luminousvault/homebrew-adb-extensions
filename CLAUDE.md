@@ -27,6 +27,8 @@
 * **정형화된 출력:** stdout은 결과, stderr은 메시지. `==>`/`✓`/`Warning:`/`Error:`/`Hint:` 다섯 가지 메시지, `--json`, 종료 코드 0/1/2/130 ([docs/dev/cli-design.md](docs/dev/cli-design.md))
 * **디바이스 지정:** `-s/--serial`, `ANDROID_SERIAL`, `-a/--all`. 터미널이 아니면 선택 UI 대신 `-s`를 요구
 * **여러 디바이스 동시 설치:** 상태판, 확인이 필요하면 바로 묻고 겹치면 대기열 ([docs/dev/cli-design.md](docs/dev/cli-design.md))
+* **`push`:** PC 파일을 기기(기본 `/sdcard/Download`)에 복사. 기기에 있는 이름(대소문자 무시)은 덮어쓰지 않고 ` (N)`
+* **`files`:** 기기와 컴퓨터 폴더를 한 화면에서 보는 대화형 파일 관리자(mc식 번호 키, 넣기·꺼내기·삭제·이름 바꾸기). 터미널 전용, 비대화형은 `pull`·`push`
 
 **지원 플랫폼:** macOS, Linux, Windows
 
@@ -62,6 +64,8 @@ adb-extensions/
 │   │   ├── install.go          # install + 자동 복구 (reporter 인터페이스로 출력)
 │   │   ├── parallel.go         # 여러 디바이스 동시 설치 (상태판, 확인 질문 큐)
 │   │   ├── activities.go, devices.go, mac.go, pull.go, signature.go, doctor.go
+│   │   ├── push.go             # push: 기기 이름 확인(대소문자 무시) 후 ' (N)', 폴더 없으면 생성
+│   │   ├── files.go            # files: 터미널 확인·디바이스 선택 후 files.Run, 요약 출력
 │   │   ├── screenshot.go, record.go, logcat.go, restart.go, wifi.go  # adb 여러 단계를 묶은 커맨드
 │   │   ├── cli_test.go, parallel_test.go  # 가짜 adb로 커맨드 흐름 테스트
 │   │   ├── completion.go       # ak completion zsh|bash|fish|powershell — 커맨드 정의 + compArgs(인자 종류)에서 생성
@@ -70,6 +74,9 @@ adb-extensions/
 │   ├── adb/                    # adb 실행·탐색(locate.go)·SDK build-tools 탐색(sdk.go)·파싱
 │   │   └── adbtest/            # 가짜 adb Runner
 │   ├── tui/                    # 인터랙티브 선택 UI (state.go 로직, render.go 화면, keys.go 키 파싱, term.go 터미널)
+│   │                           #   screen.go: 다른 전체 화면 UI(files)용 raw 모드·대체 화면·키·크기 변경 (OpenScreen)
+│   ├── files/                  # ak files: 저장소(FS: device.go adb, local.go os), 상태·키(state.go, 순수),
+│   │                           #   그리기(render.go), 루프(run.go), 복사·덮어쓰기·진행률(transfer.go), 최근 파일 쿼리(recent.go)
 │   ├── apk/                    # APK 패키지명·서명 인증서 (aapt/apksigner 대체), testdata/aktest.apk
 │   ├── style/                  # 선택 UI(tui) 내부 색상 상수
 │   └── debuglog/               # AK_DEBUG=1 로그
@@ -158,6 +165,13 @@ goreleaser build --snapshot --clean   # 멀티 플랫폼 빌드 확인
 ### `internal/tui`
 * `Select(Options) (Result, error)` — `Multi`, `NoFilter`, `Prompt`, `Location`, `Items`(탭 뒤는 흐린 접미사)
 * `Result.Index`(단일) / `Result.Indices`(다중, 선택 순서) — 원본 `Items` 인덱스
+* `OpenScreen()` → `Screen`(`Keys()`, `Resized()`, `Size()`, `Draw(lines, clear)`, `Close()`), `ParseKeys`·`LoneEsc` — 자체 루프를 도는 UI용
+
+### `internal/files`
+* `Run(Options) (Summary, error)` — 파일 관리자. Ctrl+C면 `tui.ErrInterrupted`, `Summary.Print()`·`HasFailures()`
+* `FS` 인터페이스(`List`·`Stat`·`Mkdir`·`Rename`(대상이 있으면 실패)·`Remove`·`Usage`) — `deviceFS`(adb 셸, 경로는 `ShellQuote`)·`localFS`
+* `copyJob.one` — 덮어쓰기는 `.ak-tmp-` 사본 → 크기 확인 → `.ak-old-`로 비키고 교체. 실패·취소면 자기가 만든 것만 지움
+* `RecentFilesQuery`·`ParseRecentFiles`·`HumanSize`·`UniqueName`·`ShellQuote` — `pull`·`push`도 함께 씀
 
 ### `internal/apk`
 * `PackageName(path)`, `Signers(path)` (DN·SHA-256·SHA-1·MD5, apksigner와 같은 값), `HasSourceStamp(path)`

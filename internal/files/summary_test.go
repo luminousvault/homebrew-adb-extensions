@@ -9,6 +9,7 @@ import (
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb/adbtest"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
+	"golang.org/x/text/unicode/norm"
 )
 
 // 1: renames, new folders and canceled pastes are in the summary.
@@ -72,7 +73,7 @@ func TestSummaryShowsNewNames(t *testing.T) {
 	if !strings.Contains(s.msg.text, "'KEEP.TXT' as 'KEEP (1).TXT'") {
 		t.Errorf("message %q", s.msg.text)
 	}
-	press(t, s, "*g"+"R") // two conflicts, all renamed
+	press(t, s, "ag"+"R") // two conflicts, all renamed
 	last = s.summary.Done[len(s.summary.Done)-1]
 	if !strings.HasPrefix(last, "Pulled 3 files (2 renamed) from ") {
 		t.Errorf("summary %q", last)
@@ -153,4 +154,17 @@ func TestDeviceFolderDeleteForgetsMedia(t *testing.T) {
 	}
 	flushMedia(d) // no canned response: the fake fails; only logged
 	_ = context.Background()
+}
+
+// A name that only changed from NFD to NFC on the way is not "renamed".
+func TestNormalizedNameIsNotRenamed(t *testing.T) {
+	nfd := norm.NFD.String("한글 문서.txt")
+	got := pastedItems([]Entry{{Name: nfd}}, []string{norm.NFC.String(nfd)})
+	if got != "'"+norm.NFC.String(nfd)+"'" {
+		t.Errorf("got %q", got)
+	}
+	got = pastedItems([]Entry{{Name: nfd}}, []string{"한글 문서 (1).txt"})
+	if !strings.Contains(got, "' as '한글 문서 (1).txt'") {
+		t.Errorf("a real rename: %q", got)
+	}
 }

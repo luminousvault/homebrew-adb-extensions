@@ -202,7 +202,7 @@ func TestLetterKeysShown(t *testing.T) {
 		t.Errorf("want header, rule, letter keys: %q / %q / %q", ui.Plain(frame[0]), ui.Plain(frame[1]), ui.Plain(frame[2]))
 	}
 	all := ui.Plain(strings.Join(frame, "\n"))
-	for _, want := range []string{"Tab Computer", "Enter Open", "Bksp Up", "←→ Column", "Space Select", "* All", "/ Filter", ": Go to", ". Show hidden"} {
+	for _, want := range []string{"Tab Computer", "Enter Open", "Bksp Up", "←→ Column", "Space Select", "a All", "/ Filter", ": Go to", ". Show hidden"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("wide: %q not shown", want)
 		}

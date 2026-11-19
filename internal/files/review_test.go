@@ -93,7 +93,7 @@ func TestCanceledQuestionKeepsSelection(t *testing.T) {
 	write(t, pc, "a.txt")
 	s.open(s.panes[Device], dev, "")
 	s.open(s.panes[PC], pc, "")
-	press(t, s, "*g")
+	press(t, s, "ag")
 	if s.mode != modeConflict {
 		t.Fatal("no question")
 	}

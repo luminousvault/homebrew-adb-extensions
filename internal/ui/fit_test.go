@@ -21,3 +21,15 @@ func TestFit(t *testing.T) {
 		}
 	}
 }
+
+// Hangul as separate jamo (NFD, as macOS stores names) is as wide as the
+// composed syllables.
+func TestTextWidthNFDHangul(t *testing.T) {
+	nfd := "\u110c\u1161\u1106\u1169 \u1107\u116e\u11ab\u1105\u1175" // 자모 분리
+	if w := TextWidth(nfd); w != 9 {
+		t.Errorf("TextWidth = %d, want 9", w)
+	}
+	if got := Fit(nfd+"xyz", 4); Plain(got) != "\u110c\u1161\u1106\u1169" {
+		t.Errorf("Fit = %q", got)
+	}
+}

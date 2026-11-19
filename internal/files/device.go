@@ -222,8 +222,12 @@ func (d *deviceFS) Remove(p string) error {
 	return nil
 }
 
+// Rename fails when to exists: mv would move into a folder of that name, or
+// write over a file. The check and the mv are one shell call.
 func (d *deviceFS) Rename(from, to string) error {
-	return d.run("mv " + ShellQuote(from) + " " + ShellQuote(to) + " 2>&1")
+	qt := ShellQuote(to)
+	return d.run("if [ -e " + qt + " ] || [ -L " + qt + " ]; then echo " + ShellQuote(to+": already exists") + "; exit 1; fi; " +
+		"mv " + ShellQuote(from) + " " + qt + " 2>&1")
 }
 
 // Usage sums the regular files under p (p itself if it is a file), the same

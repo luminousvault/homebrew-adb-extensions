@@ -8,8 +8,19 @@ import (
 )
 
 // access tells whether this user may read, write and run (or, for a folder,
-// list) p, asking the system as the shell's tests do.
-func access(p string, _ fs.FileInfo) (r, w, x bool) {
+// list) p, asking the system as the shell's tests do. It asks for the usual
+// answer in one call (a folder: rwx; a file: rw, then x) and only asks bit
+// by bit when that fails: a big folder lists with fewer calls, same result.
+func access(p string, fi fs.FileInfo) (r, w, x bool) {
 	const rOK, wOK, xOK = 4, 2, 1
-	return syscall.Access(p, rOK) == nil, syscall.Access(p, wOK) == nil, syscall.Access(p, xOK) == nil
+	ok := func(mode uint32) bool { return syscall.Access(p, mode) == nil }
+	if fi.IsDir() && ok(rOK|wOK|xOK) {
+		return true, true, true
+	}
+	if ok(rOK | wOK) {
+		r, w = true, true
+	} else {
+		r, w = ok(rOK), ok(wOK)
+	}
+	return r, w, ok(xOK)
 }

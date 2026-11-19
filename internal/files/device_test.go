@@ -85,9 +85,9 @@ func TestDeviceCommands(t *testing.T) {
 		shellKey(listCmd("/sdcard/한 글")):                       {Stdout: "regular file|3|1700000000|/sdcard/한 글/it's.txt\n"},
 		shellKey("mkdir '/sdcard/new dir' 2>&1 && echo ak-ok"): {Stdout: "ak-ok\n"},
 		shellKey("mkdir '/sdcard/x' 2>&1 && echo ak-ok"):       {Stdout: "mkdir: '/sdcard/x': File exists\n"},
-		shellKey("[ -d '/sdcard/old' ] && echo ak-dir; rm -rf '/sdcard/old' 2>&1; [ ! -e '/sdcard/old' ] && [ ! -L '/sdcard/old' ] && echo ak-ok"): {Stdout: "ak-ok\n"},
-		shellKey("mv '/sdcard/a' '/sdcard/b c' 2>&1 && echo ak-ok"):                                                                                {Stdout: "ak-ok\n"},
-		shellKey("[ -e '/sdcard/d' ] && { find '/sdcard/d' -type f -exec stat -c %s {} + 2>/dev/null; echo ak-ok; }"):                              {Stdout: "10\n20\nak-ok\n"},
+		shellKey("[ -d '/sdcard/old' ] && echo ak-dir; rm -rf '/sdcard/old' 2>&1; [ ! -e '/sdcard/old' ] && [ ! -L '/sdcard/old' ] && echo ak-ok"):                        {Stdout: "ak-ok\n"},
+		shellKey("if [ -e '/sdcard/b c' ] || [ -L '/sdcard/b c' ]; then echo '/sdcard/b c: already exists'; exit 1; fi; mv '/sdcard/a' '/sdcard/b c' 2>&1 && echo ak-ok"): {Stdout: "ak-ok\n"},
+		shellKey("[ -e '/sdcard/d' ] && { find '/sdcard/d' -type f -exec stat -c %s {} + 2>/dev/null; echo ak-ok; }"):                                                     {Stdout: "10\n20\nak-ok\n"},
 	})
 	list, err := d.List("/sdcard/한 글")
 	if err != nil || len(list) != 1 || list[0].Name != "it's.txt" {

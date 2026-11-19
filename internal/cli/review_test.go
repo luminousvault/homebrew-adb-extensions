@@ -16,7 +16,7 @@ func TestPushRenamesACaseVariant(t *testing.T) {
 	local := filepath.Join(dir, "report.pdf")
 	f := pushFake([]string{"REPORT.PDF"}, map[string]adbtest.Response{local + " /sdcard/Download/report (1).pdf": {}})
 	r := ak(t, f, "push", local)
-	if r.code != 0 || !strings.Contains(r.err, "Warning: '/sdcard/Download/report.pdf' already exists on Google Pixel 9 Pro, pushing as 'report (1).pdf'\n") {
+	if r.code != 0 || !strings.Contains(r.err, "Warning: '/sdcard/Download/REPORT.PDF' already exists on Google Pixel 9 Pro, pushing as 'report (1).pdf'\n") {
 		t.Errorf("code %d\n%s\ncalls %q", r.code, r.err, f.Calls)
 	}
 }

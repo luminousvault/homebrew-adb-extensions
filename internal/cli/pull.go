@@ -130,16 +130,17 @@ func runPull(c *Ctx) error {
 	}
 	release()
 
-	// Names already in dest (case ignored: macOS and Windows ignore it) and
+	// Names already in dest (case and NFC/NFD ignored: macOS and Windows
+	// ignore them) and
 	// names given in this pull are not written over.
 	here := map[string]bool{}
 	if des, err := os.ReadDir(dest); err == nil {
 		for _, de := range des {
-			here[strings.ToLower(de.Name())] = true
+			here[files.FoldName(de.Name())] = true
 		}
 	}
 	used := map[string]bool{}
-	taken := func(n string) bool { return here[strings.ToLower(n)] || used[strings.ToLower(n)] }
+	taken := func(n string) bool { return here[files.FoldName(n)] || used[files.FoldName(n)] }
 	ok, failed := 0, 0
 	for _, i := range chosen {
 		remote := recent[i].Path
@@ -147,13 +148,16 @@ func runPull(c *Ctx) error {
 		base := files.UniqueName(name, false, taken)
 		switch {
 		case base == name:
-		case here[strings.ToLower(name)]:
+		case here[files.FoldName(name)]:
 			ui.Warn("%s already exists in %s, saving as %s", q(name), q(dest), q(base))
 		default:
 			ui.Warn("Duplicate file name, saving %s as %s", q(name), q(base))
 		}
-		used[strings.ToLower(base)] = true
+		used[files.FoldName(base)] = true
 		local := filepath.Join(dest, base)
+		if strings.HasPrefix(local, "-") { // dest ".": adb would read "-x.txt" as an option
+			local = "." + string(filepath.Separator) + local
+		}
 		start := time.Now()
 		sp := ui.Spin("Pulling %s", q(path.Base(remote)))
 		out, err := adb.Combined("-s", serial, "pull", remote, local)

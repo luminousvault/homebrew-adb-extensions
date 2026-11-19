@@ -15,7 +15,7 @@ func TestHelpHasEveryKey(t *testing.T) {
 		for _, want := range []string{
 			"1 Help (?)", "2 Sort (s)", "3 Open (Enter)", "4 Recent (t)", "5 To computer (g)", "5 To device (p)",
 			"6 Rename (r)", "7 Mkdir (n)", "8 Delete (d)", "9 Show computer (w)", "0 Quit (q)",
-			"Tab", "Space", "*", "/", ":", ".", "Esc", "Backspace", "← →", "↑ ↓", "PgUp PgDn", "Home End", "Ctrl+C",
+			"Tab", "Space", "a", "/", ":", ".", "Esc", "Backspace", "← →", "↑ ↓", "PgUp PgDn", "Home End", "Ctrl+C",
 			"o s r", "rm -rf", "MediaStore", "(user 0)", "adb pull", "adb push",
 		} {
 			if !strings.Contains(all, want) {

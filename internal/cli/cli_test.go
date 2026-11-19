@@ -812,12 +812,12 @@ func TestRecordFailsFastWhenScreenOff(t *testing.T) {
 // so it gets created) and pushes into it.
 func pushFake(listing []string, pushes map[string]adbtest.Response) *adbtest.Fake {
 	f := baseFake()
-	ls := "-s " + serial + " shell cd '/sdcard/Download' && ls -A"
+	ls := "-s " + serial + " shell " + pushListCmd
 	if listing == nil {
-		f.Responses[ls] = adbtest.Response{Stderr: "/system/bin/sh: cd: /sdcard/Download: No such file or directory\n", Err: errors.New("exit status 2")}
+		f.Responses[ls] = adbtest.Response{Stdout: "ak:missing\n"}
 		f.Responses["-s "+serial+" shell mkdir -p '/sdcard/Download'"] = adbtest.Response{}
 	} else {
-		f.Responses[ls] = adbtest.Response{Stdout: strings.Join(listing, "\n") + "\n"}
+		f.Responses[ls] = adbtest.Response{Stdout: strings.Join(append(listing, "ak:listed"), "\n") + "\n"}
 	}
 	for k, v := range pushes {
 		f.Responses["-s "+serial+" push "+k] = v
@@ -866,7 +866,7 @@ func TestPushQuotesDestination(t *testing.T) {
 	dir := pushFiles(t, "a.txt")
 	local := filepath.Join(dir, "a.txt")
 	f := baseFake()
-	f.Responses["-s "+serial+` shell cd '/sdcard/it'\''s here' && ls -A`] = adbtest.Response{Stdout: ""}
+	f.Responses["-s "+serial+` shell if [ ! -e '/sdcard/it'\''s here' ] && [ ! -L '/sdcard/it'\''s here' ]; then echo ak:missing; elif [ ! -d '/sdcard/it'\''s here' ]; then echo ak:notdir; else cd '/sdcard/it'\''s here' && ls -A && echo ak:listed; fi`] = adbtest.Response{Stdout: "ak:listed\n"}
 	f.Responses["-s "+serial+" push "+local+" /sdcard/it's here/a.txt"] = adbtest.Response{}
 	r := ak(t, f, "push", local, "-d", "/sdcard/it's here/")
 	if r.code != 0 {
@@ -919,7 +919,8 @@ func TestPushWithoutFilesNeedsTerminal(t *testing.T) {
 	}
 	t.Chdir(dir)
 	var got tui.Options
-	f = pushFake([]string{}, map[string]adbtest.Response{"old.txt /sdcard/Download/old.txt": {}})
+	abs, _ := filepath.Abs("old.txt") // adb gets an absolute path: a name like "-x" is not an option
+	f = pushFake([]string{}, map[string]adbtest.Response{abs + " /sdcard/Download/old.txt": {}})
 	selectFn = func(o tui.Options) (tui.Result, error) { got = o; return tui.Result{Indices: []int{1}}, nil }
 	ui.InTTY = true
 	ui.Out, ui.Err = &ui.Stream{W: &bytes.Buffer{}}, &ui.Stream{W: &bytes.Buffer{}, TTY: true}

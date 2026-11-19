@@ -164,11 +164,11 @@ func TestSelect(t *testing.T) {
 	if got := names(p); got != ".. *a *b >c" {
 		t.Fatalf("space: %q", got)
 	}
-	press(t, s, "*")
+	press(t, s, "a")
 	if got := names(p); got != ".. *a *b >*c" {
 		t.Fatalf("*: %q", got)
 	}
-	press(t, s, "*")
+	press(t, s, "a")
 	if len(p.selected) != 0 {
 		t.Fatalf("* again: %q", names(p))
 	}
@@ -240,7 +240,7 @@ func TestPushAndPull(t *testing.T) {
 	s, dev, pc := testState(t)
 	write(t, dev, "a.txt", "b.txt", "folder/x/y.txt")
 	s.open(s.panes[Device], dev, "")
-	press(t, s, "*p") // p is for the PC side: ignored here
+	press(t, s, "ap") // p is for the PC side: ignored here
 	if s.pending != nil || s.mode != modeNormal || len(s.summary.Done) != 0 {
 		t.Fatal("p on the device side should do nothing")
 	}
@@ -288,7 +288,7 @@ func TestPushPullConflicts(t *testing.T) {
 		}
 	}
 	s.open(s.panes[Device], dev, "")
-	press(t, s, "*g")
+	press(t, s, "ag")
 	if s.mode != modeConflict || !strings.Contains(ui.Plain(s.statusText()), "'1.txt' already exists.") {
 		t.Fatalf("no question: %q", s.statusText())
 	}
@@ -306,7 +306,7 @@ func TestPushPullConflicts(t *testing.T) {
 		}
 	}
 	// Shift = all; Esc cancels.
-	press(t, s, "*g"+"S")
+	press(t, s, "ag"+"S")
 	if s.mode != modeNormal || s.msg == nil || !strings.Contains(s.msg.text, "skipped") {
 		t.Errorf("S: %+v", s.msg)
 	}
@@ -336,7 +336,7 @@ func TestDelete(t *testing.T) {
 	s, dev, _ := testState(t)
 	write(t, dev, "a.txt", "d/inner.txt")
 	s.open(s.cur(), dev, "")
-	press(t, s, "*d")
+	press(t, s, "ad")
 	if s.mode != modeDelete || !strings.Contains(ui.Plain(s.statusText()), "Delete 2 items from Test Phone? This cannot be undone. [y/N]") {
 		t.Fatalf("question %q", ui.Plain(s.statusText()))
 	}
@@ -556,7 +556,7 @@ func TestOpenWithSelectionOpensOne(t *testing.T) {
 	if s.msg == nil || !strings.Contains(s.msg.text, "the selection is for 5 and 8") {
 		t.Errorf("no note about the selection: %+v", s.msg)
 	}
-	press(t, s, "**") // select all, then none: open again with nothing selected
+	press(t, s, "aa") // select all, then none: open again with nothing selected
 	opened = nil
 	press(t, s, "\r")
 	if len(opened) != 1 || s.msg == nil || strings.Contains(s.msg.text, "selection") {

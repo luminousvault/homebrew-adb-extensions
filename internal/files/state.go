@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/text/unicode/norm"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -202,6 +203,11 @@ func (s *state) setSize(w, h int) {
 // open shows dir in p, with the cursor on the row named focus.
 func (s *state) open(p *pane, dir, focus string) {
 	entries, err := p.fs.List(dir)
+	s.show(p, dir, focus, entries, err)
+}
+
+// show puts a listing of dir in p (open, or a go to that listed it already).
+func (s *state) show(p *pane, dir, focus string, entries []Entry, err error) {
 	if dir != p.dir {
 		p.selected = map[string]bool{}
 		p.filter = ""
@@ -253,13 +259,13 @@ func (s *state) refreshRows(p *pane, focus string) {
 	} else {
 		src = p.entries
 	}
-	f := strings.ToLower(p.filter)
+	f := fold(p.filter)
 	var rows []Entry
 	for _, e := range src {
 		if !s.showHidden && strings.HasPrefix(e.Name, ".") {
 			continue
 		}
-		if f != "" && !strings.Contains(strings.ToLower(e.Name), f) {
+		if f != "" && !strings.Contains(fold(e.Name), f) {
 			continue
 		}
 		rows = append(rows, e)
@@ -314,7 +320,7 @@ func sortEntries(list []Entry, key sortKey) {
 				return x.Size > y.Size
 			}
 		}
-		return strings.ToLower(x.Name) < strings.ToLower(y.Name)
+		return fold(x.Name) < fold(y.Name)
 	})
 }
 
@@ -421,7 +427,7 @@ func (s *state) handleRune(p *pane, r byte) {
 			}
 			s.move(p, 1)
 		}
-	case '*':
+	case 'a', 'A': // as in ak's other pickers (install, pull, push)
 		s.toggleAll(p)
 	case '/':
 		s.mode, s.inputText, s.inputCursor = modeFilter, p.filter, len(p.filter)
@@ -734,11 +740,18 @@ func (s *state) send(p *pane, push bool) {
 	taken := func(n string) bool { _, ok := inDir(n); return ok || used[fold(n)] }
 	job := &copyJob{from: p.fs, to: dst.fs, dstDir: dst.dir, inDir: inDir}
 	for _, it := range items {
-		op := copyOp{src: it, name: it.Name}
-		if e, ok := inDir(it.Name); ok && !used[fold(it.Name)] {
-			op.conflict, op.dstDir = true, e.Dir
-		} else if used[fold(it.Name)] { // same names from different folders (recent files)
-			op.name = UniqueName(it.Name, it.Dir, taken)
+		name := it.Name
+		if push {
+			// Composed, as phones expect: a macOS (NFD) name kept as is shows
+			// as loose jamo in many apps. A folder's inner names stay as adb
+			// pushes them (files-design.md §6).
+			name = norm.NFC.String(name)
+		}
+		op := copyOp{src: it, name: name}
+		if e, ok := inDir(name); ok && !used[fold(name)] {
+			op.conflict, op.dstDir, op.existing = true, e.Dir, e.Path
+		} else if used[fold(name)] { // same names from different folders (recent files)
+			op.name = UniqueName(name, it.Dir, taken)
 		}
 		used[fold(op.name)] = true
 		job.ops = append(job.ops, op)
@@ -761,14 +774,19 @@ func route(job *copyJob, push bool) string {
 // on /sdcard, macOS or Windows, which ignore case; nothing on ext4).
 func nameLookup(f FS, dir string, entries []Entry) func(string) (Entry, bool) {
 	exact := map[string]Entry{}
+	composed := map[string]Entry{} // NFC: names that differ only in normalization are the same name
 	folded := map[string]bool{}
 	for _, e := range entries {
 		exact[e.Name] = e
+		composed[norm.NFC.String(e.Name)] = e
 		folded[fold(e.Name)] = true
 	}
 	stats := map[string]bool{}
 	return func(n string) (Entry, bool) {
 		if e, ok := exact[n]; ok {
+			return e, true
+		}
+		if e, ok := composed[norm.NFC.String(n)]; ok {
 			return e, true
 		}
 		if !folded[fold(n)] {
@@ -787,7 +805,12 @@ func nameLookup(f FS, dir string, entries []Entry) func(string) (Entry, bool) {
 }
 
 // fold is a name as case-insensitive file systems compare it.
-func fold(name string) string { return strings.ToLower(name) }
+func fold(name string) string { return FoldName(name) }
+
+// FoldName is a name for comparing: composed (NFC, so a macOS NFD name
+// equals the same name typed) and lower case. Paths themselves keep their
+// bytes: macOS opens an NFD name only as NFD.
+func FoldName(name string) string { return strings.ToLower(norm.NFC.String(name)) }
 
 // takenFold reports names in use, ignoring case.
 func takenFold(names []string) func(string) bool {
@@ -940,9 +963,11 @@ func (s *state) finishSend(job *copyJob, push bool, res copyResult) {
 // pastedItems is countItems with the names items were saved as: "'a.txt'
 // as 'a (1).txt'", or "3 files (1 renamed)".
 func pastedItems(done []Entry, as []string) string {
+	// A name that only changed form (NFD to NFC on the way to the device)
+	// looks the same: it is not "renamed".
 	renamed := 0
 	for i, e := range done {
-		if i < len(as) && as[i] != e.Name {
+		if i < len(as) && norm.NFC.String(as[i]) != norm.NFC.String(e.Name) {
 			renamed++
 		}
 	}
@@ -950,7 +975,7 @@ func pastedItems(done []Entry, as []string) string {
 	case renamed == 0:
 		return countItems(done)
 	case len(done) == 1:
-		return "'" + done[0].Name + "' as '" + as[0] + "'"
+		return "'" + norm.NFC.String(done[0].Name) + "' as '" + as[0] + "'"
 	}
 	return fmt.Sprintf("%s (%d renamed)", countItems(done), renamed)
 }
@@ -968,7 +993,7 @@ func withoutPaths(list, gone []Entry) []Entry {
 // countItems is "'a.txt'", "3 files", "2 folders" or "4 items".
 func countItems(list []Entry) string {
 	if len(list) == 1 {
-		return "'" + list[0].Name + "'"
+		return "'" + norm.NFC.String(list[0].Name) + "'"
 	}
 	dirs := 0
 	for _, e := range list {
@@ -1148,11 +1173,17 @@ func (s *state) submitInput(p *pane) {
 	switch s.inputKind {
 	case inputGoto:
 		dir := expandHome(p.fs, strings.TrimSpace(text))
-		if _, err := p.fs.List(dir); err != nil {
+		if p.fs.Side() == PC {
+			if abs, err := filepath.Abs(dir); err == nil {
+				dir = abs // paths reach adb whole: never "-x" or relative
+			}
+		}
+		entries, err := p.fs.List(dir) // once: a failure keeps the folder shown
+		if err != nil {
 			s.setMsg(msgError, "Can't open %s: %s", text, errText(err))
 			return
 		}
-		s.open(p, dir, "")
+		s.show(p, dir, "", entries, nil)
 		return
 	case inputMkdir:
 		if err := s.checkNewName(p, text, ""); err != nil {

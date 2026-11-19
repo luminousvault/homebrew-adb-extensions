@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"golang.org/x/text/unicode/norm"
 	"net/url"
 	"os"
 	"path"
@@ -33,6 +34,15 @@ var cmdPush = &Command{
 	Device:   manyDevices, Run: runPush,
 }
 
+// shellArg quotes a path for a shell only when it needs it, so a hint can
+// be pasted as is.
+func shellArg(p string) string {
+	if strings.Trim(p, "/._-~abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") != "" {
+		return files.ShellQuote(p)
+	}
+	return p
+}
+
 type localFile struct {
 	path string
 	size int64
@@ -47,7 +57,7 @@ func pushArgs(args []string) ([]localFile, error) {
 		case err != nil:
 			return nil, failErr("Check the path, or run 'ak push' without files to pick from the current directory", "No such file: %s", q(a))
 		case st.IsDir():
-			return nil, failErr("Pass the files inside it instead, e.g. ak push "+filepath.Join(a, "*"), "%s is a directory; ak push copies files only", q(a))
+			return nil, failErr("Pass the files inside it instead, e.g. ak push "+shellArg(a)+"/*", "%s is a directory; ak push copies files only", q(a))
 		case !st.Mode().IsRegular():
 			return nil, failErr("", "Not a regular file: %s", q(a))
 		}
@@ -141,35 +151,54 @@ func runPush(c *Ctx) error {
 // renaming instead of overwriting. It returns how many files failed.
 func pushTo(s string, list []localFile, dest string) int {
 	name := deviceName(s)
-	// cd fails when dest is missing; ls then lists the names already there.
-	out, err := adb.Combined("-s", s, "shell", "cd "+files.ShellQuote(dest)+" && ls -A")
-	used := map[string]bool{}
-	if err != nil {
-		if out, err := adb.Combined("-s", s, "shell", "mkdir -p "+files.ShellQuote(dest)); err != nil {
+	// The names already there, so nothing is written over. A missing dest is
+	// made; one that can't be listed is an error, not "missing".
+	qd := files.ShellQuote(dest)
+	out, _ := adb.Combined("-s", s, "shell", "if [ ! -e "+qd+" ] && [ ! -L "+qd+" ]; then echo ak:missing; "+
+		"elif [ ! -d "+qd+" ]; then echo ak:notdir; else cd "+qd+" && ls -A && echo ak:listed; fi")
+	used := map[string]string{} // lower-case name -> the name on the device (/sdcard ignores case)
+	switch lines := strings.Split(strings.TrimRight(out, "\n"), "\n"); {
+	case lines[len(lines)-1] == "ak:listed":
+		for _, n := range lines[:len(lines)-1] {
+			used[files.FoldName(n)] = n
+		}
+	case strings.TrimSpace(out) == "ak:missing":
+		if out, err := adb.Combined("-s", s, "shell", "mkdir -p "+qd); err != nil {
 			ui.Errorf("Couldn't create %s on %s", q(dest), name)
 			ui.Detail("%s", strings.TrimSpace(out))
 			return len(list)
 		}
 		ui.Step("Created %s on %s", q(dest), name)
-	} else {
-		for _, n := range strings.Split(out, "\n") {
-			used[strings.ToLower(n)] = true // /sdcard ignores case: report.PDF is report.pdf
-		}
+	case strings.TrimSpace(out) == "ak:notdir":
+		ui.Errorf("%s on %s is not a directory", q(dest), name)
+		ui.Hint("Push into a directory with -d")
+		return len(list)
+	default:
+		ui.Errorf("Couldn't list %s on %s", q(dest), name)
+		ui.Detail("%s", strings.TrimSpace(out))
+		ui.Hint("Without its file names ak could overwrite them; push somewhere else with -d")
+		return len(list)
 	}
 	sdk, _ := strconv.Atoi(deviceProps(s)["ro.build.version.sdk"])
 
 	ok, failed := 0, 0
 	for _, f := range list {
-		base := filepath.Base(f.path)
-		target := files.UniqueName(base, false, func(n string) bool { return used[strings.ToLower(n)] })
-		used[strings.ToLower(target)] = true
+		// Composed on the device: phone apps show a macOS (NFD) name as loose jamo.
+		base := norm.NFC.String(filepath.Base(f.path))
+		target := files.UniqueName(base, false, func(n string) bool { _, ok := used[files.FoldName(n)]; return ok })
+		there := used[files.FoldName(base)]
+		used[files.FoldName(target)] = target
 		if target != base {
-			ui.Warn("%s already exists on %s, pushing as %s", q(path.Join(dest, base)), name, q(target))
+			ui.Warn("%s already exists on %s, pushing as %s", q(path.Join(dest, there)), name, q(target))
 		}
 		remote := path.Join(dest, target)
 		start := time.Now()
 		sp := ui.Spin("Pushing %s to %s", q(base), name)
-		out, err := adb.Combined("-s", s, "push", f.path, remote)
+		local := f.path
+		if abs, err := filepath.Abs(local); err == nil {
+			local = abs // "-x.txt" would be read as an adb option
+		}
+		out, err := adb.Combined("-s", s, "push", local, remote)
 		sp.Stop()
 		if err != nil {
 			failed++
