@@ -2,38 +2,45 @@ package tui
 
 import "bytes"
 
-type keyKind int
+// KeyKind is the kind of a decoded key press.
+type KeyKind int
 
+// Key kinds. New kinds go at the end so existing values stay stable.
 const (
-	keyUnknown keyKind = iota
-	keyRune            // printable ASCII or space, in r
-	keyEnter
-	keyBackspace
-	keyDelete
-	keyUp
-	keyDown
-	keyLeft
-	keyRight
-	keyHome
-	keyEnd
-	keyCtrlA
-	keyCtrlC
-	keyCtrlE
-	keyPaste // bracketed paste, in text
+	KeyUnknown KeyKind = iota
+	KeyRune            // printable ASCII or space in Rune; also each byte of UTF-8 text (>= 0x80)
+	KeyEnter
+	KeyBackspace
+	KeyDelete
+	KeyUp
+	KeyDown
+	KeyLeft
+	KeyRight
+	KeyHome
+	KeyEnd
+	KeyCtrlA
+	KeyCtrlC
+	KeyCtrlE
+	KeyPaste // bracketed paste, in Text
+	KeyTab
+	KeyEsc // Esc pressed alone (see ParseKeys)
+	KeyPgUp
+	KeyPgDn
 )
 
-type key struct {
-	kind keyKind
-	r    byte
-	text string
+// Key is one decoded key press.
+type Key struct {
+	Kind KeyKind
+	Rune byte
+	Text string
 }
 
-var escSeqs = map[string]keyKind{
-	"[A": keyUp, "[B": keyDown, "[C": keyRight, "[D": keyLeft,
-	"OA": keyUp, "OB": keyDown, "OC": keyRight, "OD": keyLeft,
-	"[H": keyHome, "[F": keyEnd, "OH": keyHome, "OF": keyEnd,
-	"[1~": keyHome, "[4~": keyEnd, "[7~": keyHome, "[8~": keyEnd,
-	"[3~": keyDelete,
+var escSeqs = map[string]KeyKind{
+	"[A": KeyUp, "[B": KeyDown, "[C": KeyRight, "[D": KeyLeft,
+	"OA": KeyUp, "OB": KeyDown, "OC": KeyRight, "OD": KeyLeft,
+	"[H": KeyHome, "[F": KeyEnd, "OH": KeyHome, "OF": KeyEnd,
+	"[1~": KeyHome, "[4~": KeyEnd, "[7~": KeyHome, "[8~": KeyEnd,
+	"[3~": KeyDelete, "[5~": KeyPgUp, "[6~": KeyPgDn,
 }
 
 const (
@@ -41,10 +48,13 @@ const (
 	pasteEnd   = "\x1b[201~"
 )
 
-// parseKeys decodes buf into keys. It returns the number of bytes consumed;
-// an incomplete escape sequence or paste at the end is left unconsumed.
-func parseKeys(buf []byte) ([]key, int) {
-	var keys []key
+// ParseKeys decodes buf into keys. It returns the number of bytes consumed;
+// an incomplete escape sequence or paste at the end is left unconsumed. A lone
+// ESC at the very end is also left unconsumed: terminals send an escape
+// sequence in one write, so a caller whose read ends in a lone ESC treats it as
+// KeyEsc (see LoneEsc).
+func ParseKeys(buf []byte) ([]Key, int) {
+	var keys []Key
 	i := 0
 	for i < len(buf) {
 		c := buf[i]
@@ -59,7 +69,7 @@ func parseKeys(buf []byte) ([]key, int) {
 			if end < 0 {
 				return keys, i // wait for the rest of the paste
 			}
-			keys = append(keys, key{kind: keyPaste, text: string(rest[len(pasteStart):end])})
+			keys = append(keys, Key{Kind: KeyPaste, Text: string(rest[len(pasteStart):end])})
 			i += end + len(pasteEnd)
 			continue
 		}
@@ -67,7 +77,7 @@ func parseKeys(buf []byte) ([]key, int) {
 		if !complete {
 			return keys, i
 		}
-		keys = append(keys, key{kind: k})
+		keys = append(keys, Key{Kind: k})
 		i += 1 + n
 	}
 	return keys, i
@@ -75,12 +85,12 @@ func parseKeys(buf []byte) ([]key, int) {
 
 // escapeSeq parses the bytes after ESC. A lone ESC (no following bytes) is
 // reported incomplete; callers flush it as unknown after a short wait.
-func escapeSeq(b []byte) (n int, k keyKind, complete bool) {
+func escapeSeq(b []byte) (n int, k KeyKind, complete bool) {
 	if len(b) == 0 {
-		return 0, keyUnknown, false
+		return 0, KeyUnknown, false
 	}
 	if b[0] != '[' && b[0] != 'O' {
-		return 0, keyUnknown, true // lone ESC followed by a normal key
+		return 0, KeyEsc, true // lone ESC followed by a normal key
 	}
 	// CSI/SS3: parameters (digits, ';') then a final byte in 0x40-0x7e.
 	for j := 1; j < len(b); j++ {
@@ -91,26 +101,32 @@ func escapeSeq(b []byte) (n int, k keyKind, complete bool) {
 		if c >= 0x40 && c <= 0x7e {
 			return j + 1, escSeqs[string(b[:j+1])], true
 		}
-		return j, keyUnknown, true
+		return j, KeyUnknown, true
 	}
-	return 0, keyUnknown, false
+	return 0, KeyUnknown, false
 }
 
-func controlKey(c byte) key {
+func controlKey(c byte) Key {
 	switch c {
 	case '\r', '\n':
-		return key{kind: keyEnter}
+		return Key{Kind: KeyEnter}
 	case 0x7f, 0x08:
-		return key{kind: keyBackspace}
+		return Key{Kind: KeyBackspace}
 	case 0x01:
-		return key{kind: keyCtrlA}
+		return Key{Kind: KeyCtrlA}
 	case 0x03:
-		return key{kind: keyCtrlC}
+		return Key{Kind: KeyCtrlC}
 	case 0x05:
-		return key{kind: keyCtrlE}
+		return Key{Kind: KeyCtrlE}
+	case '\t':
+		return Key{Kind: KeyTab}
 	}
-	if c >= 32 && c <= 126 {
-		return key{kind: keyRune, r: c}
+	if (c >= 32 && c <= 126) || c >= 0x80 {
+		return Key{Kind: KeyRune, Rune: c}
 	}
-	return key{kind: keyUnknown}
+	return Key{Kind: KeyUnknown}
 }
+
+// LoneEsc reports whether rest, the bytes ParseKeys left unconsumed after a
+// read, is a lone ESC: the Esc key rather than the start of a sequence.
+func LoneEsc(rest []byte) bool { return len(rest) == 1 && rest[0] == 0x1b }

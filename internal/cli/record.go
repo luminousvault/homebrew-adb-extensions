@@ -13,6 +13,7 @@ import (
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/debuglog"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/files"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
@@ -166,7 +167,7 @@ wait:
 		ui.Detail("%s", pullOut)
 		return errReported
 	}
-	ui.Success("Saved %s %s", q(local), ui.Err.Dim(fmt.Sprintf("(%s, %ds, %s)", deviceName(serial), int(duration.Seconds()), humanSize(strconv.FormatInt(n, 10)))))
+	ui.Success("Saved %s %s", q(local), ui.Err.Dim(fmt.Sprintf("(%s, %ds, %s)", deviceName(serial), int(duration.Seconds()), files.HumanSize(n))))
 	ui.Out.Println(local)
 	openSaved(c, local)
 	return nil

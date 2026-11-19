@@ -11,7 +11,7 @@ Usage: `ak <command> [options] [arguments]`. Options may come before or after ar
 - **APK:** [install](#ak-install), [extract](#ak-extract), [signature](#ak-signature)
 - **App:** [info](#ak-info), [permissions](#ak-permissions), [launch](#ak-launch), [kill](#ak-kill), [clear](#ak-clear), [uninstall](#ak-uninstall), [restart](#ak-restart), [activities](#ak-activities), [logcat](#ak-logcat)
 - **Screen:** [screenshot](#ak-screenshot), [record](#ak-record)
-- **Files:** [pull](#ak-pull)
+- **Files:** [pull](#ak-pull), [push](#ak-push), [files](#ak-files)
 - **Device:** [devices](#ak-devices), [mac](#ak-mac), [wifi](#ak-wifi)
 - **Setup:** [doctor](#ak-doctor), [completion](#ak-completion)
 - [Global options](#global-options)
@@ -517,8 +517,9 @@ ak pull [options] [directory]
 ```
 
 Pick recently modified files on the device (like the Files app 'Recents' tab, via MediaStore)
-and pull them. Files keep their names; existing local files are overwritten, and selected
-files with the same name get a ' (N)' suffix. Lists up to the 300 newest files.
+and pull them. Files keep their names; a file already in the directory (in any case) is kept
+and the pulled one gets a ' (N)' suffix, as do selected files with the same name. Lists up
+to the 300 newest files.
 Without a terminal, choose with -l or with a -f that matches one file.
 
 **Arguments**
@@ -545,6 +546,79 @@ ak pull ~/Downloads/device
 ak pull new-dir -y
 ak pull -l
 ak pull -l -f Screenshot
+```
+
+## ak push
+
+Copy files from here to a device.
+
+```
+ak push [options] [file]...
+```
+
+Copy files to the device, into /sdcard/Download unless -d gives another directory
+(created if it does not exist). Files already on the device are never overwritten: the
+copy gets a ' (N)' suffix. Without files, pick from the current directory (newest first).
+Only the main user's storage (user 0) is reachable; adb cannot access a work profile.
+
+**Arguments**
+
+| Argument | Description |
+|---|---|
+| `file` | Files to push (directories are not supported) |
+
+**Options**
+
+| Option | Description |
+|---|---|
+| `-d, --dest DIR` | Device directory to push into (default: /sdcard/Download) |
+| `-s, --serial ID` | Target device; repeat for more (default: $ANDROID_SERIAL, or ask) |
+| `-a, --all` | All connected devices |
+| `-h, --help` | Show this help |
+
+**Examples**
+
+```bash
+ak push
+ak push report.pdf
+ak push *.png -d /sdcard/Pictures
+ak push notes.txt --all
+```
+
+## ak files
+
+Browse device and computer folders and push, pull or delete files.
+
+```
+ak files [options] [path]
+```
+
+A file manager for the device and this computer, with number keys like mc's F keys. Starts
+with the device and the computer side by side (80 columns or more); 9 hides the computer
+pane, and then the list runs in two columns and Tab switches between device and computer.
+5 copies the selection to the other side: on the device it pulls to the computer side's
+folder, on the computer it pushes to the device side's folder. Enter opens a folder or a
+file (device files are copied here first). Press 1 for every key.
+Needs a terminal; without one, use ak pull and ak push.
+
+**Arguments**
+
+| Argument | Description |
+|---|---|
+| `path` | Device folder to start in (default: /sdcard) |
+
+**Options**
+
+| Option | Description |
+|---|---|
+| `-s, --serial ID` | Target device (default: $ANDROID_SERIAL, or ask) |
+| `-h, --help` | Show this help |
+
+**Examples**
+
+```bash
+ak files
+ak files /sdcard/DCIM/Camera
 ```
 
 ## ak devices

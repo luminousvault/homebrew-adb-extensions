@@ -14,7 +14,7 @@ func plain(lines []string) string {
 
 func press(t *testing.T, s *state, input string) action {
 	t.Helper()
-	keys, used := parseKeys([]byte(input))
+	keys, used := ParseKeys([]byte(input))
 	if used != len(input) {
 		t.Fatalf("parse consumed %d of %d bytes", used, len(input))
 	}
@@ -34,24 +34,24 @@ func render(s *state, height int) string {
 }
 
 func TestParseKeys(t *testing.T) {
-	keys, used := parseKeys([]byte("a\x1b[A\x1b[B\r\x7f\x1b[3~\x03\x1b[200~x y\x1b[201~"))
-	want := []keyKind{keyRune, keyUp, keyDown, keyEnter, keyBackspace, keyDelete, keyCtrlC, keyPaste}
+	keys, used := ParseKeys([]byte("a\x1b[A\x1b[B\r\x7f\x1b[3~\x03\x1b[200~x y\x1b[201~"))
+	want := []KeyKind{KeyRune, KeyUp, KeyDown, KeyEnter, KeyBackspace, KeyDelete, KeyCtrlC, KeyPaste}
 	if used != len("a\x1b[A\x1b[B\r\x7f\x1b[3~\x03\x1b[200~x y\x1b[201~") || len(keys) != len(want) {
 		t.Fatalf("keys=%v used=%d", keys, used)
 	}
 	for i, k := range want {
-		if keys[i].kind != k {
-			t.Errorf("[%d] kind %v want %v", i, keys[i].kind, k)
+		if keys[i].Kind != k {
+			t.Errorf("[%d] kind %v want %v", i, keys[i].Kind, k)
 		}
 	}
-	if keys[7].text != "x y" {
-		t.Errorf("paste text %q", keys[7].text)
+	if keys[7].Text != "x y" {
+		t.Errorf("paste text %q", keys[7].Text)
 	}
 	// Incomplete sequences wait for more input.
-	if _, used := parseKeys([]byte("\x1b[")); used != 0 {
+	if _, used := ParseKeys([]byte("\x1b[")); used != 0 {
 		t.Errorf("incomplete CSI consumed %d", used)
 	}
-	if _, used := parseKeys([]byte("\x1b[200~abc")); used != 0 {
+	if _, used := ParseKeys([]byte("\x1b[200~abc")); used != 0 {
 		t.Errorf("incomplete paste consumed %d", used)
 	}
 }
@@ -262,5 +262,40 @@ func TestSmallTerminalShowsMoreItems(t *testing.T) {
 	lines := s.frame(l, fixed, 40, 6)
 	if len(lines) > 6 || strings.Count(plain(lines), "item") < 4 {
 		t.Errorf("height 6:\n%s", plain(lines))
+	}
+}
+
+func TestParseKeysForFullScreenUIs(t *testing.T) {
+	in := "\t\x1b[5~\x1b[6~\x1bq" + "한"
+	keys, used := ParseKeys([]byte(in))
+	want := []KeyKind{KeyTab, KeyPgUp, KeyPgDn, KeyEsc, KeyRune, KeyRune, KeyRune, KeyRune}
+	if used != len(in) || len(keys) != len(want) {
+		t.Fatalf("keys=%v used=%d", keys, used)
+	}
+	for i, k := range want {
+		if keys[i].Kind != k {
+			t.Errorf("[%d] kind %v want %v", i, keys[i].Kind, k)
+		}
+	}
+	if got := string([]byte{keys[5].Rune, keys[6].Rune, keys[7].Rune}); got != "한" {
+		t.Errorf("UTF-8 bytes %q", got)
+	}
+	// A lone ESC at the end is left for the caller (LoneEsc), a sequence is not.
+	_, used = ParseKeys([]byte("\x1b"))
+	if used != 0 || !LoneEsc([]byte("\x1b")) || LoneEsc([]byte("\x1b[")) {
+		t.Errorf("lone ESC: used=%d", used)
+	}
+}
+
+// The picker ignores the keys added for other UIs.
+func TestPickerIgnoresNewKeys(t *testing.T) {
+	s := newState(Options{Items: []string{"a", "b"}})
+	if act := press(t, s, "\t\x1b[6~\x1bx한"); act != actNone || s.focused != 0 {
+		t.Errorf("act=%v focused=%d", act, s.focused)
+	}
+	s = newState(Options{Items: []string{"a", "b"}})
+	press(t, s, "/한\t")
+	if s.filterText != "" {
+		t.Errorf("filter %q", s.filterText)
 	}
 }

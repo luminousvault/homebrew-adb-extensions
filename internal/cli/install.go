@@ -17,6 +17,7 @@ import (
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/apk"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/files"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/tui"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
@@ -557,7 +558,7 @@ func apkListLines(list []string) []string {
 	for i, f := range list {
 		meta := ""
 		if st, err := os.Stat(f); err == nil {
-			meta = humanSize(strconv.FormatInt(st.Size(), 10)) + " · " + st.ModTime().Format("2006-01-02 15:04")
+			meta = files.HumanSize(st.Size()) + " · " + st.ModTime().Format("2006-01-02 15:04")
 		}
 		lines = append(lines, fmt.Sprintf("  %*d. %s  %s", numW, i+1, ui.Pad(filepath.Base(f), nameW), ui.Err.Dim(meta)))
 	}

@@ -139,7 +139,7 @@ Commands, options, device serials (each with its model and Android version in zs
 | | [`clear`](docs/commands.md#ak-clear) · [`uninstall`](docs/commands.md#ak-uninstall) | Clear data · uninstall |
 | | [`activities`](docs/commands.md#ak-activities) · [`logcat`](docs/commands.md#ak-logcat) | Activity stack · logs of one or more apps |
 | Screen | [`screenshot`](docs/commands.md#ak-screenshot) · [`record`](docs/commands.md#ak-record) | PNG to a file or the clipboard · MP4 recording |
-| Files | [`pull`](docs/commands.md#ak-pull) | Pick recent files on the device and copy them here |
+| Files | [`pull`](docs/commands.md#ak-pull) · [`push`](docs/commands.md#ak-push) · [`files`](docs/commands.md#ak-files) | Pick recent files on the device and copy them here · copy files to the device · browse both and push, pull or delete |
 | Device | [`devices`](docs/commands.md#ak-devices) · [`mac`](docs/commands.md#ak-mac) · [`wifi`](docs/commands.md#ak-wifi) | Device list · MAC addresses · Wi-Fi debugging |
 | Setup | [`doctor`](docs/commands.md#ak-doctor) · [`completion`](docs/commands.md#ak-completion) | Check the setup · shell completion script |
 

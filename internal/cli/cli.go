@@ -82,7 +82,7 @@ func (cmd *Command) AllFlags() []Flag {
 
 // Commands lists every subcommand in global-help order.
 var Commands = []*Command{
-	cmdInstall, cmdPull, cmdExtract, cmdInfo, cmdPermissions, cmdUninstall, cmdClear,
+	cmdInstall, cmdPull, cmdPush, cmdFiles, cmdExtract, cmdInfo, cmdPermissions, cmdUninstall, cmdClear,
 	cmdKill, cmdLaunch, cmdRestart, cmdSignature, cmdActivities, cmdLogcat, cmdScreenshot, cmdRecord,
 	cmdDevices, cmdMac, cmdWifi, cmdDoctor, cmdCompletion, cmdVerifier, cmdSerials,
 }

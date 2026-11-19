@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/files"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
@@ -101,7 +101,7 @@ func runScreenshot(c *Ctx) error {
 			ui.Warn("The screen of %s is off; the image may be black", deviceName(s))
 			ui.Hint("%s", wakeHint(s))
 		}
-		meta := ui.Err.Dim("(" + deviceName(s) + ", " + humanSize(strconv.Itoa(len(data))) + ")")
+		meta := ui.Err.Dim("(" + deviceName(s) + ", " + files.HumanSize(int64(len(data))) + ")")
 		if save {
 			if err := os.WriteFile(path, data, 0o644); err != nil {
 				ui.Errorf("Couldn't save %s: %v", q(path), err)

@@ -219,22 +219,22 @@ func (s *state) confirm() action {
 	return actConfirm
 }
 
-func (s *state) handle(k key) action {
-	if k.kind == keyCtrlC {
+func (s *state) handle(k Key) action {
+	if k.Kind == KeyCtrlC {
 		return actInterrupt
 	}
 	if s.filterMode {
 		return s.handleFilter(k)
 	}
-	switch k.kind {
-	case keyUp:
+	switch k.Kind {
+	case KeyUp:
 		s.move(-1)
-	case keyDown:
+	case KeyDown:
 		s.move(1)
-	case keyEnter:
+	case KeyEnter:
 		return s.confirm()
-	case keyRune:
-		return s.handleRune(k.r)
+	case KeyRune:
+		return s.handleRune(k.Rune)
 	}
 	return actNone
 }
@@ -294,42 +294,42 @@ func (s *state) handleRune(r byte) action {
 	return actNone
 }
 
-func (s *state) handleFilter(k key) action {
-	switch k.kind {
-	case keyUp:
+func (s *state) handleFilter(k Key) action {
+	switch k.Kind {
+	case KeyUp:
 		s.move(-1)
-	case keyDown:
+	case KeyDown:
 		s.move(1)
-	case keyRight:
+	case KeyRight:
 		if s.cursor < len(s.filterText) {
 			s.cursor++
 		}
-	case keyLeft:
+	case KeyLeft:
 		if s.cursor > 0 {
 			s.cursor--
 		}
-	case keyHome, keyCtrlA:
+	case KeyHome, KeyCtrlA:
 		s.cursor = 0
-	case keyEnd, keyCtrlE:
+	case KeyEnd, KeyCtrlE:
 		s.cursor = len(s.filterText)
-	case keyPaste:
-		s.insert(k.text)
-	case keyDelete:
+	case KeyPaste:
+		s.insert(k.Text)
+	case KeyDelete:
 		if s.cursor < len(s.filterText) {
 			s.filterText = s.filterText[:s.cursor] + s.filterText[s.cursor+1:]
 			s.applyFilter()
 		}
-	case keyBackspace:
+	case KeyBackspace:
 		if s.cursor > 0 {
 			s.filterText = s.filterText[:s.cursor-1] + s.filterText[s.cursor:]
 			s.cursor--
 			s.applyFilter()
 		}
-	case keyEnter:
+	case KeyEnter:
 		return s.confirm()
-	case keyRune:
+	case KeyRune:
 		switch {
-		case k.r == ' ':
+		case k.Rune == ' ':
 			if s.multi && len(s.filtered) > 0 {
 				orig := s.focusedOrig()
 				wasSelected := s.selected[orig]
@@ -338,11 +338,11 @@ func (s *state) handleFilter(k key) action {
 					s.applyFilter() // unselected rows may drop out of the pinned group
 				}
 			}
-		case k.r == '/':
+		case k.Rune == '/':
 			s.filterText, s.cursor, s.filterMode = "", 0, false
 			s.applyFilter()
-		case k.r >= 33 && k.r <= 126:
-			s.insert(string(k.r))
+		case k.Rune >= 33 && k.Rune <= 126:
+			s.insert(string(k.Rune))
 		}
 	}
 	return actNone

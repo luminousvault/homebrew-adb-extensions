@@ -1,0 +1,1335 @@
+package files
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/luminousvault/homebrew-adb-extensions/internal/tui"
+)
+
+// minColumnsWidth is the narrowest terminal that shows one pane's list in
+// two columns; narrower, names would be cut too short to read.
+const minColumnsWidth = 80
+
+// minSplitWidth is the narrowest terminal that shows two panes. It is the
+// same as for two columns: both split the width in half, so a window that
+// shows two columns can always show the PC pane instead.
+const minSplitWidth = minColumnsWidth
+
+// columns is how many columns the list runs in: two, newspaper style, in
+// one pane at least minColumnsWidth wide; one in two panes.
+func (s *state) columns() int {
+	if !s.split && s.width >= minColumnsWidth {
+		return 2
+	}
+	return 1
+}
+
+type sortKey int
+
+const (
+	sortName sortKey = iota
+	sortNewest
+	sortSize
+)
+
+func (k sortKey) label() string {
+	return [...]string{"name ↑", "newest ↓", "size ↓"}[k]
+}
+
+// pane is one side's folder view. Each side keeps its folder, cursor and
+// selection while the other side is shown.
+type pane struct {
+	fs       FS
+	dir      string
+	entries  []Entry // the folder's listing
+	err      error   // the listing failed
+	rows     []Entry // shown: ".." first, then entries after hidden, filter and sort
+	cursor   int
+	top      int // first row on screen
+	selected map[string]bool
+	filter   string
+
+	recent      bool    // device: recent files instead of the folder
+	recentList  []Entry // nil until loaded
+	recentErr   error
+	folderPath  string // row under the cursor in the folder view, kept while recent shows
+	loadingNote string // shown in the list area while a listing loads
+	free        int64  // free bytes where dir is (device: df when it opens); -1 unknown
+}
+
+type mode int
+
+const (
+	modeNormal   mode = iota
+	modeFilter        // typing a filter after '/'
+	modeInput         // typing a name (rename, new folder) or a path (go to)
+	modeDelete        // delete confirmation
+	modeConflict      // a name exists where we push or pull
+	modeFailures      // the failure list of the last task
+	modeHelp          // all keys
+)
+
+type inputKind int
+
+const (
+	inputRename inputKind = iota
+	inputMkdir
+	inputGoto
+)
+
+type msgKind int
+
+const (
+	msgInfo msgKind = iota
+	msgSuccess
+	msgWarn
+	msgError
+)
+
+// message is a one-off line above the key help, cleared by the next key.
+type message struct {
+	text     string
+	kind     msgKind
+	failures []failure // Enter opens the list
+}
+
+// task is work that runs off the key loop: a push or pull, a delete,
+// opening a device file, loading the recent list. run returns a function
+// that applies the result to the state on the key loop.
+type task struct {
+	label      string
+	route      string // push and pull: "Pixel:/sdcard/Download ← Computer"
+	cancelable bool
+	run        func(ctx context.Context, report func(progress)) func(*state)
+}
+
+type exitKind int
+
+const (
+	exitNone exitKind = iota
+	exitQuit
+	exitInterrupt
+)
+
+// state is the whole screen. It does no terminal I/O; storage calls that
+// take a moment (listing a folder, renaming) run inline, longer ones are
+// handed to the runner as a task.
+type state struct {
+	panes      [2]*pane // by Side
+	active     Side
+	split      bool // two panes on screen now
+	wantSplit  bool // two panes when the window is wide enough: on at start, 9 toggles it
+	width      int
+	height     int
+	sortBy     sortKey
+	showHidden bool
+	mode       mode
+	msg        *message
+
+	// modeInput / modeFilter
+	inputKind   inputKind
+	inputText   string
+	inputCursor int // byte offset
+
+	// modeDelete
+	delTargets []Entry
+
+	// modeConflict
+	plan *copyJob
+	push bool // the plan pushes (PC to device); else it pulls
+	ci   int  // op being asked about
+
+	failures []failure // modeFailures
+	helpTop  int       // modeHelp: first line shown
+
+	task     *task // running
+	pending  *task // to start
+	prog     progress
+	spin     int
+	canceled bool // Esc pressed on the running task
+	exit     exitKind
+
+	summary   Summary
+	now       func() time.Time
+	openLocal func(string) error
+	tempDir   string
+	opened    int
+}
+
+func newState(device, pc FS, deviceDir, pcDir string, openLocal func(string) error) *state {
+	// The PC pane is on from the start (when the window is wide enough).
+	s := &state{now: time.Now, openLocal: openLocal, tempDir: tempDir(), width: 80, height: 24, wantSplit: true}
+	s.panes[Device] = &pane{fs: device, selected: map[string]bool{}, free: -1}
+	s.panes[PC] = &pane{fs: pc, selected: map[string]bool{}, free: -1}
+	s.open(s.panes[Device], deviceDir, "")
+	s.open(s.panes[PC], pcDir, "")
+	return s
+}
+
+func (s *state) cur() *pane { return s.panes[s.active] }
+
+func lowerFirst(t string) string {
+	if t == "" {
+		return t
+	}
+	return strings.ToLower(t[:1]) + t[1:]
+}
+
+func (s *state) setMsg(kind msgKind, format string, args ...any) {
+	s.msg = &message{text: fmt.Sprintf(format, args...), kind: kind}
+}
+
+// setSize records the terminal size. Two panes that no longer fit become one,
+// showing the side the cursor was on.
+// setSize follows the terminal. Two panes show whenever they are wanted and
+// fit, so a window made narrow and then wide again gets the PC pane back.
+func (s *state) setSize(w, h int) {
+	s.width, s.height = w, h
+	s.split = s.wantSplit && w >= minSplitWidth
+}
+
+// ---- listing ----
+
+// open shows dir in p, with the cursor on the row named focus.
+func (s *state) open(p *pane, dir, focus string) {
+	entries, err := p.fs.List(dir)
+	if dir != p.dir {
+		p.selected = map[string]bool{}
+		p.filter = ""
+		p.cursor, p.top = 0, 0
+	}
+	p.dir, p.entries, p.err = dir, entries, err
+	p.recent = false
+	s.refreshRows(p, focus)
+	readFree(p)
+}
+
+// readFree reads the free space where p's folder is, on storages that tell
+// it cheaply (the device: one df); otherwise it is unknown.
+func readFree(p *pane) {
+	p.free = -1
+	if f, ok := p.fs.(interface {
+		Free(dir string) (int64, error)
+	}); ok && p.err == nil {
+		if n, err := f.Free(p.dir); err == nil {
+			p.free = n
+		}
+	}
+}
+
+// reload lists p's folder again, keeping the cursor on the same row.
+func (s *state) reload(p *pane) {
+	if p.recent {
+		s.refreshRows(p, s.focusPath(p))
+		return
+	}
+	focus := s.focusPath(p)
+	p.entries, p.err = p.fs.List(p.dir)
+	s.refreshRows(p, focus)
+}
+
+func (s *state) focusPath(p *pane) string {
+	if p.cursor < len(p.rows) {
+		return p.rows[p.cursor].Path
+	}
+	return ""
+}
+
+// refreshRows rebuilds p.rows and puts the cursor on focus (a path or a name)
+// if it is still shown.
+func (s *state) refreshRows(p *pane, focus string) {
+	var src []Entry
+	if p.recent {
+		src = p.recentList
+	} else {
+		src = p.entries
+	}
+	f := strings.ToLower(p.filter)
+	var rows []Entry
+	for _, e := range src {
+		if !s.showHidden && strings.HasPrefix(e.Name, ".") {
+			continue
+		}
+		if f != "" && !strings.Contains(strings.ToLower(e.Name), f) {
+			continue
+		}
+		rows = append(rows, e)
+	}
+	if !p.recent {
+		sortEntries(rows, s.sortBy)
+		if f == "" && p.fs.Dir(p.dir) != p.dir {
+			rows = append([]Entry{{Name: "..", Path: p.fs.Dir(p.dir), Dir: true}}, rows...)
+		}
+	}
+	p.rows = rows
+	// Drop selections that are gone from the listing.
+	for k := range p.selected {
+		if !containsPath(src, k) {
+			delete(p.selected, k)
+		}
+	}
+	p.cursor = min(p.cursor, max(len(rows)-1, 0))
+	if focus != "" {
+		for i, e := range rows {
+			if e.Path == focus || (e.Name == focus && e.Name != "..") {
+				p.cursor = i
+				break
+			}
+		}
+	}
+}
+
+func containsPath(list []Entry, p string) bool {
+	for _, e := range list {
+		if e.Path == p {
+			return true
+		}
+	}
+	return false
+}
+
+// sortEntries puts folders first, then sorts by key (names break ties).
+func sortEntries(list []Entry, key sortKey) {
+	sort.SliceStable(list, func(a, b int) bool {
+		x, y := list[a], list[b]
+		if x.Dir != y.Dir {
+			return x.Dir
+		}
+		switch key {
+		case sortNewest:
+			if !x.ModTime.Equal(y.ModTime) {
+				return x.ModTime.After(y.ModTime)
+			}
+		case sortSize:
+			if x.Size != y.Size {
+				return x.Size > y.Size
+			}
+		}
+		return strings.ToLower(x.Name) < strings.ToLower(y.Name)
+	})
+}
+
+// ---- layout numbers the key handling needs ----
+
+// listHeight is how many rows the list shows (render.go draws the rest).
+func (s *state) listHeight() int { return s.layout().list }
+
+// ---- keys ----
+
+func (s *state) handle(k tui.Key) {
+	if k.Kind == tui.KeyCtrlC {
+		s.quit(exitInterrupt)
+		return
+	}
+	switch s.mode {
+	case modeFilter, modeInput:
+		s.handleInput(k)
+		return
+	case modeDelete:
+		s.handleDelete(k)
+		return
+	case modeConflict:
+		s.handleConflict(k)
+		return
+	case modeHelp:
+		s.handleHelp(k)
+		return
+	case modeFailures:
+		s.mode = modeNormal
+		return
+	}
+	msg := s.msg
+	s.msg = nil
+	p := s.cur()
+	switch k.Kind {
+	case tui.KeyUp:
+		s.move(p, -1)
+	case tui.KeyDown:
+		s.move(p, 1)
+	case tui.KeyPgUp:
+		s.move(p, -s.listHeight()*s.columns())
+	case tui.KeyPgDn:
+		s.move(p, s.listHeight()*s.columns())
+	case tui.KeyHome:
+		p.cursor = 0
+	case tui.KeyEnd:
+		p.cursor = max(len(p.rows)-1, 0)
+	case tui.KeyEnter:
+		if msg != nil && len(msg.failures) > 0 {
+			s.failures, s.mode = msg.failures, modeFailures
+			return
+		}
+		s.enter(p)
+	case tui.KeyRight:
+		if s.columns() == 2 {
+			s.sideways(p, 1)
+		} else {
+			s.enter(p)
+		}
+	case tui.KeyLeft:
+		if s.columns() == 2 {
+			s.sideways(p, -1)
+		} else {
+			s.up(p)
+		}
+	case tui.KeyBackspace:
+		s.up(p)
+	case tui.KeyTab:
+		s.active = 1 - s.active
+	case tui.KeyEsc:
+		s.escape(p, msg)
+	case tui.KeyDelete:
+		s.askDelete(p)
+	case tui.KeyRune:
+		s.handleRune(p, k.Rune)
+	}
+}
+
+// numberKeys maps the number key bar (mc's F keys as digits: macOS
+// terminals take F keys for the system) to the letter keys, which stay as
+// aliases.
+var numberKeys = map[byte]byte{'1': '?', '2': 's', '4': 't', '6': 'r', '7': 'n', '8': 'd', '9': 'w', '0': 'q'}
+
+func (s *state) handleRune(p *pane, r byte) {
+	switch r {
+	case '3':
+		s.enter(p)
+		return
+	case '5': // copy to the other side: pull on the device, push on the PC
+		r = map[Side]byte{Device: 'g', PC: 'p'}[p.fs.Side()]
+	}
+	if alias, ok := numberKeys[r]; ok {
+		r = alias
+	}
+	switch r {
+	case 'q':
+		s.quit(exitQuit)
+	case ' ':
+		if e, ok := s.cursorEntry(p); ok {
+			p.selected[e.Path] = !p.selected[e.Path]
+			if !p.selected[e.Path] {
+				delete(p.selected, e.Path)
+			}
+			s.move(p, 1)
+		}
+	case '*':
+		s.toggleAll(p)
+	case '/':
+		s.mode, s.inputText, s.inputCursor = modeFilter, p.filter, len(p.filter)
+	case 'w':
+		switch {
+		case s.split:
+			s.wantSplit, s.split = false, false
+		case s.width < minSplitWidth:
+			s.setMsg(msgWarn, "Window too narrow for two panes")
+		default:
+			s.wantSplit, s.split = true, true
+		}
+	case 'p':
+		if p.fs.Side() == PC { // the device side has nothing to push
+			s.send(p, true)
+		}
+	case 'g':
+		if p.fs.Side() == Device {
+			s.send(p, false)
+		}
+	case 'd':
+		s.askDelete(p)
+	case 'r':
+		s.askRename(p)
+	case 'n':
+		s.askInput(p, inputMkdir, "")
+	case ':':
+		s.askInput(p, inputGoto, displayPath(p.fs, p.dir))
+	case 't':
+		if p.fs.Side() == PC {
+			// Recent files are the device's: show the device pane in its
+			// recent view, from the PC side too.
+			s.active = Device
+			if d := s.panes[Device]; !d.recent {
+				s.toggleRecent(d)
+			}
+			return
+		}
+		s.toggleRecent(p)
+	case 's':
+		s.sortBy = (s.sortBy + 1) % 3
+		s.refreshAll()
+	case '.':
+		s.showHidden = !s.showHidden
+		s.refreshAll()
+	case '?':
+		s.mode = modeHelp
+	}
+}
+
+func (s *state) refreshAll() {
+	for _, p := range s.panes {
+		s.refreshRows(p, s.focusPath(p))
+	}
+}
+
+func (s *state) quit(how exitKind) {
+	if s.exit == exitNone || how == exitInterrupt {
+		s.exit = how
+	}
+	s.cancelTask()
+}
+
+// sideways moves to the same row of the next (dir 1) or previous (-1)
+// column; when the next column is shorter, to its last row.
+func (s *state) sideways(p *pane, dir int) {
+	h := max(s.listHeight(), 1)
+	switch to := p.cursor + dir*h; {
+	case to >= 0 && to < len(p.rows):
+		p.cursor = to
+	case dir > 0 && p.cursor/h < (len(p.rows)-1)/h:
+		p.cursor = len(p.rows) - 1
+	}
+}
+
+func (s *state) move(p *pane, delta int) {
+	if len(p.rows) == 0 {
+		return
+	}
+	p.cursor = min(max(p.cursor+delta, 0), len(p.rows)-1)
+}
+
+// cursorEntry is the entry under the cursor, if it is not "..".
+func (s *state) cursorEntry(p *pane) (Entry, bool) {
+	if p.cursor >= len(p.rows) || s.isUp(p, p.cursor) {
+		return Entry{}, false
+	}
+	return p.rows[p.cursor], true
+}
+
+func (s *state) isUp(p *pane, i int) bool { return !p.recent && p.rows[i].Name == ".." && i == 0 }
+
+func (s *state) toggleAll(p *pane) {
+	all := true
+	n := 0
+	for i, e := range p.rows {
+		if !s.isUp(p, i) {
+			n++
+			all = all && p.selected[e.Path]
+		}
+	}
+	if n == 0 {
+		return
+	}
+	for i, e := range p.rows {
+		if s.isUp(p, i) {
+			continue
+		}
+		if all {
+			delete(p.selected, e.Path)
+		} else {
+			p.selected[e.Path] = true
+		}
+	}
+}
+
+// targets are what c, x and d act on: the selection, or the cursor's entry.
+func (s *state) targets(p *pane) []Entry {
+	list := s.targetsSelected(p)
+	if len(list) == 0 {
+		if e, ok := s.cursorEntry(p); ok {
+			list = append(list, e)
+		}
+	}
+	return list
+}
+
+// blocked refuses an action key while a task runs.
+func (s *state) blocked() bool {
+	t := s.task
+	if t == nil {
+		t = s.pending
+	}
+	if t != nil {
+		hint := ""
+		if t.cancelable {
+			hint = ", or press Esc to cancel"
+		}
+		s.setMsg(msgWarn, "Wait until %s finishes%s", lowerFirst(t.label), hint)
+		return true
+	}
+	return false
+}
+
+func (s *state) escape(p *pane, msg *message) {
+	switch {
+	case s.task != nil && s.task.cancelable:
+		s.cancelTask()
+	case p.filter != "":
+		p.filter = ""
+		s.refreshRows(p, s.focusPath(p))
+	}
+}
+
+func (s *state) cancelTask() {
+	if s.task != nil && s.task.cancelable {
+		s.canceled = true
+	}
+	if s.pending != nil {
+		s.pending = nil
+	}
+}
+
+// ---- open / navigate ----
+
+func (s *state) enter(p *pane) {
+	if p.cursor >= len(p.rows) {
+		return
+	}
+	e := p.rows[p.cursor]
+	if s.isUp(p, p.cursor) {
+		s.up(p)
+		return
+	}
+	if e.Dir {
+		s.open(p, e.Path, "")
+		return
+	}
+	// Open takes the file under the cursor only, never the selection: a
+	// hundred selected files must not open a hundred windows.
+	note := len(s.targetsSelected(p)) > 0
+	if p.fs.Side() == PC {
+		s.openFile(e.Path, note)
+		return
+	}
+	if s.blocked() {
+		return
+	}
+	s.openDeviceFile(p, e, note)
+}
+
+func (s *state) up(p *pane) {
+	if p.recent {
+		s.toggleRecent(p)
+		return
+	}
+	parent := p.fs.Dir(p.dir)
+	if parent == p.dir {
+		return
+	}
+	s.open(p, parent, p.fs.Base(p.dir))
+}
+
+// openFile opens path on this PC; note says files were selected, which open
+// leaves alone, so the message tells what the selection is for.
+func (s *state) openFile(path string, note bool) {
+	if s.openLocal == nil {
+		s.setMsg(msgWarn, "Can't open files here")
+		return
+	}
+	if err := s.openLocal(path); err != nil {
+		s.setMsg(msgError, "Couldn't open %s: %v", filepath.Base(path), err)
+		return
+	}
+	if note {
+		s.setMsg(msgSuccess, "Opened %s (open takes the file under the cursor; the selection is for 5 and 8)", filepath.Base(path))
+		return
+	}
+	s.setMsg(msgSuccess, "Opened %s", filepath.Base(path))
+}
+
+// openDeviceFile pulls a device file to the temp folder and opens it on the
+// PC (files-design.md §5).
+func (s *state) openDeviceFile(p *pane, e Entry, note bool) {
+	s.opened++
+	dir := filepath.Join(s.tempDir, strconv.FormatInt(s.now().UnixNano(), 36)+"-"+strconv.Itoa(s.opened))
+	dst := filepath.Join(dir, e.Name)
+	from := p.fs
+	s.pending = &task{label: "Opening " + e.Name, cancelable: true,
+		run: func(ctx context.Context, report func(progress)) func(*state) {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return func(s *state) { s.setMsg(msgError, "Couldn't open %s: %v", e.Name, err) }
+			}
+			job := &copyJob{from: from, to: localFS{PC, computerLabel}, dstDir: dir, ops: []copyOp{{src: e, name: e.Name}}}
+			res := job.run(ctx, report)
+			return func(s *state) {
+				switch {
+				case res.canceled:
+					s.setMsg(msgInfo, "Canceled opening %s", e.Name)
+				case len(res.failed) > 0:
+					s.setMsg(msgError, "Couldn't copy %s: %s", e.Name, res.failed[0].msg)
+				default:
+					s.openFile(dst, note)
+				}
+			}
+		}}
+}
+
+// toggleRecent switches the device pane between its folder and the recent
+// files (files-design.md §7).
+func (s *state) toggleRecent(p *pane) {
+	lister, ok := p.fs.(interface{ Recent() ([]Entry, error) })
+	if !ok {
+		s.setMsg(msgInfo, "Recent files are shown for the device only")
+		return
+	}
+	if p.recent {
+		p.recent = false
+		p.filter = ""
+		p.selected = map[string]bool{}
+		s.refreshRows(p, p.folderPath)
+		return
+	}
+	if s.blocked() {
+		return
+	}
+	p.folderPath = s.focusPath(p)
+	p.recent, p.filter, p.cursor, p.top = true, "", 0, 0
+	p.selected = map[string]bool{}
+	p.recentList, p.recentErr = nil, nil
+	p.loadingNote = "Reading recent files"
+	s.refreshRows(p, "")
+	s.pending = &task{label: "Reading recent files", run: func(context.Context, func(progress)) func(*state) {
+		list, err := lister.Recent()
+		return func(s *state) {
+			p.loadingNote = ""
+			p.recentList, p.recentErr = list, err
+			if p.recentList == nil {
+				p.recentList = []Entry{}
+			}
+			if p.recent {
+				s.refreshRows(p, "")
+			}
+		}
+	}}
+}
+
+// ---- push and pull ----
+
+// send copies the targets of p to the other side's current folder: push
+// from the PC to the device, pull from the device to the PC. That folder is
+// the one the other pane remembers, shown or not (one pane). Only names that
+// exist there are asked about (files-design.md §6).
+func (s *state) send(p *pane, push bool) {
+	if s.blocked() {
+		return
+	}
+	items := s.targets(p)
+	if len(items) == 0 {
+		return
+	}
+	dst := s.panes[1-p.fs.Side()]
+	entries, err := dst.fs.List(dst.dir) // what is there now, even if the pane shows recent files
+	if err != nil {
+		s.setMsg(msgError, "Can't copy to %s: %s", location(dst.fs, dst.dir), errText(err))
+		return
+	}
+	inDir := nameLookup(dst.fs, dst.dir, entries)
+	used := map[string]bool{} // names this copy gives, ignoring case to be safe
+	taken := func(n string) bool { _, ok := inDir(n); return ok || used[fold(n)] }
+	job := &copyJob{from: p.fs, to: dst.fs, dstDir: dst.dir, inDir: inDir}
+	for _, it := range items {
+		op := copyOp{src: it, name: it.Name}
+		if e, ok := inDir(it.Name); ok && !used[fold(it.Name)] {
+			op.conflict, op.dstDir = true, e.Dir
+		} else if used[fold(it.Name)] { // same names from different folders (recent files)
+			op.name = UniqueName(it.Name, it.Dir, taken)
+		}
+		used[fold(op.name)] = true
+		job.ops = append(job.ops, op)
+	}
+	s.plan, s.push, s.ci = job, push, -1
+	s.nextConflict()
+}
+
+// route is where a push or pull goes, the device always on the left as on
+// screen: "Pixel:/sdcard/Download ← Computer", "Pixel → ~/Downloads".
+func route(job *copyJob, push bool) string {
+	if push {
+		return location(job.to, job.dstDir) + " ← " + computerLabel
+	}
+	return job.from.Label() + " → " + displayPath(job.to, job.dstDir)
+}
+
+// nameLookup finds a name in dir: the entry of the same name, or, when only
+// the case differs, the one the file system itself finds (a Stat of the name
+// on /sdcard, macOS or Windows, which ignore case; nothing on ext4).
+func nameLookup(f FS, dir string, entries []Entry) func(string) (Entry, bool) {
+	exact := map[string]Entry{}
+	folded := map[string]bool{}
+	for _, e := range entries {
+		exact[e.Name] = e
+		folded[fold(e.Name)] = true
+	}
+	stats := map[string]bool{}
+	return func(n string) (Entry, bool) {
+		if e, ok := exact[n]; ok {
+			return e, true
+		}
+		if !folded[fold(n)] {
+			return Entry{}, false
+		}
+		found, asked := stats[n]
+		var e Entry
+		if !asked {
+			var err error
+			e, err = f.Stat(f.Join(dir, n))
+			found = err == nil
+			stats[n] = found
+		}
+		return e, found
+	}
+}
+
+// fold is a name as case-insensitive file systems compare it.
+func fold(name string) string { return strings.ToLower(name) }
+
+// takenFold reports names in use, ignoring case.
+func takenFold(names []string) func(string) bool {
+	set := map[string]bool{}
+	for _, n := range names {
+		set[fold(n)] = true
+	}
+	return func(n string) bool { return set[fold(n)] }
+}
+
+// nextConflict asks about the next unresolved name, or starts copying.
+func (s *state) nextConflict() {
+	for s.ci++; s.ci < len(s.plan.ops); s.ci++ {
+		if s.plan.ops[s.ci].conflict {
+			s.mode = modeConflict
+			return
+		}
+	}
+	s.mode = modeNormal
+	s.startSend(s.plan, s.push)
+	s.plan = nil
+}
+
+// cancelPlan drops a push or pull while its names are asked about.
+func (s *state) cancelPlan() {
+	s.mode, s.plan = modeNormal, nil
+	s.setMsg(msgInfo, "%s canceled", map[bool]string{true: "Push", false: "Pull"}[s.push])
+}
+
+func (s *state) handleConflict(k tui.Key) {
+	var choice byte
+	switch k.Kind {
+	case tui.KeyEnter:
+		choice = 'r'
+	case tui.KeyEsc:
+		s.cancelPlan()
+		return
+	case tui.KeyRune:
+		choice = k.Rune
+		if choice == 'q' { // like Esc; a second q quits
+			s.cancelPlan()
+			return
+		}
+	default:
+		return
+	}
+	all := choice >= 'A' && choice <= 'Z'
+	choice |= 0x20 // lower case
+	if choice != 'o' && choice != 's' && choice != 'r' {
+		return
+	}
+	end := s.ci + 1
+	if all {
+		end = len(s.plan.ops)
+	}
+	for i := s.ci; i < end; i++ {
+		s.resolve(i, choice)
+	}
+	s.nextConflict()
+}
+
+func (s *state) resolve(i int, choice byte) {
+	op := &s.plan.ops[i]
+	if !op.conflict {
+		return
+	}
+	op.conflict = false
+	switch choice {
+	case 'o':
+		op.overwrite = true
+	case 's':
+		op.skip = true
+	case 'r':
+		var names []string
+		for j, o := range s.plan.ops {
+			if j != i && !o.skip {
+				names = append(names, o.name)
+			}
+		}
+		others := takenFold(names)
+		op.name = UniqueName(op.name, op.src.Dir, func(n string) bool {
+			_, ok := s.plan.inDir(n)
+			return ok || others(n)
+		})
+	}
+}
+
+func (s *state) startSend(job *copyJob, push bool) {
+	n := 0
+	for _, op := range job.ops {
+		if !op.skip {
+			n++
+		}
+	}
+	if n == 0 {
+		s.setMsg(msgInfo, "Nothing copied: all skipped")
+		return
+	}
+	s.panes[job.from.Side()].selected = map[string]bool{} // copying starts: the selection is used
+	label := map[bool]string{true: "Pushing", false: "Pulling"}[push]
+	s.pending = &task{label: label, route: route(job, push), cancelable: true,
+		run: func(ctx context.Context, report func(progress)) func(*state) {
+			res := job.run(ctx, report)
+			return func(s *state) { s.finishSend(job, push, res) }
+		}}
+}
+
+// finishSend reports a push or pull: "Pushed 'a.txt' to Pixel:/sdcard ← Computer",
+// "Pulled 3 files from Pixel → ~/Downloads".
+func (s *state) finishSend(job *copyJob, push bool, res copyResult) {
+	for _, p := range s.panes {
+		if p.fs == job.to && !p.recent {
+			s.reload(p)
+			readFree(p) // the copy took space
+		}
+	}
+	verb, past, ing := "push", "Pushed", "pushing"
+	if !push {
+		verb, past, ing = "pull", "Pulled", "pulling"
+	}
+	where := func(what string) string {
+		if push {
+			return fmt.Sprintf("%s to %s", what, route(job, push))
+		}
+		return fmt.Sprintf("%s from %s", what, route(job, push))
+	}
+	what := pastedItems(res.done, res.doneAs)
+	if len(res.done) > 0 {
+		s.summary.Done = append(s.summary.Done, past+" "+where(what))
+	}
+	if res.canceled {
+		s.summary.Canceled = append(s.summary.Canceled,
+			fmt.Sprintf("Canceled %s %s: %d of %d %s", ing, strings.TrimSpace(where("")), len(res.done), res.todo, strings.ToLower(past)))
+	}
+	for _, f := range res.failed {
+		s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't %s %s: %s", verb, where("'"+f.name+"'"), f.msg))
+	}
+	total := len(res.done) + len(res.failed)
+	switch {
+	case res.canceled:
+		s.setMsg(msgWarn, "Canceled %s: %d of %d %s", ing, len(res.done), res.todo, strings.ToLower(past))
+	case len(res.failed) > 0:
+		s.msg = &message{kind: msgError, failures: res.failed,
+			text: fmt.Sprintf("%d of %d %s, %d failed", len(res.done), total, strings.ToLower(past), len(res.failed))}
+	default:
+		s.setMsg(msgSuccess, "%s %s", past, where(what))
+	}
+}
+
+// pastedItems is countItems with the names items were saved as: "'a.txt'
+// as 'a (1).txt'", or "3 files (1 renamed)".
+func pastedItems(done []Entry, as []string) string {
+	renamed := 0
+	for i, e := range done {
+		if i < len(as) && as[i] != e.Name {
+			renamed++
+		}
+	}
+	switch {
+	case renamed == 0:
+		return countItems(done)
+	case len(done) == 1:
+		return "'" + done[0].Name + "' as '" + as[0] + "'"
+	}
+	return fmt.Sprintf("%s (%d renamed)", countItems(done), renamed)
+}
+
+func withoutPaths(list, gone []Entry) []Entry {
+	var kept []Entry
+	for _, e := range list {
+		if !containsPath(gone, e.Path) {
+			kept = append(kept, e)
+		}
+	}
+	return kept
+}
+
+// countItems is "'a.txt'", "3 files", "2 folders" or "4 items".
+func countItems(list []Entry) string {
+	if len(list) == 1 {
+		return "'" + list[0].Name + "'"
+	}
+	dirs := 0
+	for _, e := range list {
+		if e.Dir {
+			dirs++
+		}
+	}
+	switch dirs {
+	case 0:
+		return strconv.Itoa(len(list)) + " files"
+	case len(list):
+		return strconv.Itoa(len(list)) + " folders"
+	}
+	return strconv.Itoa(len(list)) + " items"
+}
+
+// ---- delete ----
+
+func (s *state) askDelete(p *pane) {
+	if s.blocked() {
+		return
+	}
+	s.delTargets = s.targets(p)
+	if len(s.delTargets) > 0 {
+		s.mode = modeDelete
+	}
+}
+
+// handleDelete takes y; anything else keeps the files ([y/N]).
+func (s *state) handleDelete(k tui.Key) {
+	s.mode = modeNormal
+	if k.Kind != tui.KeyRune || (k.Rune != 'y' && k.Rune != 'Y') {
+		s.setMsg(msgInfo, "Nothing deleted")
+		return
+	}
+	p := s.cur()
+	targets := s.delTargets
+	f := p.fs
+	s.pending = &task{label: "Deleting " + countItems(targets),
+		run: func(_ context.Context, report func(progress)) func(*state) {
+			var done []Entry
+			var failed []failure
+			for i, e := range targets {
+				report(progress{index: i + 1, count: len(targets), name: e.Name, total: -1})
+				if err := f.Remove(e.Path); err != nil {
+					failed = append(failed, failure{e.Name, err.Error()})
+				} else {
+					done = append(done, e)
+				}
+			}
+			flushMedia(f)
+			return func(s *state) { s.finishDelete(p, done, failed) }
+		}}
+}
+
+func (s *state) finishDelete(p *pane, done []Entry, failed []failure) {
+	p.recentList = withoutPaths(p.recentList, done)
+	for _, q := range s.panes {
+		if q.fs == p.fs {
+			s.reload(q)
+			readFree(q) // the delete gave space back
+		}
+	}
+	where := p.fs.Label()
+	if len(done) > 0 {
+		s.summary.Done = append(s.summary.Done, fmt.Sprintf("Deleted %s on %s", countItems(done), where))
+	}
+	for _, f := range failed {
+		s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't delete '%s' on %s: %s", f.name, where, f.msg))
+	}
+	if len(failed) > 0 {
+		s.msg = &message{kind: msgError, failures: failed,
+			text: fmt.Sprintf("%d of %d deleted, %d failed", len(done), len(done)+len(failed), len(failed))}
+		return
+	}
+	s.setMsg(msgSuccess, "Deleted %s", countItems(done))
+}
+
+// ---- rename, new folder, go to ----
+
+func (s *state) askRename(p *pane) {
+	if p.recent {
+		s.setMsg(msgInfo, "Rename in the folder view: press t")
+		return
+	}
+	if e, ok := s.cursorEntry(p); ok && !s.blocked() {
+		s.askInput(p, inputRename, e.Name)
+	}
+}
+
+func (s *state) askInput(p *pane, kind inputKind, text string) {
+	if kind != inputGoto && (s.blocked() || p.err != nil || p.recent) {
+		if p.recent && kind == inputMkdir {
+			s.setMsg(msgInfo, "Make folders in the folder view: press t")
+		}
+		return
+	}
+	s.mode, s.inputKind, s.inputText, s.inputCursor = modeInput, kind, text, len(text)
+}
+
+// handleInput edits the filter or name line. The filter applies as it is
+// typed; Enter keeps it, Esc clears it.
+func (s *state) handleInput(k tui.Key) {
+	p := s.cur()
+	switch k.Kind {
+	case tui.KeyEsc:
+		if s.mode == modeFilter {
+			p.filter = ""
+			s.refreshRows(p, s.focusPath(p))
+		}
+		s.mode = modeNormal
+		return
+	case tui.KeyEnter:
+		wasFilter := s.mode == modeFilter
+		s.mode = modeNormal
+		if !wasFilter {
+			s.submitInput(p)
+		}
+		return
+	case tui.KeyUp, tui.KeyDown:
+		if s.mode == modeFilter {
+			s.move(p, map[bool]int{true: -1, false: 1}[k.Kind == tui.KeyUp])
+		}
+		return
+	case tui.KeyLeft:
+		if s.inputCursor > 0 {
+			_, n := lastRune(s.inputText[:s.inputCursor])
+			s.inputCursor -= n
+		}
+		return
+	case tui.KeyRight:
+		if s.inputCursor < len(s.inputText) {
+			s.inputCursor += firstRuneLen(s.inputText[s.inputCursor:])
+		}
+		return
+	case tui.KeyHome, tui.KeyCtrlA:
+		s.inputCursor = 0
+		return
+	case tui.KeyEnd, tui.KeyCtrlE:
+		s.inputCursor = len(s.inputText)
+		return
+	case tui.KeyBackspace:
+		if s.inputCursor > 0 {
+			_, n := lastRune(s.inputText[:s.inputCursor])
+			s.inputText = s.inputText[:s.inputCursor-n] + s.inputText[s.inputCursor:]
+			s.inputCursor -= n
+		}
+	case tui.KeyDelete:
+		if s.inputCursor < len(s.inputText) {
+			n := firstRuneLen(s.inputText[s.inputCursor:])
+			s.inputText = s.inputText[:s.inputCursor] + s.inputText[s.inputCursor+n:]
+		}
+	case tui.KeyRune:
+		s.insertText(string([]byte{k.Rune}))
+	case tui.KeyPaste:
+		s.insertText(strings.ReplaceAll(k.Text, "\n", ""))
+	default:
+		return
+	}
+	if s.mode == modeFilter {
+		p.filter = s.inputText
+		p.cursor = 0
+		s.refreshRows(p, "")
+	}
+}
+
+// insertText inserts typed bytes. Keys arrive a byte at a time, so a
+// Hangul syllable typed through an input method arrives as several KeyRune
+// bytes; they are joined as they come.
+func (s *state) insertText(t string) {
+	s.inputText = s.inputText[:s.inputCursor] + t + s.inputText[s.inputCursor:]
+	s.inputCursor += len(t)
+}
+
+func (s *state) submitInput(p *pane) {
+	text := s.inputText
+	switch s.inputKind {
+	case inputGoto:
+		dir := expandHome(p.fs, strings.TrimSpace(text))
+		if _, err := p.fs.List(dir); err != nil {
+			s.setMsg(msgError, "Can't open %s: %s", text, errText(err))
+			return
+		}
+		s.open(p, dir, "")
+		return
+	case inputMkdir:
+		if err := s.checkNewName(p, text, ""); err != nil {
+			s.setMsg(msgError, "%v", err)
+			return
+		}
+		if err := p.fs.Mkdir(p.fs.Join(p.dir, text)); err != nil {
+			s.setMsg(msgError, "Couldn't make folder '%s': %v", text, err)
+			s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't make folder '%s' in %s: %v", text, location(p.fs, p.dir), err))
+			return
+		}
+		s.summary.Done = append(s.summary.Done, fmt.Sprintf("Made folder '%s' in %s", text, location(p.fs, p.dir)))
+		s.reload(p)
+		s.refreshRows(p, p.fs.Join(p.dir, text))
+		s.setMsg(msgSuccess, "Made folder '%s'", text)
+	case inputRename:
+		e, ok := s.cursorEntry(p)
+		if !ok || text == e.Name {
+			return
+		}
+		if err := s.checkNewName(p, text, e.Name); err != nil {
+			s.setMsg(msgError, "%v", err)
+			return
+		}
+		to := p.fs.Join(p.dir, text)
+		if err := renameEntry(p.fs, e, to); err != nil {
+			s.setMsg(msgError, "Couldn't rename '%s': %v", e.Name, err)
+			s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't rename '%s' to '%s' on %s: %v", e.Name, text, p.fs.Label(), err))
+			return
+		}
+		s.summary.Done = append(s.summary.Done, fmt.Sprintf("Renamed '%s' to '%s' on %s", e.Name, text, p.fs.Label()))
+		s.reload(p)
+		s.refreshRows(p, to)
+		s.setMsg(msgSuccess, "Renamed '%s' to '%s'", e.Name, text)
+	}
+}
+
+// checkNewName refuses empty names, names with '/', and names in use
+// (by the file system's own rule for case, see nameLookup).
+func (s *state) checkNewName(p *pane, name, self string) error {
+	if err := validName(name); err != nil {
+		return err
+	}
+	var others []Entry
+	for _, e := range p.entries {
+		if e.Name != self {
+			others = append(others, e)
+		}
+	}
+	if _, ok := nameLookup(p.fs, p.dir, others)(name); ok { // self out: a.txt -> A.txt is fine
+		return fmt.Errorf("'%s' already exists", name)
+	}
+	return nil
+}
+
+// renameEntry renames e to to. A change of case only (a.txt -> A.txt) goes
+// through a temporary name: on a case-insensitive file system the target
+// "exists" already.
+func renameEntry(f FS, e Entry, to string) error {
+	if fold(e.Name) != fold(f.Base(to)) {
+		return f.Rename(e.Path, to)
+	}
+	tmp := f.Join(f.Dir(e.Path), ".ak-tmp-"+e.Name)
+	if _, err := f.Stat(tmp); err == nil {
+		return errExists
+	}
+	if err := f.Rename(e.Path, tmp); err != nil {
+		return err
+	}
+	if err := f.Rename(tmp, to); err != nil {
+		_ = f.Rename(tmp, e.Path)
+		return err
+	}
+	return nil
+}
+
+func lastRune(s string) (rune, int) {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] < 0x80 || s[i] >= 0xc0 {
+			return rune(s[i]), len(s) - i
+		}
+	}
+	return 0, len(s)
+}
+
+func firstRuneLen(s string) int {
+	n := 1
+	for n < len(s) && s[n] >= 0x80 && s[n] < 0xc0 {
+		n++
+	}
+	return n
+}
+
+// ---- paths shown to people ----
+
+func expandHome(f FS, p string) string {
+	if f.Side() != PC {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return p
+	}
+	if p == "~" {
+		return home
+	}
+	if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
+		return filepath.Join(home, p[2:])
+	}
+	return p
+}
+
+// displayPath shortens the home folder to ~ on the PC.
+func displayPath(f FS, p string) string {
+	if f.Side() != PC {
+		return p
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return p
+	}
+	if p == home {
+		return "~"
+	}
+	if rel, ok := strings.CutPrefix(p, home+string(filepath.Separator)); ok {
+		return "~" + string(filepath.Separator) + rel
+	}
+	return p
+}
+
+// location is where a copy went: "~/Downloads" or "Pixel 9 Pro:/sdcard/DCIM".
+func location(f FS, dir string) string {
+	if f.Side() == PC {
+		return displayPath(f, dir)
+	}
+	return f.Label() + ":" + dir
+}
+
+func errText(err error) string {
+	switch {
+	case errors.Is(err, fs.ErrPermission):
+		return "Permission denied"
+	case errors.Is(err, fs.ErrNotExist):
+		return "No such folder"
+	}
+	return err.Error()
+}
+
+// targetsSelected are the selected rows that are shown: a filter or hidden
+// files hide a selection from d, p and g.
+func (s *state) targetsSelected(p *pane) []Entry {
+	var list []Entry
+	for i, e := range p.rows {
+		if p.selected[e.Path] && !s.isUp(p, i) {
+			list = append(list, e)
+		}
+	}
+	return list
+}
+
+// handleHelp scrolls a help longer than the screen; any other key closes it.
+func (s *state) handleHelp(k tui.Key) {
+	page := max(s.listHeight(), 1)
+	switch k.Kind {
+	case tui.KeyUp:
+		s.helpTop--
+	case tui.KeyDown:
+		s.helpTop++
+	case tui.KeyPgUp:
+		s.helpTop -= page
+	case tui.KeyPgDn:
+		s.helpTop += page
+	case tui.KeyHome:
+		s.helpTop = 0
+	case tui.KeyEnd:
+		s.helpTop = 1 << 20 // clamped when drawn
+	default:
+		s.mode, s.helpTop = modeNormal, 0
+	}
+}

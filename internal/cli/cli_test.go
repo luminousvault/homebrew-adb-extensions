@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb/adbtest"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/files"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/tui"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
@@ -414,7 +416,7 @@ func TestPullChoosesWithoutTerminal(t *testing.T) {
 		"Row: 2 _data=/storage/emulated/0/Pictures/Screenshot_1.png, date_modified=1, _size=10\n"
 	fake := func() *adbtest.Fake {
 		f := baseFake()
-		f.Responses["-s "+serial+" shell "+recentFilesQuery] = adbtest.Response{Stdout: recent}
+		f.Responses["-s "+serial+" shell "+files.RecentFilesQuery] = adbtest.Response{Stdout: recent}
 		for _, p := range []string{"Pictures/Screenshot_2.png", "Download/report.pdf", "Pictures/Screenshot_1.png"} {
 			f.Responses["-s "+serial+" pull /storage/emulated/0/"+p+" "+filepath.Join(dest, filepath.Base(p))] = adbtest.Response{}
 		}
@@ -466,33 +468,15 @@ func TestParseForegroundPackage(t *testing.T) {
 	}
 }
 
-func TestHumanSizeAndMeta(t *testing.T) {
-	cases := map[string]string{"": "?", "x": "?", "512": "512 B", "1536": "2 KB", "5242880": "5.0 MB", "1610612736": "1.5 GB"}
-	for in, want := range cases {
-		if got := humanSize(in); got != want {
-			t.Errorf("humanSize(%q)=%q want %q", in, got, want)
-		}
-	}
-	if got := fileMeta("/storage/emulated/0/Download/a.pdf", "2048"); got != "Download, 2 KB" {
+func TestFileMeta(t *testing.T) {
+	if got := fileMeta("/storage/emulated/0/Download/a.pdf", 2048); got != "Download, 2 KB" {
 		t.Errorf("meta %q", got)
 	}
-	if got := fileMeta("/storage/emulated/0/a.pdf", "1"); got != "sdcard, 1 B" {
+	if got := fileMeta("/storage/emulated/0/a.pdf", 1); got != "sdcard, 1 B" {
 		t.Errorf("meta %q", got)
 	}
-}
-
-func TestParseRecentFilesAndUniqueName(t *testing.T) {
-	raw := "Row: 0 _data=/storage/emulated/0/DCIM/Camera/a, b.jpg, date_modified=1700000000, _size=2048\nRow: 1 _data=/storage/emulated/0/Download/x.zip, date_modified=1, _size=10\n"
-	files := parseRecentFiles(raw)
-	if len(files) != 2 || files[0].path != "/storage/emulated/0/DCIM/Camera/a, b.jpg" || files[0].size != "2048" {
-		t.Errorf("files %+v", files)
-	}
-	used := map[string]bool{"a.jpg": true, "a (1).jpg": true, "README": true}
-	if got := uniqueName("a.jpg", used); got != "a (2).jpg" {
-		t.Errorf("got %q", got)
-	}
-	if got := uniqueName("README", used); got != "README (1)" {
-		t.Errorf("got %q", got)
+	if got := fileMeta("/storage/emulated/0/a.pdf", -1); got != "sdcard, ?" {
+		t.Errorf("unknown size %q", got)
 	}
 }
 
@@ -821,5 +805,160 @@ func TestRecordFailsFastWhenScreenOff(t *testing.T) {
 		if strings.Contains(call, "screenrecord") {
 			t.Errorf("screenrecord started: %s", call)
 		}
+	}
+}
+
+// pushFake answers the destination listing of /sdcard/Download (nil: missing,
+// so it gets created) and pushes into it.
+func pushFake(listing []string, pushes map[string]adbtest.Response) *adbtest.Fake {
+	f := baseFake()
+	ls := "-s " + serial + " shell cd '/sdcard/Download' && ls -A"
+	if listing == nil {
+		f.Responses[ls] = adbtest.Response{Stderr: "/system/bin/sh: cd: /sdcard/Download: No such file or directory\n", Err: errors.New("exit status 2")}
+		f.Responses["-s "+serial+" shell mkdir -p '/sdcard/Download'"] = adbtest.Response{}
+	} else {
+		f.Responses[ls] = adbtest.Response{Stdout: strings.Join(listing, "\n") + "\n"}
+	}
+	for k, v := range pushes {
+		f.Responses["-s "+serial+" push "+k] = v
+	}
+	return f
+}
+
+func pushFiles(t *testing.T, names ...string) (dir string) {
+	dir = t.TempDir()
+	for _, n := range names {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("hello\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestPushCreatesDefaultDestination(t *testing.T) {
+	dir := pushFiles(t, "notes.txt")
+	local := filepath.Join(dir, "notes.txt")
+	f := pushFake(nil, map[string]adbtest.Response{local + " /sdcard/Download/notes.txt": {Stdout: local + ": 1 file pushed.\n"}})
+	r := ak(t, f, "push", local)
+	if r.code != 0 || !strings.Contains(r.err, "==> Created '/sdcard/Download' on Google Pixel 9 Pro\n") ||
+		!strings.Contains(r.err, "✓ Pushed '"+local+"' to Google Pixel 9 Pro:/sdcard/Download/notes.txt (6 B, ") {
+		t.Errorf("code %d\n%s", r.code, r.err)
+	}
+	for _, c := range f.Calls {
+		if strings.Contains(c, "am broadcast") {
+			t.Errorf("API 36 must not scan: %s", c)
+		}
+	}
+}
+
+func TestPushRenamesInsteadOfOverwriting(t *testing.T) {
+	dir := pushFiles(t, "a.txt")
+	local := filepath.Join(dir, "a.txt")
+	f := pushFake([]string{"a.txt", "a (1).txt", "other"}, map[string]adbtest.Response{local + " /sdcard/Download/a (2).txt": {}})
+	r := ak(t, f, "push", local)
+	if r.code != 0 || !strings.Contains(r.err, "Warning: '/sdcard/Download/a.txt' already exists on Google Pixel 9 Pro, pushing as 'a (2).txt'\n") ||
+		!strings.Contains(r.err, "to Google Pixel 9 Pro:/sdcard/Download/a (2).txt") {
+		t.Errorf("code %d\n%s", r.code, r.err)
+	}
+}
+
+func TestPushQuotesDestination(t *testing.T) {
+	dir := pushFiles(t, "a.txt")
+	local := filepath.Join(dir, "a.txt")
+	f := baseFake()
+	f.Responses["-s "+serial+` shell cd '/sdcard/it'\''s here' && ls -A`] = adbtest.Response{Stdout: ""}
+	f.Responses["-s "+serial+" push "+local+" /sdcard/it's here/a.txt"] = adbtest.Response{}
+	r := ak(t, f, "push", local, "-d", "/sdcard/it's here/")
+	if r.code != 0 {
+		t.Errorf("code %d\n%s\ncalls %q", r.code, r.err, f.Calls)
+	}
+	if r := ak(t, baseFake(), "push", local, "-d", "Download"); r.code != 2 {
+		t.Errorf("relative -d: code %d\n%s", r.code, r.err)
+	}
+}
+
+func TestPushFailureContinuesAndExitsOne(t *testing.T) {
+	dir := pushFiles(t, "a.txt", "b.txt")
+	a, b := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+	f := pushFake([]string{}, map[string]adbtest.Response{
+		a + " /sdcard/Download/a.txt": {Stderr: "adb: error: failed to copy: Read-only file system\n", Err: errors.New("exit status 1")},
+		b + " /sdcard/Download/b.txt": {},
+	})
+	r := ak(t, f, "push", a, b)
+	if r.code != 1 || !strings.Contains(r.err, "Error: Couldn't push '"+a+"' to Google Pixel 9 Pro\n  adb: error: failed to copy") ||
+		!strings.Contains(r.err, "✓ Pushed '"+b+"'") || !strings.Contains(r.err, "Error: 1 of 2 files failed") {
+		t.Errorf("code %d\n%s", r.code, r.err)
+	}
+}
+
+func TestPushRejectsMissingFilesAndDirectories(t *testing.T) {
+	dir := pushFiles(t)
+	r := ak(t, baseFake(), "push", filepath.Join(dir, "nope.txt"))
+	if r.code != 1 || !strings.Contains(r.err, "Error: No such file: ") || !strings.Contains(r.err, "Hint: ") {
+		t.Errorf("missing: %d %q", r.code, r.err)
+	}
+	r = ak(t, baseFake(), "push", dir)
+	if r.code != 1 || !strings.Contains(r.err, "is a directory; ak push copies files only\nHint: Pass the files inside it") {
+		t.Errorf("directory: %d %q", r.code, r.err)
+	}
+}
+
+func TestPushWithoutFilesNeedsTerminal(t *testing.T) {
+	t.Chdir(pushFiles(t, "a.txt"))
+	f := pushFake([]string{}, nil)
+	r := ak(t, f, "push")
+	if r.code != 1 || !strings.Contains(r.err, "interactive selection needs a terminal\nHint: Pass the files to push") {
+		t.Errorf("%d %q", r.code, r.err)
+	}
+
+	// With a terminal: newest first, hidden files left out.
+	dir := pushFiles(t, "old.txt", "new.txt", ".hidden")
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(filepath.Join(dir, "old.txt"), old, old); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	var got tui.Options
+	f = pushFake([]string{}, map[string]adbtest.Response{"old.txt /sdcard/Download/old.txt": {}})
+	selectFn = func(o tui.Options) (tui.Result, error) { got = o; return tui.Result{Indices: []int{1}}, nil }
+	ui.InTTY = true
+	ui.Out, ui.Err = &ui.Stream{W: &bytes.Buffer{}}, &ui.Stream{W: &bytes.Buffer{}, TTY: true}
+	adb.Default = f
+	resetDeviceCache()
+	defer func() {
+		adb.Default = nil
+		selectFn = tui.Select
+		ui.InTTY = false
+		ui.Out, ui.Err = &ui.Stream{W: os.Stdout}, &ui.Stream{W: os.Stderr}
+	}()
+	if code := run([]string{"push"}); code != 0 || len(got.Items) != 2 || !strings.HasPrefix(got.Items[0], "new.txt\t") {
+		t.Errorf("code %d items %q calls %q", code, got.Items, f.Calls)
+	}
+}
+
+func TestPushScansMediaBeforeAndroid11(t *testing.T) {
+	dir := pushFiles(t, "a b#1.jpg")
+	local := filepath.Join(dir, "a b#1.jpg")
+	f := pushFake([]string{}, map[string]adbtest.Response{local + " /sdcard/Download/a b#1.jpg": {}})
+	f.Responses["-s "+serial+" shell getprop"] = adbtest.Response{Stdout: strings.Replace(getpropOut, "[36]", "[29]", 1)}
+	scan := "-s " + serial + " shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d 'file:///sdcard/Download/a%20b%231.jpg'"
+	f.Responses[scan] = adbtest.Response{Stdout: "Broadcast completed: result=0\n"}
+	r := ak(t, f, "push", local)
+	found := false
+	for _, c := range f.Calls {
+		found = found || c == scan
+	}
+	if r.code != 0 || !found {
+		t.Errorf("code %d calls %q\n%s", r.code, f.Calls, r.err)
+	}
+}
+
+func TestFilesNeedsTerminal(t *testing.T) {
+	r := ak(t, baseFake(), "files")
+	if r.code != 1 || !strings.Contains(r.err, "ak files needs a terminal\nHint: Use ak pull or ak push") {
+		t.Errorf("no terminal: %d\n%s", r.code, r.err)
+	}
+	if r := ak(t, baseFake(), "files", "sdcard"); r.code != 2 {
+		t.Errorf("relative path: %d\n%s", r.code, r.err)
 	}
 }

@@ -139,7 +139,7 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 | | [`clear`](docs/commands.ko.md#ak-clear) · [`uninstall`](docs/commands.ko.md#ak-uninstall) | 데이터 삭제 · 제거 |
 | | [`activities`](docs/commands.ko.md#ak-activities) · [`logcat`](docs/commands.ko.md#ak-logcat) | 액티비티 스택 · 앱 하나 또는 여러 개의 로그 |
 | 화면 | [`screenshot`](docs/commands.ko.md#ak-screenshot) · [`record`](docs/commands.ko.md#ak-record) | PNG를 파일이나 클립보드로 · MP4 녹화 |
-| 파일 | [`pull`](docs/commands.ko.md#ak-pull) | 디바이스의 최근 파일을 골라 가져오기 |
+| 파일 | [`pull`](docs/commands.ko.md#ak-pull) · [`push`](docs/commands.ko.md#ak-push) · [`files`](docs/commands.ko.md#ak-files) | 디바이스의 최근 파일을 골라 가져오기 · 파일을 디바이스에 복사 · 양쪽을 둘러보며 넣기·꺼내기·삭제 |
 | 디바이스 | [`devices`](docs/commands.ko.md#ak-devices) · [`mac`](docs/commands.ko.md#ak-mac) · [`wifi`](docs/commands.ko.md#ak-wifi) | 디바이스 목록 · MAC 주소 · Wi-Fi 디버깅 |
 | 설정 | [`doctor`](docs/commands.ko.md#ak-doctor) · [`completion`](docs/commands.ko.md#ak-completion) | 설정 점검 · 셸 자동 완성 스크립트 |
 
