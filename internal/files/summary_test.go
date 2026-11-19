@@ -1,7 +1,9 @@
 package files
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,4 +169,51 @@ func TestNormalizedNameIsNotRenamed(t *testing.T) {
 	if !strings.Contains(got, "' as '한글 문서 (1).txt'") {
 		t.Errorf("a real rename: %q", got)
 	}
+}
+
+// A summary line that covers several items lists them under it, dim and
+// indented, up to summaryItemsShown and then a count.
+func TestSummaryListsItems(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "a.txt", "b.txt", "sub/c.txt")
+	s.open(s.panes[Device], dev, "")
+	press(t, s, "a8y")
+	if len(s.summary.Done) != 1 || len(s.summary.Items) != 1 {
+		t.Fatalf("summary %+v", s.summary)
+	}
+	if got := strings.Join(s.summary.Items[0], ","); got != "sub/,a.txt,b.txt" { // screen order: folders first
+		t.Errorf("items %q", got)
+	}
+	got := captureStderr(t, s.summary.Print)
+	if !strings.Contains(got, "Deleted 3 items") || !strings.Contains(got, "  a.txt\n") || !strings.Contains(got, "  sub/\n") {
+		t.Errorf("printed %q", got)
+	}
+
+	var many Summary
+	for i := 0; i < 25; i++ {
+		many.Items = append(many.Items, nil)
+	}
+	names := make([]string, 25)
+	for i := range names {
+		names[i] = fmt.Sprintf("f%02d", i)
+	}
+	many.Done, many.Items = []string{"Deleted 25 files on X"}, [][]string{names}
+	got = captureStderr(t, many.Print)
+	if !strings.Contains(got, "f19") || strings.Contains(got, "f20") || !strings.Contains(got, "… and 5 more") {
+		t.Errorf("long list %q", got)
+	}
+	if itemNames([]Entry{{Name: "a.txt"}}, []string{"a (1).txt"})[0] != "a.txt → a (1).txt" {
+		t.Error("renamed item")
+	}
+}
+
+// captureStderr runs f with ui.Err going to a buffer (no color).
+func captureStderr(t *testing.T, f func()) string {
+	t.Helper()
+	var b bytes.Buffer
+	old := ui.Err
+	ui.Err = &ui.Stream{W: &b}
+	defer func() { ui.Err = old }()
+	f()
+	return b.String()
 }

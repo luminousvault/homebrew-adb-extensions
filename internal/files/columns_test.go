@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
@@ -19,7 +20,7 @@ func columnsState(t *testing.T) (*state, string) {
 	}
 	write(t, dev, names...)
 	s.open(s.cur(), dev, "")
-	s.setSize(100, 19) // the bar takes two rows under 200 columns plus a gap over it, the letter keys one and a rule
+	s.setSize(100, 20) // the bar takes two rows under 200 columns plus a gap over it, the letter keys two and a rule
 	if h := s.listHeight(); h != 10 {
 		t.Fatalf("list height %d", h)
 	}
@@ -128,7 +129,7 @@ func TestColumnsAndPanesKeepCursor(t *testing.T) {
 
 func TestNarrowIsOneColumn(t *testing.T) {
 	s, dev := columnsState(t)
-	s.setSize(79, 19)
+	s.setSize(79, 20)
 	if s.columns() != 1 || strings.Contains(ui.Plain(s.frame()[2]), "│") {
 		t.Fatal("under 80 columns: one column")
 	}
@@ -143,5 +144,79 @@ func TestShortSize(t *testing.T) {
 		if got := shortSize(n); got != want {
 			t.Errorf("shortSize(%d) = %q, want %q", n, got, want)
 		}
+	}
+}
+
+// Long names: other rows drop the middle (the end stays), the cursor's row
+// shows the whole name over its size and date, which go to the status line,
+// and a name longer than the row scrolls after a moment.
+func TestLongNames(t *testing.T) {
+	if got := truncateMiddle("ONEBillingLab-release-v1.0.1.100010.-20251230-0601-02.apk", 30); ui.TextWidth(got) != 30 ||
+		!strings.HasSuffix(got, "-0601-02.apk") || !strings.HasPrefix(got, "ONEBillingLab") || !strings.Contains(got, "…") {
+		t.Errorf("truncateMiddle %q", got)
+	}
+	if got := truncateMiddle("짧은.txt", 30); got != "짧은.txt" {
+		t.Errorf("fits: %q", got)
+	}
+	if got := truncateMiddle("가나다라마바사아자차카타파하.txt", 12); ui.TextWidth(got) > 12 {
+		t.Errorf("wide chars %q", got)
+	}
+
+	s, dev, _ := testState(t)
+	long := "ONEBillingLab-release-v1.0.1.100010.-20251230-0601-02.apk"
+	write(t, dev, long, long+".bak")
+	s.open(s.cur(), dev, "")
+	s.setSize(70, 20) // one column; the name is longer than its column but fits the row
+	press(t, s, down)
+	frame := strings.Join(s.frame(), "\n")
+	plain := ui.Plain(frame)
+	if !strings.Contains(plain, "➤    "+long) {
+		t.Errorf("cursor row not expanded:\n%s", plain)
+	}
+	if !s.focusExpanded || !strings.Contains(ui.Plain(s.infoLine(98)), time.Now().Format("2006-01-02")) {
+		t.Errorf("status line has no size/date: %q", ui.Plain(s.infoLine(98)))
+	}
+	if !strings.Contains(plain, "….bak") && !strings.Contains(plain, ".apk.bak") {
+		t.Errorf("other row should keep its end:\n%s", plain)
+	}
+
+	// Narrower than the name: it scrolls left after marqueeWait.
+	now := time.Now()
+	s.now = func() time.Time { return now }
+	s.setSize(40, 20)
+	s.frame()
+	first := s.marquee(Device, s.cur().rows[s.cur().cursor].Path, long, 30)
+	now = now.Add(marqueeWait + 5*marqueeStep)
+	later := s.marquee(Device, s.cur().rows[s.cur().cursor].Path, long, 30)
+	if !strings.HasPrefix(first, "ONEBilling") || first == later || !strings.HasPrefix(long[5:], later[:10]) {
+		t.Errorf("marquee: %q then %q", first, later)
+	}
+	if !s.scrolling {
+		t.Error("a scrolling name must ask the loop to redraw")
+	}
+}
+
+// v switches one pane between two columns and one wide column; the cursor
+// stays on its item.
+func TestOneColumnToggle(t *testing.T) {
+	s, _ := columnsState(t)
+	press(t, s, down+down+down)
+	at := s.cur().rows[s.cur().cursor].Name
+	if s.columns() != 2 {
+		t.Fatal("two columns first")
+	}
+	press(t, s, "v")
+	if s.columns() != 1 || s.cur().rows[s.cur().cursor].Name != at {
+		t.Errorf("v: columns %d, cursor on %s", s.columns(), s.cur().rows[s.cur().cursor].Name)
+	}
+	press(t, s, "v")
+	if s.columns() != 2 {
+		t.Error("v again: two columns")
+	}
+	press(t, s, "9") // two panes: v only says why
+	before := s.oneColumn
+	press(t, s, "v")
+	if s.oneColumn != before || s.msg == nil {
+		t.Error("v in two panes should not change anything")
 	}
 }

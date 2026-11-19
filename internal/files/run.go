@@ -2,8 +2,10 @@ package files
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,22 +28,48 @@ type Options struct {
 // Summary is what ak files did, for stderr after the screen closes
 // (files-design.md §8).
 type Summary struct {
-	Done     []string // "Pulled 3 files from Pixel → ~/Downloads"
-	Canceled []string // "Canceled pulling from Pixel → ~/Downloads: 1 of 3 pulled"
-	Failed   []string // "Couldn't pull 'a.txt' from Pixel → ~/Downloads: <reason>"
+	Done     []string   // "Pulled 3 files from Pixel → ~/Downloads"
+	Items    [][]string // per Done line: the names it covers when there are several, else nil
+	Canceled []string   // "Canceled pulling from Pixel → ~/Downloads: 1 of 3 pulled"
+	Failed   []string   // "Couldn't pull 'a.txt' from Pixel → ~/Downloads: <reason>"
 }
 
 // Print writes the summary to stderr: ✓ lines, Warning: lines for
 // canceled pushes and pulls, then Error: lines.
 func (s Summary) Print() {
-	for _, d := range s.Done {
+	for i, d := range s.Done {
 		ui.Success("%s", d)
+		if i < len(s.Items) {
+			printItems(s.Items[i])
+		}
 	}
 	for _, c := range s.Canceled {
 		ui.Warn("%s", c)
 	}
 	for _, f := range s.Failed {
 		ui.Errorf("%s", f)
+	}
+}
+
+// summaryItemsShown is how many names a summary line lists; the rest are
+// counted, so deleting 500 files does not bury the other lines.
+const summaryItemsShown = 20
+
+// printItems lists names under a summary line, indented and dim.
+func printItems(items []string) {
+	shown := items
+	if len(items) > summaryItemsShown {
+		shown = items[:summaryItemsShown]
+	}
+	var b strings.Builder
+	for _, n := range shown {
+		b.WriteString(n + "\n")
+	}
+	if more := len(items) - len(shown); more > 0 {
+		fmt.Fprintf(&b, "… and %d more\n", more)
+	}
+	if b.Len() > 0 {
+		ui.Detail("%s", b.String())
 	}
 }
 
@@ -113,6 +141,7 @@ func loop(scr *tui.Screen, st *state) error {
 		}
 		if st.task == nil && st.pending != nil {
 			st.task, st.pending, st.canceled = st.pending, nil, false
+			st.task.started = time.Now()
 			st.prog = progress{}
 			cancel = start(st.task)
 		}
@@ -152,6 +181,9 @@ func loop(scr *tui.Screen, st *state) error {
 			apply(st)
 			draw = true
 		case <-tick.C:
+			if st.scrolling { // a long cursor name moving
+				draw = true
+			}
 			if st.task != nil {
 				st.spin++
 				mu.Lock()

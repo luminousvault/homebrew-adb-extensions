@@ -1,9 +1,13 @@
 package files
 
 import (
+	"context"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/luminousvault/homebrew-adb-extensions/internal/tui"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
@@ -78,5 +82,56 @@ func TestTruncateRouteKeepsArrow(t *testing.T) {
 		if got := truncateRoute(c.rt, ui.TextWidth(c.want)); got != c.want {
 			t.Errorf("truncateRoute(%q) = %q, want %q", c.rt, got, c.want)
 		}
+	}
+}
+
+// Deleting many items of unknown size shows a bar by items; one long item a
+// spinner with how long it has run.
+func TestProgressByItems(t *testing.T) {
+	s, _, _ := testState(t)
+	s.setSize(120, 30)
+	s.task = &task{label: "Deleting 100 files", cancelable: true}
+	s.prog = progress{index: 37, count: 100, name: "f36.txt", total: -1}
+	got := ui.Plain(s.progressText(120))
+	if !strings.Contains(got, "█") || !strings.Contains(got, "36% (36 / 100)") || !strings.Contains(got, "Esc Cancel") || strings.Contains(got, "37/100") {
+		t.Errorf("many items: %q", got)
+	}
+	now := time.Now()
+	s.now = func() time.Time { return now }
+	s.task = &task{label: "Deleting 'big'", started: now.Add(-12 * time.Second)}
+	s.prog = progress{index: 1, count: 1, name: "big", total: -1}
+	if got := ui.Plain(s.progressText(120)); !strings.Contains(got, "Deleting 'big'") || !strings.Contains(got, "12s") || strings.Contains(got, "█") {
+		t.Errorf("one item: %q", got)
+	}
+}
+
+// Esc stops a delete between items: what was deleted is reported, the rest
+// is kept.
+func TestDeleteStopsBetweenItems(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "a.txt", "b.txt", "c.txt")
+	s.open(s.panes[Device], dev, "")
+	press(t, s, "a8")
+	if s.mode != modeDelete {
+		t.Fatal("no delete question")
+	}
+	s.handle(tui.Key{Kind: tui.KeyRune, Rune: 'y'})
+	job := s.pending
+	s.pending, s.task = nil, job
+	ctx, cancel := context.WithCancel(context.Background())
+	n := 0
+	apply := job.run(ctx, func(progress) {
+		if n++; n == 2 { // Esc while the second item is going: it finishes, the third is kept
+			cancel()
+		}
+	})
+	s.task = nil
+	apply(s)
+	left, _ := os.ReadDir(dev)
+	if len(left) != 1 || s.msg == nil || !strings.Contains(s.msg.text, "Canceled: 2 of 3 deleted") {
+		t.Errorf("left %d, msg %+v", len(left), s.msg)
+	}
+	if len(s.summary.Canceled) != 1 {
+		t.Errorf("summary %+v", s.summary)
 	}
 }

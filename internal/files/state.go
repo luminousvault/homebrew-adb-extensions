@@ -28,7 +28,7 @@ const minSplitWidth = minColumnsWidth
 // columns is how many columns the list runs in: two, newspaper style, in
 // one pane at least minColumnsWidth wide; one in two panes.
 func (s *state) columns() int {
-	if !s.split && s.width >= minColumnsWidth {
+	if !s.split && !s.oneColumn && s.width >= minColumnsWidth {
 		return 2
 	}
 	return 1
@@ -110,6 +110,7 @@ type task struct {
 	label      string
 	route      string // push and pull: "Pixel:/sdcard/Download ← Computer"
 	cancelable bool
+	started    time.Time // when it began running: the spinner shows how long
 	run        func(ctx context.Context, report func(progress)) func(*state)
 }
 
@@ -133,8 +134,15 @@ type state struct {
 	height     int
 	sortBy     sortKey
 	showHidden bool
-	mode       mode
-	msg        *message
+	oneColumn  bool // v: one pane lists in one wide column (long names), not two
+	// The cursor's row when its name does not fit (render.go): it shows the
+	// whole name, and scrolls one longer than the row.
+	focusKey      string
+	focusSince    time.Time
+	focusExpanded bool // set while drawing: the status line shows its size and date
+	scrolling     bool // set while drawing: the loop redraws to move it
+	mode          mode
+	msg           *message
 
 	// modeInput / modeFilter
 	inputKind   inputKind
@@ -431,6 +439,14 @@ func (s *state) handleRune(p *pane, r byte) {
 		s.toggleAll(p)
 	case '/':
 		s.mode, s.inputText, s.inputCursor = modeFilter, p.filter, len(p.filter)
+	case 'v':
+		if s.split {
+			s.setMsg(msgInfo, "Two panes list in one column each: 9 hides the computer pane")
+			return
+		}
+		key := s.focusPath(p)
+		s.oneColumn = !s.oneColumn
+		s.refreshRows(p, key) // the cursor stays on its item; scrolling follows
 	case 'w':
 		switch {
 		case s.split:
@@ -939,7 +955,7 @@ func (s *state) finishSend(job *copyJob, push bool, res copyResult) {
 	}
 	what := pastedItems(res.done, res.doneAs)
 	if len(res.done) > 0 {
-		s.summary.Done = append(s.summary.Done, past+" "+where(what))
+		s.addDone(past+" "+where(what), itemNames(res.done, res.doneAs))
 	}
 	if res.canceled {
 		s.summary.Canceled = append(s.summary.Canceled,
@@ -1032,11 +1048,16 @@ func (s *state) handleDelete(k tui.Key) {
 	p := s.cur()
 	targets := s.delTargets
 	f := p.fs
-	s.pending = &task{label: "Deleting " + countItems(targets),
-		run: func(_ context.Context, report func(progress)) func(*state) {
+	// Esc stops between items: the item being deleted (one rm -rf) runs to
+	// its end, so nothing is left half deleted by ak.
+	s.pending = &task{label: "Deleting " + countItems(targets), cancelable: true,
+		run: func(ctx context.Context, report func(progress)) func(*state) {
 			var done []Entry
 			var failed []failure
 			for i, e := range targets {
+				if ctx.Err() != nil {
+					break
+				}
 				report(progress{index: i + 1, count: len(targets), name: e.Name, total: -1})
 				if err := f.Remove(e.Path); err != nil {
 					failed = append(failed, failure{e.Name, err.Error()})
@@ -1045,11 +1066,12 @@ func (s *state) handleDelete(k tui.Key) {
 				}
 			}
 			flushMedia(f)
-			return func(s *state) { s.finishDelete(p, done, failed) }
+			stopped := len(done)+len(failed) < len(targets)
+			return func(s *state) { s.finishDelete(p, done, failed, stopped, len(targets)) }
 		}}
 }
 
-func (s *state) finishDelete(p *pane, done []Entry, failed []failure) {
+func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bool, total int) {
 	p.recentList = withoutPaths(p.recentList, done)
 	for _, q := range s.panes {
 		if q.fs == p.fs {
@@ -1059,17 +1081,23 @@ func (s *state) finishDelete(p *pane, done []Entry, failed []failure) {
 	}
 	where := p.fs.Label()
 	if len(done) > 0 {
-		s.summary.Done = append(s.summary.Done, fmt.Sprintf("Deleted %s on %s", countItems(done), where))
+		s.addDone(fmt.Sprintf("Deleted %s on %s", countItems(done), where), itemNames(done, nil))
 	}
 	for _, f := range failed {
 		s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't delete '%s' on %s: %s", f.name, where, f.msg))
 	}
-	if len(failed) > 0 {
-		s.msg = &message{kind: msgError, failures: failed,
-			text: fmt.Sprintf("%d of %d deleted, %d failed", len(done), len(done)+len(failed), len(failed))}
-		return
+	if stopped {
+		s.summary.Canceled = append(s.summary.Canceled, fmt.Sprintf("Canceled deleting on %s: %d of %d deleted", where, len(done), total))
 	}
-	s.setMsg(msgSuccess, "Deleted %s", countItems(done))
+	switch {
+	case len(failed) > 0:
+		s.msg = &message{kind: msgError, failures: failed,
+			text: fmt.Sprintf("%d of %d deleted, %d failed", len(done), total, len(failed))}
+	case stopped:
+		s.setMsg(msgInfo, "Canceled: %d of %d deleted", len(done), total)
+	default:
+		s.setMsg(msgSuccess, "Deleted %s", countItems(done))
+	}
 }
 
 // ---- rename, new folder, go to ----
@@ -1195,7 +1223,7 @@ func (s *state) submitInput(p *pane) {
 			s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't make folder '%s' in %s: %v", text, location(p.fs, p.dir), err))
 			return
 		}
-		s.summary.Done = append(s.summary.Done, fmt.Sprintf("Made folder '%s' in %s", text, location(p.fs, p.dir)))
+		s.addDone(fmt.Sprintf("Made folder '%s' in %s", text, location(p.fs, p.dir)), nil)
 		s.reload(p)
 		s.refreshRows(p, p.fs.Join(p.dir, text))
 		s.setMsg(msgSuccess, "Made folder '%s'", text)
@@ -1214,7 +1242,7 @@ func (s *state) submitInput(p *pane) {
 			s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't rename '%s' to '%s' on %s: %v", e.Name, text, p.fs.Label(), err))
 			return
 		}
-		s.summary.Done = append(s.summary.Done, fmt.Sprintf("Renamed '%s' to '%s' on %s", e.Name, text, p.fs.Label()))
+		s.addDone(fmt.Sprintf("Renamed '%s' to '%s' on %s", e.Name, text, p.fs.Label()), nil)
 		s.reload(p)
 		s.refreshRows(p, to)
 		s.setMsg(msgSuccess, "Renamed '%s' to '%s'", e.Name, text)
@@ -1363,4 +1391,34 @@ func (s *state) handleHelp(k tui.Key) {
 	default:
 		s.mode, s.helpTop = modeNormal, 0
 	}
+}
+
+// addDone records a summary line and, when it covers several items, their
+// names for the lines under it.
+func (s *state) addDone(line string, items []string) {
+	s.summary.Done = append(s.summary.Done, line)
+	for len(s.summary.Items) < len(s.summary.Done)-1 {
+		s.summary.Items = append(s.summary.Items, nil)
+	}
+	if len(items) < 2 {
+		items = nil // one item is named in the line itself
+	}
+	s.summary.Items = append(s.summary.Items, items)
+}
+
+// itemNames are the names a summary line covers, folders with a '/', and a
+// new name after an arrow: "a.txt → a (1).txt".
+func itemNames(done []Entry, as []string) []string {
+	names := make([]string, len(done))
+	for i, e := range done {
+		n := norm.NFC.String(e.Name)
+		if e.Dir {
+			n += "/"
+		}
+		if i < len(as) && norm.NFC.String(as[i]) != norm.NFC.String(e.Name) {
+			n += " → " + as[i]
+		}
+		names[i] = n
+	}
+	return names
 }

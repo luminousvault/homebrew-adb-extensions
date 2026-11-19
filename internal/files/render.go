@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"golang.org/x/text/unicode/norm"
 	"strings"
+	"time"
 
 	. "github.com/luminousvault/homebrew-adb-extensions/internal/style"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
@@ -104,6 +105,7 @@ func (s *state) layout() frameLayout {
 func (s *state) frame() []string {
 	w := s.width
 	l := s.layout()
+	s.focusExpanded, s.scrolling = false, false // the rows set them again
 	if s.mode == modeHelp || s.mode == modeFailures {
 		// The help and the failure list take everything over the bottom rule.
 		rows := b2i(l.header) + b2i(l.header && len(l.keys) > 0) + len(l.keys) + b2i(l.topRule) + l.list
@@ -247,6 +249,7 @@ func helpSections() []helpSection {
 		}},
 		{"View", []helpItem{
 			{"Tab", "", "Device ↔ computer (two panes: the other pane)"},
+			{"v", "", "One pane: one wide column (whole long names) or two columns"},
 			{"9 Show computer", "w", "The computer pane beside the device on or off"},
 			{"4 Recent", "t", "The device's recent files ↔ its folder"},
 			{"2 Sort", "s", "Name → newest → size"},
@@ -610,7 +613,16 @@ func (s *state) row(p *pane, i, w int, active, compact, brief bool) string {
 	if e.Folder != "" {
 		suffix = "  " + norm.NFC.String(e.Folder)
 	}
-	name = truncate(name, max(nameW, 1))
+	if focused && ui.TextWidth(name) > nameW && w-6 > nameW {
+		// The cursor's row shows the whole name over the size and date
+		// columns (the status line shows those); a name longer than the
+		// row scrolls left after a moment.
+		full := w - 6
+		s.focusExpanded = true
+		shown := s.marquee(p.fs.Side(), e.Path, name, full)
+		return mark + check + Cyan + Bold + shown + NC + strings.Repeat(" ", max(full-ui.TextWidth(shown), 0))
+	}
+	name = truncateMiddle(name, max(nameW, 1))
 	suffix = truncate(suffix, max(nameW-ui.TextWidth(name), 0))
 	pad := strings.Repeat(" ", max(nameW-ui.TextWidth(name)-ui.TextWidth(suffix), 0))
 	styled := name
@@ -682,10 +694,29 @@ func (s *state) infoLine(w int) string {
 		free = " " + Dim + "(" + HumanSize(p.free) + " free)" + NC
 	}
 	var parts []string
+	// The cursor's row covers its own size and date when its name is long:
+	// they show here instead, in the cursor's color.
+	cursorInfo := ""
+	if e, ok := s.cursorEntry(p); ok && s.focusExpanded {
+		var info []string
+		if !e.Dir {
+			info = append(info, HumanSize(e.Size))
+		}
+		if !e.ModTime.IsZero() {
+			info = append(info, e.ModTime.In(s.now().Location()).Format("2006-01-02 15:04"))
+		}
+		cursorInfo = Cyan + strings.Join(info, "  ") + NC
+	}
 	if p.recent {
 		parts = append(parts, fmt.Sprintf("Recent %d/%d", pos, n)+free)
+		if cursorInfo != "" {
+			parts = append(parts, cursorInfo)
+		}
 	} else {
 		parts = append(parts, fmt.Sprintf("%d/%d", pos, n))
+		if cursorInfo != "" {
+			parts = append(parts, cursorInfo)
+		}
 		var dirs, files int
 		var bytes int64
 		for _, e := range p.entries {
@@ -763,11 +794,25 @@ func (s *state) progressText(width int) string {
 		}
 		return out + tail
 	}
-	if p.total <= 0 {
-		return string(spinFrames[s.spin%len(spinFrames)]) + " " + join(name, rt, "")
+	done, total := p.done, p.total
+	sizes := fmt.Sprintf(" (%s / %s)", HumanSize(done), HumanSize(total))
+	if total <= 0 {
+		if p.count <= 1 || t.route != "" {
+			// One item of unknown size (a delete, a folder rm -rf): a spinner
+			// and, past a few seconds, how long it has run.
+			spin := string(spinFrames[s.spin%len(spinFrames)]) + " " + join(name, rt, "")
+			if d := s.now().Sub(t.started); !t.started.IsZero() && d >= 3*time.Second {
+				spin += "  " + Dim + d.Truncate(time.Second).String() + NC
+			}
+			return spin
+		}
+		// Many items of unknown size (deleting 100 files): the bar counts items,
+		// so the "14/31" after the label would only repeat it.
+		head = t.label
+		done, total = int64(max(p.index-1, 0)), int64(p.count)
+		sizes = fmt.Sprintf(" (%d / %d)", done, total)
 	}
-	pct := fmt.Sprintf(" %d%%", min(p.done*100/p.total, 100))
-	sizes := fmt.Sprintf(" (%s / %s)", HumanSize(p.done), HumanSize(p.total))
+	pct := fmt.Sprintf(" %d%%", min(done*100/total, 100))
 	const minBar, maxBar = 10, 40
 	// Give the bar 20 columns if cutting the name and the path allows it,
 	// else 10; drop the sizes before cutting too much. The percent stays.
@@ -779,7 +824,7 @@ func (s *state) progressText(width int) string {
 		free := width - used
 		for _, want := range []int{2 * minBar, minBar} {
 			if free >= want {
-				return join(name, rt, bar(min(free, maxBar), p.done, p.total)+pct+sizes)
+				return join(name, rt, bar(min(free, maxBar), done, total)+pct+sizes)
 			}
 			room := ui.TextWidth(name) + ui.TextWidth(rt) - (want - free)
 			if room < 18 && (withSizes || want > minBar) {
@@ -787,7 +832,7 @@ func (s *state) progressText(width int) string {
 			}
 			rw := min(ui.TextWidth(rt), max(room/2, room-ui.TextWidth(name)))
 			nw := max(room-rw, 1)
-			return join(truncate(name, nw), truncateRoute(rt, max(rw, 1)), bar(want, p.done, p.total)+pct+sizes)
+			return join(truncate(name, nw), truncateRoute(rt, max(rw, 1)), bar(want, done, total)+pct+sizes)
 		}
 	}
 	return "" // not reached
@@ -978,6 +1023,9 @@ func (s *state) letterKeys() []string {
 		out = append(out, k(":", "Go to"))
 	}
 	out = append(out, k(".", map[bool]string{true: "Hide hidden", false: "Show hidden"}[s.showHidden]))
+	if !s.split {
+		out = append(out, k("v", map[bool]string{true: "2 columns", false: "1 column"}[s.oneColumn]))
+	}
 	// Esc is not here: it shows where it acts, "Esc Cancel" on the progress
 	// line and "Esc clears" beside the filter on the status line. A key that
 	// came and went here would change how many rows the keys take.
@@ -1058,4 +1106,73 @@ func nameColor(e Entry) string {
 		return Dim
 	}
 	return ""
+}
+
+// truncateMiddle cuts t to w columns by dropping its middle, so the end of a
+// long name (a version, a date, the extension) stays: names that start the
+// same ("app-release-v1.0.1-…") still differ on screen.
+func truncateMiddle(t string, w int) string {
+	if ui.TextWidth(t) <= w {
+		return t
+	}
+	if w < 8 {
+		return truncate(t, w)
+	}
+	tailW := (w - 1) / 2                                      // as much end as start: versions and dates sit at the end
+	head := strings.TrimSuffix(truncate(t, w-tailW), "…")     // w-1-tailW columns
+	tail := strings.TrimPrefix(truncateLeft(t, tailW+1), "…") // tailW columns
+	return head + "…" + tail
+}
+
+// Marquee timing for a cursor name longer than its row.
+const (
+	marqueeWait = time.Second             // before it starts moving
+	marqueeStep = 150 * time.Millisecond  // per column
+	marqueeHold = 1500 * time.Millisecond // at the end, before starting over
+)
+
+// marquee is the w columns of name to show now: the start for marqueeWait
+// after the cursor came to this item, then one column further every
+// marqueeStep until the end shows, held for marqueeHold, then again.
+func (s *state) marquee(side Side, path, name string, w int) string {
+	key := fmt.Sprint(side) + "\x00" + path
+	if key != s.focusKey {
+		s.focusKey, s.focusSince = key, s.now()
+	}
+	over := ui.TextWidth(name) - w
+	if over <= 0 {
+		return name
+	}
+	s.scrolling = true
+	cycle := marqueeWait + time.Duration(over)*marqueeStep + marqueeHold
+	t := s.now().Sub(s.focusSince) % cycle
+	shift := 0
+	if t > marqueeWait {
+		shift = min(int((t-marqueeWait)/marqueeStep), over)
+	}
+	return dropColumns(name, shift, w)
+}
+
+// dropColumns skips the first n columns of t and keeps the next w (a wide
+// character cut in half becomes a space).
+func dropColumns(t string, n, w int) string {
+	var b strings.Builder
+	col, used := 0, 0
+	for _, r := range t {
+		rw := ui.TextWidth(string(r))
+		switch {
+		case col+rw <= n:
+		case col < n: // straddles the start
+			b.WriteString(" ")
+			used++
+		case used+rw <= w:
+			b.WriteRune(r)
+			used += rw
+		}
+		col += rw
+		if used >= w {
+			break
+		}
+	}
+	return b.String()
 }
