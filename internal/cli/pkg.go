@@ -67,11 +67,12 @@ func requirePackage(serial, pkg string) error {
 	return nil
 }
 
-// apkPathForPackage returns the device path of the package's base APK.
-func apkPathForPackage(serial, pkg string) (string, error) {
+// apkPathForPackage returns the device path of the package's base APK and
+// how many split APKs it has besides it.
+func apkPathForPackage(serial, pkg string) (string, int, error) {
 	out := adb.Shell(serial, "pm path "+pkg)
 	if strings.TrimSpace(out) == "" {
-		return "", failErr("", "Package not found on %s: %s", deviceName(serial), q(pkg))
+		return "", 0, failErr("", "Package not found on %s: %s", deviceName(serial), q(pkg))
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	chosen := lines[0]
@@ -82,7 +83,7 @@ func apkPathForPackage(serial, pkg string) (string, error) {
 		}
 	}
 	_, path, _ := strings.Cut(chosen, ":")
-	return strings.TrimSpace(path), nil
+	return strings.TrimSpace(path), len(lines) - 1, nil
 }
 
 // target is the package a command acts on.

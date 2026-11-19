@@ -478,8 +478,9 @@ ak record [options] [file|directory]
 ```
 
 Record the screen to MP4 until you press Ctrl+C or the time limit is reached, then save the
-video on this computer and delete it from the device. Android limits one recording to
-180 seconds and does not record audio. The saved path is printed to stdout.
+video on this computer and delete it from the device. There is no time limit unless -t gives
+one; devices whose screenrecord cannot drop the limit (older Android) stop at 180 seconds.
+Audio is not recorded. The saved path is printed to stdout.
 Records one device at a time (pick it with -s).
 
 **Arguments**
@@ -493,7 +494,7 @@ Records one device at a time (pick it with -s).
 
 | Option | Description |
 |---|---|
-| `-t, --time-limit SECONDS` | Stop after this many seconds (1-180, default 180) |
+| `-t, --time-limit SECONDS` | Stop after this many seconds (0 = no limit, the default; 1-180 on older Android) |
 | `--size WxH` | Video size, e.g. 1280x720 (default: screen size) |
 | `-o, --open` | Open the saved file with the default app |
 | `-s, --serial ID` | Target device (default: $ANDROID_SERIAL, or ask) |

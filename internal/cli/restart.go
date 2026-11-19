@@ -33,11 +33,19 @@ type launchResult struct {
 	WaitTime    int    `json:"waitTimeMs"`
 }
 
+// parseLaunch reads `am start -W` output. It fails on errors and when the
+// activity was not started anew (the intent went to a running instance and
+// TotalTime is 0), since that is no launch time.
 func parseLaunch(out string) (launchResult, bool) {
 	var r launchResult
 	m := reTotalTime.FindStringSubmatch(out)
-	if m == nil {
+	if m == nil || strings.Contains(out, "Activity not started") {
 		return r, false
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), "Error") {
+			return r, false
+		}
 	}
 	r.TotalTime, _ = strconv.Atoi(m[1])
 	if m := reWaitTime.FindStringSubmatch(out); m != nil {
@@ -83,7 +91,7 @@ func runRestart(c *Ctx) error {
 		out, _ := adb.Combined("-s", serial, "shell", "am", "start", "-W", "--user", "0", "-n", component)
 		sp.Stop()
 		r, ok := parseLaunch(out)
-		if !ok || strings.Contains(out, "Error") {
+		if !ok {
 			ui.Errorf("Couldn't start %s", component)
 			ui.Detail("%s", out)
 			return errReported

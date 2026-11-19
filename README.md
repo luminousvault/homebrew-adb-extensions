@@ -110,7 +110,7 @@ Devices install in parallel while a status board shows each one. Common failures
 ![ak screenshot](demo/screenshot.gif)
 
 - `ak screenshot` saves a PNG on this computer; `-c` copies it to the clipboard, `-o` opens it
-- `ak record` records until Ctrl+C (up to 180 s) and pulls the MP4
+- `ak record` records until Ctrl+C (no time limit; 180 s on older Android) and pulls the MP4
 - `ak restart -r 5` restarts the app five times and reports launch times
 - `ak wifi` switches a USB device to Wi-Fi debugging; `ak wifi off` switches back
 

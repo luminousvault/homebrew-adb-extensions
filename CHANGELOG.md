@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- `record` has no time limit by default: it records until Ctrl+C, and `-t 0` asks for that explicitly. Devices whose `screenrecord` cannot drop the limit (its `--help` lacks "Set to 0 to remove the time limit") keep the old 180-second cap, and `-t 0` or over 180 fails there with a hint
+
+### Fixed
+- `permissions` listed each permission twice for updated system apps (e.g. Chrome): it also read the factory version under `Hidden system packages:`
+- `launch` on a package without a launcher activity printed a Java stack trace; it now says `'<package>' has no launcher activity`
+- `extract` warns when the app has split APKs, since the base APK alone may not install, and hints at `adb install-multiple`
+- `activities` picks the foreground task from the resumed activity line; Android 16 prints the last paused activity first, which could show the previous app
+- `restart` no longer counts a start that reused a running instance (`Activity not started`, `TotalTime: 0`) as a 0 ms launch, and an activity named like `ErrorActivity` no longer makes a successful start fail
+
 ## [2.3.0] - 2026-11-13
 
 ### Added

@@ -110,7 +110,7 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 ![ak screenshot](demo/screenshot.gif)
 
 - `ak screenshot`은 PNG를 이 컴퓨터에 저장합니다. `-c`는 클립보드에 복사, `-o`는 저장 후 열기
-- `ak record`는 Ctrl+C까지(최대 180초) 녹화하고 MP4를 가져옵니다
+- `ak record`는 Ctrl+C까지(시간 제한 없음, 구형 Android는 최대 180초) 녹화하고 MP4를 가져옵니다
 - `ak restart -r 5`는 앱을 다섯 번 재시작하며 실행 시간을 잽니다
 - `ak wifi`는 USB 디바이스를 Wi-Fi 디버깅으로 바꾸고, `ak wifi off`로 되돌립니다
 

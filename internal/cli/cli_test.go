@@ -241,6 +241,20 @@ func TestLaunchFailure(t *testing.T) {
 	}
 }
 
+func TestLaunchWithoutLauncherActivity(t *testing.T) {
+	f := baseFake()
+	f.Responses["-s "+serial+" shell cmd package resolve-activity --brief com.example.app"] = adbtest.Response{Stdout: "No activity found\n"}
+	r := ak(t, f, "launch", "com.example.app")
+	if r.code != 1 || r.err != "Error: 'com.example.app' has no launcher activity\n" {
+		t.Errorf("code %d:\n%s", r.code, r.err)
+	}
+	for _, c := range f.Calls {
+		if strings.Contains(c, "am start") {
+			t.Errorf("am start called: %s", c)
+		}
+	}
+}
+
 func TestHelpAndUsageErrors(t *testing.T) {
 	cases := []struct {
 		args     []string
@@ -821,5 +835,35 @@ func TestRecordFailsFastWhenScreenOff(t *testing.T) {
 		if strings.Contains(call, "screenrecord") {
 			t.Errorf("screenrecord started: %s", call)
 		}
+	}
+}
+
+func TestRecordTimeLimitOnOlderAndroid(t *testing.T) {
+	f := baseFake()
+	f.Responses["-s "+serial+" shell dumpsys power"] = adbtest.Response{Stdout: powerAwake}
+	f.Responses["-s "+serial+" shell screenrecord --help 2>&1"] = adbtest.Response{Stdout: "--time-limit TIME\n    Set the maximum recording time, in seconds.  Default / maximum is 180.\n"}
+	for _, limit := range []string{"0", "181"} {
+		r := ak(t, f, "record", "-t", limit)
+		want := "Error: screenrecord on Google Pixel 9 Pro can't record longer than 180 seconds\nHint: Use -t 1-180\n"
+		if r.code != 1 || r.err != want {
+			t.Errorf("-t %s: code %d err %q", limit, r.code, r.err)
+		}
+	}
+	if r := ak(t, f, "record", "-t", "-1"); r.code != 2 {
+		t.Errorf("-t -1: code %d err %q", r.code, r.err)
+	}
+	for _, call := range f.Calls {
+		if strings.Contains(call, "screenrecord --time-limit") {
+			t.Errorf("screenrecord started: %s", call)
+		}
+	}
+}
+
+func TestRecordClock(t *testing.T) {
+	if got := recordClock(65, 0); got != "1:05" {
+		t.Errorf("no limit: %q", got)
+	}
+	if got := recordClock(65, 180); got != "1:05 / 3:00" {
+		t.Errorf("limit: %q", got)
 	}
 }

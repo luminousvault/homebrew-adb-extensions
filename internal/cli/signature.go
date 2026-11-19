@@ -124,7 +124,7 @@ func runSignature(c *Ctx) error {
 
 	apkPath := t.apkPath
 	if t.pkg != "" {
-		remote, err := apkPathForPackage(t.serial, t.pkg)
+		remote, _, err := apkPathForPackage(t.serial, t.pkg)
 		if err != nil {
 			return err
 		}
