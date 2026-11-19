@@ -24,6 +24,25 @@ var (
 	reActivity = regexp.MustCompile(`^.* u0 (.*) t[0-9]*}(.*)$`)
 )
 
+// foregroundTask returns the task id of the resumed activity. The first line
+// with a task id is not always it: Android 16 prints mLastPausedActivity first.
+func foregroundTask(dumpsys string) string {
+	first := ""
+	for _, l := range strings.Split(dumpsys, "\n") {
+		id := taskID(l)
+		if id == "" {
+			continue
+		}
+		if t := strings.TrimSpace(l); strings.HasPrefix(t, "topResumedActivity=") || strings.HasPrefix(t, "mResumedActivity:") || strings.HasPrefix(t, "ResumedActivity:") {
+			return id
+		}
+		if first == "" {
+			first = id
+		}
+	}
+	return first
+}
+
 func histLines(dumpsys string) []string {
 	var lines []string
 	for _, l := range strings.Split(dumpsys, "\n") {
@@ -111,13 +130,7 @@ func runActivities(c *Ctx) error {
 		return err
 	}
 	dumpsys := adb.Shell(serial, "dumpsys activity activities")
-	foreground := ""
-	for _, l := range strings.Split(dumpsys, "\n") {
-		if id := taskID(l); id != "" {
-			foreground = id
-			break
-		}
-	}
+	foreground := foregroundTask(dumpsys)
 	if foreground == "" {
 		return failErr("", "No foreground activity found on %s", deviceName(serial))
 	}

@@ -145,12 +145,22 @@ var cmdPermissions = &Command{
 	Device:   oneDevice, JSON: true, Run: runPermissions,
 }
 
+// parseGrantedPermissions lists granted permissions once each. It stops at
+// "Hidden system packages:": an updated system app also lists its factory
+// version there, with that version's grants.
 func parseGrantedPermissions(dumpsys string) []string {
 	perms := []string{}
+	seen := map[string]bool{}
 	for _, l := range strings.Split(dumpsys, "\n") {
+		if strings.HasPrefix(l, "Hidden system packages:") {
+			break
+		}
 		if strings.Contains(l, "granted=true") {
 			name, _, _ := strings.Cut(l, ":")
-			perms = append(perms, strings.TrimSpace(name))
+			if name = strings.TrimSpace(name); !seen[name] {
+				seen[name] = true
+				perms = append(perms, name)
+			}
 		}
 	}
 	return perms
@@ -213,7 +223,11 @@ func runLaunch(c *Ctx) error {
 		return err
 	}
 	resolved, _ := adb.Combined("-s", serial, "shell", "cmd", "package", "resolve-activity", "--brief", pkg)
-	result, _ := adb.Combined("-s", serial, "shell", "am", "start", "--user", "0", "-n", lastLine(resolved))
+	component := lastLine(resolved) // "No activity found" when there is none
+	if !strings.Contains(component, "/") {
+		return failErr("", "%s has no launcher activity", q(pkg))
+	}
+	result, _ := adb.Combined("-s", serial, "shell", "am", "start", "--user", "0", "-n", component)
 	if strings.Contains(result, "Exception occurred while executing 'start'") || strings.Contains(result, "Error:") {
 		ui.Errorf("Couldn't launch %s", q(pkg))
 		ui.Detail("%s", result)
@@ -392,7 +406,7 @@ func runExtract(c *Ctx) error {
 	case !strings.HasSuffix(file, ".apk"):
 		file += ".apk"
 	}
-	remote, err := apkPathForPackage(serial, t.pkg)
+	remote, splits, err := apkPathForPackage(serial, t.pkg)
 	if err != nil {
 		return err
 	}
@@ -410,6 +424,10 @@ func runExtract(c *Ctx) error {
 		size = humanSize(strconv.FormatInt(st.Size(), 10)) + ", "
 	}
 	ui.Success("Saved %s %s", q(file), ui.Err.Dim("("+size+elapsed(start)+")"))
+	if splits > 0 {
+		ui.Warn("%s also has %d split APKs; the base APK alone may not install", q(t.pkg), splits)
+		ui.Hint("List them with 'adb -s %s shell pm path %s', pull each, and install them together with 'adb install-multiple'", serial, t.pkg)
+	}
 	return nil
 }
 

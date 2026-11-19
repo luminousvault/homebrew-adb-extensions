@@ -371,3 +371,40 @@ func TestFormatLogLineAppBar(t *testing.T) {
 		t.Errorf("bar in the app color, name plain: %q", got)
 	}
 }
+
+func TestParseLaunchRejectsNoNewStart(t *testing.T) {
+	for _, out := range []string{
+		"Starting: Intent { cmp=com.example.app/.Main }\nWarning: Activity not started, intent has been delivered to currently running top-most instance.\nStatus: ok\nLaunchState: UNKNOWN (0)\nActivity: com.example.app/.Main\nTotalTime: 0\nWaitTime: 3\nComplete\n",
+		"Starting: Intent { cmp=com.example.app/.Main }\nError type 3\nError: Activity class {com.example.app/.Main} does not exist.\n",
+	} {
+		if r, ok := parseLaunch(out); ok {
+			t.Errorf("accepted %+v from %q", r, out)
+		}
+	}
+	// "Error" inside an activity name is not an error.
+	out := "Status: ok\nLaunchState: COLD\nActivity: com.example.app/.ErrorActivity\nTotalTime: 300\nWaitTime: 310\nComplete\n"
+	if r, ok := parseLaunch(out); !ok || r.TotalTime != 300 {
+		t.Errorf("ErrorActivity: %+v %v", r, ok)
+	}
+}
+
+func TestParseGrantedPermissionsSkipsFactoryVersion(t *testing.T) {
+	dumpsys := "Packages:\n  Package [com.example.app]\n    runtime permissions:\n      android.permission.CAMERA: granted=true\n      android.permission.CAMERA: granted=true\n      android.permission.RECORD_AUDIO: granted=false\n" +
+		"Hidden system packages:\n  Package [com.example.app]\n      android.permission.READ_CONTACTS: granted=true\n"
+	got := strings.Join(parseGrantedPermissions(dumpsys), ",")
+	if got != "android.permission.CAMERA" {
+		t.Errorf("got %q", got)
+	}
+}
+
+func TestForegroundTaskPrefersResumed(t *testing.T) {
+	dumpsys := "    mLastPausedActivity: ActivityRecord{1 u0 com.example.old/.A t7}\n" +
+		"    topResumedActivity=ActivityRecord{2 u0 com.example.app/.Main t12}\n" +
+		"    * Hist  #0: ActivityRecord{2 u0 com.example.app/.Main t12}\n"
+	if got := foregroundTask(dumpsys); got != "12" {
+		t.Errorf("got %q", got)
+	}
+	if got := foregroundTask("    * Hist  #0: ActivityRecord{2 u0 com.example.app/.Main t5}\n"); got != "5" {
+		t.Errorf("fallback: %q", got)
+	}
+}

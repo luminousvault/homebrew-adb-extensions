@@ -19,12 +19,13 @@ import (
 var cmdRecord = &Command{
 	Name: "record", Summary: "Record the screen", Args: "[file|directory]",
 	Long: "Record the screen to MP4 until you press Ctrl+C or the time limit is reached, then save the\n" +
-		"video on this computer and delete it from the device. Android limits one recording to\n" +
-		"180 seconds and does not record audio. The saved path is printed to stdout.\n" +
+		"video on this computer and delete it from the device. There is no time limit unless -t gives\n" +
+		"one; devices whose screenrecord cannot drop the limit (older Android) stop at 180 seconds.\n" +
+		"Audio is not recorded. The saved path is printed to stdout.\n" +
 		"Records one device at a time (pick it with -s).",
 	ArgHelp: [][2]string{{"file", "Output .mp4 file (default: record-<model>-<time>.mp4)"}, {"directory", "Save into this directory"}},
 	Flags: []Flag{
-		{"-t", "--time-limit", "SECONDS", "Stop after this many seconds (1-180, default 180)"},
+		{"-t", "--time-limit", "SECONDS", "Stop after this many seconds (0 = no limit, the default; 1-180 on older Android)"},
 		{"", "--size", "WxH", "Video size, e.g. 1280x720 (default: screen size)"},
 		flagOpen,
 	},
@@ -58,15 +59,30 @@ func waitStable(serial, path string, timeout time.Duration) int64 {
 	return last
 }
 
+// noTimeLimit reports whether screenrecord accepts --time-limit 0 (newer
+// Android; its --help says "Set to 0 to remove the time limit").
+func noTimeLimit(serial string) bool {
+	return strings.Contains(adb.Shell(serial, "screenrecord --help 2>&1"), "remove the time limit")
+}
+
+// recordClock shows elapsed time, with the limit when there is one: "1:05" or "1:05 / 3:00".
+func recordClock(el, limit int) string {
+	s := fmt.Sprintf("%d:%02d", el/60, el%60)
+	if limit > 0 {
+		s += fmt.Sprintf(" / %d:%02d", limit/60, limit%60)
+	}
+	return s
+}
+
 func runRecord(c *Ctx) error {
 	if err := tooMany(c, 1); err != nil {
 		return err
 	}
-	limit := 180
+	limit := -1 // not given: no limit where the device allows it
 	if v := c.String("--time-limit"); v != "" {
 		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 || n > 180 {
-			return usageErr(c.Cmd, "--time-limit must be 1-180 seconds: %s", v)
+		if err != nil || n < 0 {
+			return usageErr(c.Cmd, "--time-limit must be 0 (no limit) or a number of seconds: %s", v)
 		}
 		limit = n
 	}
@@ -83,6 +99,16 @@ func runRecord(c *Ctx) error {
 	if screenOff(serial) {
 		return failErr(wakeHint(serial),
 			"The screen of %s is off; it can't be recorded", deviceName(serial))
+	}
+	if !noTimeLimit(serial) {
+		switch {
+		case limit < 0:
+			limit = 180
+		case limit == 0 || limit > 180:
+			return failErr("Use -t 1-180", "screenrecord on %s can't record longer than 180 seconds", deviceName(serial))
+		}
+	} else if limit < 0 {
+		limit = 0
 	}
 	arg := ""
 	if len(c.Args) == 1 {
@@ -112,7 +138,7 @@ func runRecord(c *Ctx) error {
 	defer signal.Stop(sig)
 
 	start := time.Now()
-	sp := ui.Spin("Recording %s (0:00 / %d:%02d) — press Ctrl+C to stop", deviceName(serial), limit/60, limit%60)
+	sp := ui.Spin("Recording %s (%s) — press Ctrl+C to stop", deviceName(serial), recordClock(0, limit))
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	stopped := false
@@ -139,7 +165,7 @@ wait:
 		case <-tick.C:
 			if !stopped {
 				el := int(time.Since(start).Seconds())
-				sp.SetText("Recording %s (%d:%02d / %d:%02d) — press Ctrl+C to stop", deviceName(serial), el/60, el%60, limit/60, limit%60)
+				sp.SetText("Recording %s (%s) — press Ctrl+C to stop", deviceName(serial), recordClock(el, limit))
 			}
 		}
 	}
