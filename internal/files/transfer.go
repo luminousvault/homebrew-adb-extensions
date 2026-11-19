@@ -203,7 +203,7 @@ func (j *copyJob) run(ctx context.Context, report func(progress)) copyResult {
 			res.done = append(res.done, op.src) // finished, even if Esc came meanwhile
 			res.doneAs = append(res.doneAs, op.name)
 		} else if ctx.Err() == nil {
-			res.failed = append(res.failed, failure{op.src.Name, err.Error()})
+			res.failed = append(res.failed, failure{shown(op.src.Name), err.Error()})
 		}
 		if ctx.Err() != nil {
 			res.canceled = true

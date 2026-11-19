@@ -139,8 +139,9 @@ type state struct {
 	// whole name, and scrolls one longer than the row.
 	focusKey      string
 	focusSince    time.Time
-	focusExpanded bool // set while drawing: the status line shows its size and date
-	scrolling     bool // set while drawing: the loop redraws to move it
+	focusExpanded bool      // set while drawing: the status line shows its size and date
+	scrolling     bool      // set while drawing: the loop redraws to move it
+	scrollNext    time.Time // when the scrolling name next moves
 	mode          mode
 	msg           *message
 
@@ -675,16 +676,16 @@ func (s *state) openDeviceFile(p *pane, e Entry, note bool) {
 	s.pending = &task{label: "Opening " + e.Name, cancelable: true,
 		run: func(ctx context.Context, report func(progress)) func(*state) {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return func(s *state) { s.setMsg(msgError, "Couldn't open %s: %v", e.Name, err) }
+				return func(s *state) { s.setMsg(msgError, "Couldn't open %s: %v", shown(e.Name), err) }
 			}
 			job := &copyJob{from: from, to: localFS{PC, computerLabel}, dstDir: dir, ops: []copyOp{{src: e, name: e.Name}}}
 			res := job.run(ctx, report)
 			return func(s *state) {
 				switch {
 				case res.canceled:
-					s.setMsg(msgInfo, "Canceled opening %s", e.Name)
+					s.setMsg(msgInfo, "Canceled opening %s", shown(e.Name))
 				case len(res.failed) > 0:
-					s.setMsg(msgError, "Couldn't copy %s: %s", e.Name, res.failed[0].msg)
+					s.setMsg(msgError, "Couldn't copy %s: %s", shown(e.Name), res.failed[0].msg)
 				default:
 					s.openFile(dst, note)
 				}
@@ -1060,7 +1061,7 @@ func (s *state) handleDelete(k tui.Key) {
 				}
 				report(progress{index: i + 1, count: len(targets), name: e.Name, total: -1})
 				if err := f.Remove(e.Path); err != nil {
-					failed = append(failed, failure{e.Name, err.Error()})
+					failed = append(failed, failure{shown(e.Name), err.Error()})
 				} else {
 					done = append(done, e)
 				}
@@ -1108,7 +1109,7 @@ func (s *state) askRename(p *pane) {
 		return
 	}
 	if e, ok := s.cursorEntry(p); ok && !s.blocked() {
-		s.askInput(p, inputRename, e.Name)
+		s.askInput(p, inputRename, shown(e.Name)) // composed: Backspace takes a syllable, not a jamo
 	}
 }
 
@@ -1201,10 +1202,16 @@ func (s *state) submitInput(p *pane) {
 	switch s.inputKind {
 	case inputGoto:
 		dir := expandHome(p.fs, strings.TrimSpace(text))
+		// A relative path is from the folder shown, as in a shell's cd.
 		if p.fs.Side() == PC {
+			if !filepath.IsAbs(dir) {
+				dir = filepath.Join(p.dir, dir)
+			}
 			if abs, err := filepath.Abs(dir); err == nil {
 				dir = abs // paths reach adb whole: never "-x" or relative
 			}
+		} else if !strings.HasPrefix(dir, "/") {
+			dir = p.fs.Join(p.dir, dir)
 		}
 		entries, err := p.fs.List(dir) // once: a failure keeps the folder shown
 		if err != nil {
@@ -1229,7 +1236,7 @@ func (s *state) submitInput(p *pane) {
 		s.setMsg(msgSuccess, "Made folder '%s'", text)
 	case inputRename:
 		e, ok := s.cursorEntry(p)
-		if !ok || text == e.Name {
+		if !ok || shown(text) == shown(e.Name) { // unchanged (an NFD name pre-filled composed counts as the same)
 			return
 		}
 		if err := s.checkNewName(p, text, e.Name); err != nil {
@@ -1238,14 +1245,14 @@ func (s *state) submitInput(p *pane) {
 		}
 		to := p.fs.Join(p.dir, text)
 		if err := renameEntry(p.fs, e, to); err != nil {
-			s.setMsg(msgError, "Couldn't rename '%s': %v", e.Name, err)
-			s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't rename '%s' to '%s' on %s: %v", e.Name, text, p.fs.Label(), err))
+			s.setMsg(msgError, "Couldn't rename '%s': %v", shown(e.Name), err)
+			s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't rename '%s' to '%s' on %s: %v", shown(e.Name), text, p.fs.Label(), err))
 			return
 		}
-		s.addDone(fmt.Sprintf("Renamed '%s' to '%s' on %s", e.Name, text, p.fs.Label()), nil)
+		s.addDone(fmt.Sprintf("Renamed '%s' to '%s' on %s", shown(e.Name), text, p.fs.Label()), nil)
 		s.reload(p)
 		s.refreshRows(p, to)
-		s.setMsg(msgSuccess, "Renamed '%s' to '%s'", e.Name, text)
+		s.setMsg(msgSuccess, "Renamed '%s' to '%s'", shown(e.Name), text)
 	}
 }
 
@@ -1422,3 +1429,7 @@ func itemNames(done []Entry, as []string) []string {
 	}
 	return names
 }
+
+// shown is a name as it is printed: composed (NFC), so a macOS NFD name
+// does not show as loose jamo. Paths keep their own bytes.
+func shown(name string) string { return norm.NFC.String(name) }

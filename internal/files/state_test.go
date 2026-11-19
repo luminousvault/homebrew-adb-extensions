@@ -12,6 +12,7 @@ import (
 	"github.com/luminousvault/homebrew-adb-extensions/internal/style"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/tui"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
+	"golang.org/x/text/unicode/norm"
 )
 
 // write makes files (content = name) and folders (names ending in /) under dir.
@@ -691,5 +692,48 @@ func TestAccessFlags(t *testing.T) {
 		if e, err := fs.Stat(filepath.Join(dir, name)); err != nil || !check(e) {
 			t.Errorf("computer %s: %+v %v", name, e, err)
 		}
+	}
+}
+
+// A relative go-to path is from the folder shown, as in a shell's cd.
+func TestGotoRelative(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "sub/inner/x.txt")
+	s.open(s.cur(), dev, "")
+	press(t, s, ":")
+	s.inputText, s.inputCursor = "sub/inner", len("sub/inner")
+	press(t, s, enter)
+	if want := filepath.Join(dev, "sub", "inner"); s.cur().dir != want {
+		t.Errorf("dir %q, want %q (msg %+v)", s.cur().dir, want, s.msg)
+	}
+	press(t, s, ":")
+	s.inputText, s.inputCursor = "..", 2
+	press(t, s, enter)
+	if want := filepath.Join(dev, "sub"); s.cur().dir != want {
+		t.Errorf("..: dir %q, want %q", s.cur().dir, want)
+	}
+}
+
+// A macOS NFD name is printed composed and pre-filled composed for rename;
+// Enter on it unchanged renames nothing.
+func TestNFDNameInMessagesAndRename(t *testing.T) {
+	s, dev, _ := testState(t)
+	nfd := norm.NFD.String("문서.txt")
+	write(t, dev, nfd)
+	s.open(s.cur(), dev, "")
+	press(t, s, down+"6")
+	if s.inputText != norm.NFC.String(nfd) {
+		t.Fatalf("pre-filled %q", s.inputText)
+	}
+	press(t, s, enter) // unchanged
+	if len(s.summary.Done) != 0 {
+		t.Errorf("an unchanged name was renamed: %+v", s.summary.Done)
+	}
+	press(t, s, "6")
+	s.inputText, s.inputCursor = "보고서.txt", len("보고서.txt")
+	press(t, s, enter)
+	if len(s.summary.Done) != 1 || !strings.Contains(s.summary.Done[0], "'문서.txt' to '보고서.txt'") ||
+		strings.Contains(s.summary.Done[0], nfd) {
+		t.Errorf("summary %+v", s.summary.Done)
 	}
 }

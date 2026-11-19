@@ -181,7 +181,7 @@ func loop(scr *tui.Screen, st *state) error {
 			apply(st)
 			draw = true
 		case <-tick.C:
-			if st.scrolling { // a long cursor name moving
+			if st.scrolling && !time.Now().Before(st.scrollNext) { // a long cursor name moves now
 				draw = true
 			}
 			if st.task != nil {

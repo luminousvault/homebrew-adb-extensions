@@ -705,6 +705,9 @@ func (s *state) infoLine(w int) string {
 		if !e.ModTime.IsZero() {
 			info = append(info, e.ModTime.In(s.now().Location()).Format("2006-01-02 15:04"))
 		}
+		if p.recent && e.Folder != "" {
+			info = append(info, shown(e.Folder)) // the expanded row has no room for it
+		}
 		cursorInfo = Cyan + strings.Join(info, "  ") + NC
 	}
 	if p.recent {
@@ -1145,10 +1148,20 @@ func (s *state) marquee(side Side, path, name string, w int) string {
 	}
 	s.scrolling = true
 	cycle := marqueeWait + time.Duration(over)*marqueeStep + marqueeHold
-	t := s.now().Sub(s.focusSince) % cycle
+	now := s.now()
+	t := now.Sub(s.focusSince) % cycle
 	shift := 0
-	if t > marqueeWait {
-		shift = min(int((t-marqueeWait)/marqueeStep), over)
+	// scrollNext is when the shown part next changes; the loop redraws only
+	// then, not on every tick through the wait and the hold.
+	switch moving := t - marqueeWait; {
+	case moving < 0:
+		s.scrollNext = now.Add(-moving)
+	case int(moving/marqueeStep) < over:
+		shift = int(moving / marqueeStep)
+		s.scrollNext = now.Add(marqueeStep - moving%marqueeStep)
+	default:
+		shift = over
+		s.scrollNext = now.Add(cycle - t)
 	}
 	return dropColumns(name, shift, w)
 }

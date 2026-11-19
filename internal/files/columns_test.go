@@ -220,3 +220,43 @@ func TestOneColumnToggle(t *testing.T) {
 		t.Error("v in two panes should not change anything")
 	}
 }
+
+// The loop redraws a scrolling name only when it moves: scrollNext is the
+// end of the wait, the next step, or the end of the hold.
+func TestMarqueeNextMove(t *testing.T) {
+	s, _, _ := testState(t)
+	start := time.Now()
+	now := start
+	s.now = func() time.Time { return now }
+	name := strings.Repeat("x", 40) // 10 columns over a row of 30
+	s.marquee(Device, "/a", name, 30)
+	if !s.scrollNext.Equal(start.Add(marqueeWait)) {
+		t.Errorf("waiting: next %v, want %v", s.scrollNext.Sub(start), marqueeWait)
+	}
+	now = start.Add(marqueeWait + 2*marqueeStep + marqueeStep/3)
+	s.marquee(Device, "/a", name, 30)
+	if want := start.Add(marqueeWait + 3*marqueeStep); !s.scrollNext.Equal(want) {
+		t.Errorf("moving: next %v, want %v", s.scrollNext.Sub(start), want.Sub(start))
+	}
+	now = start.Add(marqueeWait + 10*marqueeStep + time.Millisecond) // at the end: held
+	s.marquee(Device, "/a", name, 30)
+	if want := start.Add(marqueeWait + 10*marqueeStep + marqueeHold); !s.scrollNext.Equal(want) {
+		t.Errorf("held: next %v, want %v", s.scrollNext.Sub(start), want.Sub(start))
+	}
+}
+
+// In the recent view the expanded cursor row has no room for the folder:
+// the status line shows it with the size and date.
+func TestRecentExpandedShowsFolder(t *testing.T) {
+	s, _, _ := testState(t)
+	p := s.cur()
+	long := "screen-20260813-142551-1786598746592-recording.mp4"
+	p.recent = true
+	p.recentList = []Entry{{Name: long, Path: "/sdcard/Movies/" + long, Size: 10, ModTime: time.Now(), Folder: "/sdcard/Movies"}}
+	s.refreshRows(p, "")
+	s.setSize(60, 20)
+	s.frame()
+	if got := ui.Plain(s.infoLine(58)); !s.focusExpanded || !strings.Contains(got, "/sdcard/Movies") {
+		t.Errorf("expanded %v, status %q", s.focusExpanded, got)
+	}
+}
