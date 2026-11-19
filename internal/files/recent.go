@@ -1,6 +1,7 @@
 package files
 
 import (
+	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
 	"path"
 	"strconv"
 	"strings"
@@ -99,4 +100,41 @@ func recentEntries(rows []RecentFile) []Entry {
 		list = append(list, Entry{Name: path.Base(p), Path: p, Size: r.Size, ModTime: r.Modified, Folder: path.Dir(p)})
 	}
 	return list
+}
+
+// FillUnknownSizes asks the device for the size and modification time of
+// the rows MediaStore has not scanned yet (size -1), with one stat for all of
+// them (in batches of 100), so a fresh file shows its real size instead of
+// "?". A row stat cannot read keeps size -1.
+func FillUnknownSizes(serial string, rows []RecentFile) {
+	var idx []int
+	for i, r := range rows {
+		if r.Size < 0 {
+			idx = append(idx, i)
+		}
+	}
+	for len(idx) > 0 {
+		n := min(len(idx), 100)
+		q := make([]string, n)
+		at := map[string]int{}
+		for j, i := range idx[:n] {
+			q[j] = ShellQuote(rows[i].Path)
+			at[rows[i].Path] = i
+		}
+		out := adb.Shell(serial, "stat -c '%s|%Y|%n' "+strings.Join(q, " ")+" 2>/dev/null")
+		for _, line := range strings.Split(out, "\n") {
+			f := strings.SplitN(line, "|", 3) // the name may hold '|'
+			if len(f) != 3 {
+				continue
+			}
+			i, ok := at[f[2]]
+			size, err1 := strconv.ParseInt(f[0], 10, 64)
+			mtime, err2 := strconv.ParseInt(f[1], 10, 64)
+			if !ok || err1 != nil || err2 != nil {
+				continue
+			}
+			rows[i].Size, rows[i].Modified = size, time.Unix(mtime, 0)
+		}
+		idx = idx[n:]
+	}
 }

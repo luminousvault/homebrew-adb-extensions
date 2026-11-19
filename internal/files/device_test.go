@@ -282,3 +282,20 @@ func TestParseRecentFilesNotScannedYet(t *testing.T) {
 		t.Error("the query should keep unscanned files and sort them by date_added")
 	}
 }
+
+// Rows MediaStore has not scanned (size NULL) get their size and time from
+// one stat on the device, so "?" shows only when even that fails.
+func TestFillUnknownSizes(t *testing.T) {
+	a, b := "/storage/emulated/0/Download/new.txt", "/storage/emulated/0/Download/gone|x.txt"
+	fakeADB(t, map[string]adbtest.Response{
+		shellKey("stat -c '%s|%Y|%n' " + ShellQuote(a) + " " + ShellQuote(b) + " 2>/dev/null"): {Stdout: "3|1795067900|" + a + "\n"},
+	})
+	rows := []RecentFile{{Path: a, Size: -1}, {Path: "/storage/emulated/0/ui.xml", Size: 21}, {Path: b, Size: -1}}
+	FillUnknownSizes(serial, rows)
+	if rows[0].Size != 3 || !rows[0].Modified.Equal(time.Unix(1795067900, 0)) {
+		t.Errorf("filled: %+v", rows[0])
+	}
+	if rows[1].Size != 21 || rows[2].Size != -1 {
+		t.Errorf("others: %+v %+v", rows[1], rows[2])
+	}
+}

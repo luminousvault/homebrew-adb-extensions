@@ -29,8 +29,8 @@ func TestNumberKeys(t *testing.T) {
 		t.Fatal("1 is help")
 	}
 	press(t, s, "x"+"2") // close help, then sort
-	if s.sortBy != sortNewest {
-		t.Errorf("2 is sort: %v", s.sortBy)
+	if s.cur().sortBy != sortNewest {
+		t.Errorf("2 is sort: %v", s.cur().sortBy)
 	}
 	press(t, s, "9")
 	if !s.split {
@@ -86,19 +86,14 @@ func TestInfoLine(t *testing.T) {
 	if got := leftOf(ui.Plain(s.infoLine(100))); got != "1/1  2 folders  3 files  18 B  1 selected 7 B  filter: cc (Esc clears)" {
 		t.Errorf("filter %q", got)
 	}
-	// The device's free space follows the folder's size in parentheses; the
-	// sort order is at the right end.
+	// The device's free space follows the folder's size in parentheses.
 	s.cur().free = 54 << 30
 	got := ui.Plain(s.infoLine(100))
-	if !strings.HasPrefix(got, "1/1  2 folders  3 files  18 B (54.0 GB free)  1 selected 7 B") ||
-		!strings.HasSuffix(got, "sort: name ↑") || ui.TextWidth(got) != 100 {
+	if got != "1/1  2 folders  3 files  18 B (54.0 GB free)  1 selected 7 B  filter: cc (Esc clears)" {
 		t.Errorf("free %q", got)
 	}
 	if raw := s.infoLine(100); !strings.Contains(raw, style.Dim+"(54.0 GB free)") {
 		t.Errorf("free space not dim: %q", raw)
-	}
-	if h := ui.Plain(s.header(s.cur(), 100, true)); strings.Contains(h, "name ↑") {
-		t.Errorf("sort still in the header: %q", h)
 	}
 }
 
@@ -339,19 +334,37 @@ func TestLetterKeyRowsNoSpare(t *testing.T) {
 	}
 }
 
-// The sort order at the right end keeps a column of margin, like the left.
-func TestSortRightMargin(t *testing.T) {
-	s, dev, _ := testState(t)
-	write(t, dev, "a.txt")
-	s.open(s.cur(), dev, "")
-	s.setSize(100, 30)
-	for _, l := range s.frame() {
-		if p := ui.Plain(l); strings.Contains(p, "sort: ") {
-			if !strings.HasSuffix(p, "name ↑") || ui.TextWidth(p) != 99 {
-				t.Errorf("status line %q: width %d, want 99 (one free column)", p, ui.TextWidth(p))
-			}
-			return
-		}
+// Each pane sorts on its own and shows its order in its header; the recent
+// view sorts apart from the folders and starts newest first. The other pane
+// is left alone.
+func TestSortPerPane(t *testing.T) {
+	s, dev, pc := testState(t)
+	write(t, dev, "b.txt", "a.txt")
+	write(t, pc, "y.txt", "x.txt")
+	s.open(s.panes[Device], dev, "")
+	s.open(s.panes[PC], pc, "")
+	press(t, s, "2") // the device pane: newest
+	if s.panes[Device].sortBy != sortNewest || s.panes[PC].sortBy != sortName {
+		t.Errorf("sort device %v, computer %v", s.panes[Device].sortBy, s.panes[PC].sortBy)
 	}
-	t.Fatal("no status line")
+	if h := ui.Plain(s.header(s.panes[Device], 100, true)); !strings.HasSuffix(strings.TrimSpace(h), "newest ↓") {
+		t.Errorf("device header %q", h)
+	}
+	if h := ui.Plain(s.header(s.panes[PC], 100, false)); !strings.HasSuffix(strings.TrimSpace(h), "name ↑") {
+		t.Errorf("computer header %q", h)
+	}
+	if strings.Contains(ui.Plain(s.infoLine(100)), "sort") {
+		t.Error("the sort order is no longer on the status line")
+	}
+	p := s.panes[Device]
+	p.recent = true
+	p.recentList = []Entry{{Name: "small", Path: "/r/small", Size: 1}, {Name: "big", Path: "/r/big", Size: 9}}
+	s.refreshRows(p, "")
+	press(t, s, "2") // recent: newest -> size
+	if p.recentSort != sortSize || p.sortBy != sortNewest || p.rows[0].Name != "big" {
+		t.Errorf("recent sort %v, folder sort %v, first %s", p.recentSort, p.sortBy, p.rows[0].Name)
+	}
+	if h := ui.Plain(s.header(p, 100, true)); !strings.HasSuffix(strings.TrimSpace(h), "size ↓") {
+		t.Errorf("recent header %q", h)
+	}
 }

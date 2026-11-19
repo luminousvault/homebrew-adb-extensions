@@ -260,3 +260,19 @@ func TestRecentExpandedShowsFolder(t *testing.T) {
 		t.Errorf("expanded %v, status %q", s.focusExpanded, got)
 	}
 }
+
+// A size MediaStore does not know yet is left out of the status line rather
+// than shown as a bare "?".
+func TestUnknownSizeNotInStatus(t *testing.T) {
+	s, _, _ := testState(t)
+	p := s.cur()
+	long := "screen-20260813-142551-1786598746592-recording.mp4"
+	p.recent = true
+	p.recentList = []Entry{{Name: long, Path: "/sdcard/Download/" + long, Size: -1, ModTime: time.Now(), Folder: "/sdcard/Download"}}
+	s.refreshRows(p, "")
+	s.setSize(60, 20)
+	s.frame()
+	if got := ui.Plain(s.infoLine(58)); strings.Contains(got, "?") || !strings.Contains(got, "/sdcard/Download") {
+		t.Errorf("status %q", got)
+	}
+}

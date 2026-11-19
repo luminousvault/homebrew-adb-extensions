@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - `pull` no longer overwrites a file already in the destination directory: like `push`, the pulled file gets a ` (N)` suffix and a warning. Names are compared ignoring case (macOS and Windows ignore it)
 - `push` compares the names already on the device ignoring case (`/sdcard` ignores it), so `report.pdf` no longer overwrites `REPORT.PDF`
-- `pull` (and the recent view of `files`) lists a file MediaStore has not scanned yet: just after it is written it has no size or modification date for a while and was left out, so a freshly pushed or saved file was missing. It now shows with size `?`, sorted by the time it was added
+- `pull` (and the recent view of `files`) lists a file MediaStore has not scanned yet: just after it is written it has no size or modification date for a while and was left out, so a freshly pushed or saved file was missing. It now shows, sorted by the time it was added, with its real size and time read with one `stat` on the device
 - `pull` shows a spinner while it reads the recent files (about a second, mostly the device starting the `content` command); with several devices the device picker no longer stays on screen meanwhile
 
 ## [2.3.0] - 2026-11-13

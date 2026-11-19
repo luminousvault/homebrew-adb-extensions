@@ -95,8 +95,9 @@ func runPull(c *Ctx) error {
 	tui.ClearHeld()
 	sp := ui.Spin("Reading recent files on %s", deviceName(serial))
 	raw := adb.Shell(serial, files.RecentFilesQuery) // ~1s even for few rows: `content` starts a JVM
-	sp.Stop()
 	recent := files.ParseRecentFiles(raw)
+	files.FillUnknownSizes(serial, recent) // files MediaStore has not scanned yet
+	sp.Stop()
 	if len(recent) == 0 {
 		if raw == "" || strings.Contains(raw, "No result found") {
 			return failErr("", "No recent files found on %s", deviceName(serial))

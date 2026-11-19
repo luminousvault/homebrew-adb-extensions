@@ -539,11 +539,15 @@ func (s *state) header(p *pane, w int, active bool) string {
 	if active && s.split {
 		color = Cyan + Bold
 	}
-	// The sort order is on the status line; the header keeps the filter, so
-	// with two panes the other pane's filter shows too.
-	r := ""
+	// The filter and the sort order of this pane: with two panes each shows
+	// its own, as each sorts on its own.
+	key := p.sortBy
+	if p.recent {
+		key = p.recentSort
+	}
+	r := key.label() + " "
 	if p.filter != "" {
-		r = "/" + p.filter + " "
+		r = "/" + p.filter + "  " + r
 	}
 	room := w - 3 - ui.TextWidth(label) // " label  "
 	if room-ui.TextWidth(r)-2 >= min(ui.TextWidth(where), 20) {
@@ -699,7 +703,7 @@ func (s *state) infoLine(w int) string {
 	cursorInfo := ""
 	if e, ok := s.cursorEntry(p); ok && s.focusExpanded {
 		var info []string
-		if !e.Dir {
+		if !e.Dir && e.Size >= 0 { // unknown (not scanned by MediaStore yet): left out, not "?"
 			info = append(info, HumanSize(e.Size))
 		}
 		if !e.ModTime.IsZero() {
@@ -748,17 +752,7 @@ func (s *state) infoLine(w int) string {
 	if p.filter != "" {
 		parts = append(parts, "filter: "+p.filter+" "+Dim+"(Esc clears)"+NC)
 	}
-	left := strings.Join(parts, "  ")
-	// The sort order sits at the right end (it used to be in the header).
-	sort := s.sortBy.label()
-	if p.recent {
-		sort = "newest ↓"
-	}
-	right := Dim + "sort: " + sort + NC
-	if gap := w - visWidth(left) - visWidth(right); gap >= 2 {
-		return left + strings.Repeat(" ", gap) + right
-	}
-	return left
+	return strings.Join(parts, "  ") // each pane's sort order is in its header
 }
 
 func plural(n int, word string) string {

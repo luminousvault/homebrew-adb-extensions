@@ -49,15 +49,18 @@ func (k sortKey) label() string {
 // pane is one side's folder view. Each side keeps its folder, cursor and
 // selection while the other side is shown.
 type pane struct {
-	fs       FS
-	dir      string
-	entries  []Entry // the folder's listing
-	err      error   // the listing failed
-	rows     []Entry // shown: ".." first, then entries after hidden, filter and sort
-	cursor   int
-	top      int // first row on screen
-	selected map[string]bool
-	filter   string
+	fs      FS
+	dir     string
+	entries []Entry // the folder's listing
+	err     error   // the listing failed
+	rows    []Entry // shown: ".." first, then entries after hidden, filter and sort
+	// Each pane sorts on its own (2), and its recent view apart from its
+	// folders: the recent files start newest first.
+	sortBy, recentSort sortKey
+	cursor             int
+	top                int // first row on screen
+	selected           map[string]bool
+	filter             string
 
 	recent      bool    // device: recent files instead of the folder
 	recentList  []Entry // nil until loaded
@@ -132,7 +135,6 @@ type state struct {
 	wantSplit  bool // two panes when the window is wide enough: on at start, 9 toggles it
 	width      int
 	height     int
-	sortBy     sortKey
 	showHidden bool
 	oneColumn  bool // v: one pane lists in one wide column (long names), not two
 	// The cursor's row when its name does not fit (render.go): it shows the
@@ -178,8 +180,8 @@ type state struct {
 func newState(device, pc FS, deviceDir, pcDir string, openLocal func(string) error) *state {
 	// The PC pane is on from the start (when the window is wide enough).
 	s := &state{now: time.Now, openLocal: openLocal, tempDir: tempDir(), width: 80, height: 24, wantSplit: true}
-	s.panes[Device] = &pane{fs: device, selected: map[string]bool{}, free: -1}
-	s.panes[PC] = &pane{fs: pc, selected: map[string]bool{}, free: -1}
+	s.panes[Device] = &pane{fs: device, selected: map[string]bool{}, free: -1, recentSort: sortNewest}
+	s.panes[PC] = &pane{fs: pc, selected: map[string]bool{}, free: -1, recentSort: sortNewest}
 	s.open(s.panes[Device], deviceDir, "")
 	s.open(s.panes[PC], pcDir, "")
 	return s
@@ -279,8 +281,10 @@ func (s *state) refreshRows(p *pane, focus string) {
 		}
 		rows = append(rows, e)
 	}
-	if !p.recent {
-		sortEntries(rows, s.sortBy)
+	if p.recent {
+		sortEntries(rows, p.recentSort)
+	} else {
+		sortEntries(rows, p.sortBy)
 		if f == "" && p.fs.Dir(p.dir) != p.dir {
 			rows = append([]Entry{{Name: "..", Path: p.fs.Dir(p.dir), Dir: true}}, rows...)
 		}
@@ -485,8 +489,14 @@ func (s *state) handleRune(p *pane, r byte) {
 		}
 		s.toggleRecent(p)
 	case 's':
-		s.sortBy = (s.sortBy + 1) % 3
-		s.refreshAll()
+		// The pane with the cursor, and in it the view shown: sorting the
+		// recent files leaves the folders' order, and the other pane, alone.
+		if p.recent {
+			p.recentSort = (p.recentSort + 1) % 3
+		} else {
+			p.sortBy = (p.sortBy + 1) % 3
+		}
+		s.refreshRows(p, s.focusPath(p))
 	case '.':
 		s.showHidden = !s.showHidden
 		s.refreshAll()
