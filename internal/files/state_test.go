@@ -737,3 +737,27 @@ func TestNFDNameInMessagesAndRename(t *testing.T) {
 		t.Errorf("summary %+v", s.summary.Done)
 	}
 }
+
+// Leaving the recent view lists the folder again: what was deleted there
+// is gone from the folder view too.
+type recentLocal struct{ localFS }
+
+func (recentLocal) Recent() ([]Entry, error) { return nil, nil }
+
+func TestLeavingRecentReloadsFolder(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "big.mp4", "keep.txt")
+	p := s.panes[Device]
+	p.fs = recentLocal{localFS{Device, "Test Phone"}}
+	s.open(p, dev, "")
+	p.recent, p.folderPath = true, ""
+	p.recentList = []Entry{{Name: "big.mp4", Path: filepath.Join(dev, "big.mp4"), Size: 1}}
+	s.refreshRows(p, "")
+	if err := os.Remove(filepath.Join(dev, "big.mp4")); err != nil { // deleted meanwhile
+		t.Fatal(err)
+	}
+	s.toggleRecent(p)
+	if got := names(p); strings.Contains(got, "big.mp4") || !strings.Contains(got, "keep.txt") {
+		t.Errorf("folder after recent: %s", got)
+	}
+}

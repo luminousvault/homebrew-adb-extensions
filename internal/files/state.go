@@ -715,7 +715,11 @@ func (s *state) toggleRecent(p *pane) {
 		p.recent = false
 		p.filter = ""
 		p.selected = map[string]bool{}
+		// List the folder again: a delete or a copy in the recent view
+		// only reloaded the recent rows.
+		p.entries, p.err = p.fs.List(p.dir)
 		s.refreshRows(p, p.folderPath)
+		readFree(p)
 		return
 	}
 	if s.blocked() {
