@@ -457,9 +457,13 @@ func (s *state) handleRune(p *pane, r byte) {
 	case 'v':
 		s.paste(p)
 	case 'b':
-		if s.split {
+		switch {
+		case s.split:
 			s.setMsg(msgInfo, "Two panes list in one column each: 9 hides the computer pane")
 			return
+		case s.width < minColumnsWidth:
+			s.setMsg(msgInfo, "Window too narrow for two columns")
+			return // nothing to switch: the label stays as it is
 		}
 		key := s.focusPath(p)
 		s.oneColumn = !s.oneColumn

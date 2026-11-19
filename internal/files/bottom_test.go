@@ -381,3 +381,39 @@ func TestSortPerPane(t *testing.T) {
 		t.Errorf("recent header %q", h)
 	}
 }
+
+// Top-row keys that do nothing in a view are left out; they come last, so
+// the keys before them never move.
+func TestLetterKeysByView(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "a.txt")
+	s.open(s.cur(), dev, "")
+	s.setSize(200, 30)
+	plain := func() string { return ui.Plain(strings.Join(s.letterKeys(), "  ")) }
+	full := plain()
+	if !strings.HasSuffix(full, "q Quit  b 1 column  : Go to") {
+		t.Fatalf("view keys should be last: %q", full)
+	}
+	fixed := full[:strings.Index(full, "  b 1 column")]
+	p := s.cur()
+	p.recent, p.recentList = true, []Entry{}
+	s.refreshRows(p, "")
+	if got := plain(); strings.Contains(got, "Go to") || !strings.HasPrefix(got, fixed) {
+		t.Errorf("recent view: %q", got)
+	}
+	p.recent = false
+	s.refreshRows(p, "")
+	s.setSize(70, 30) // too narrow for two columns: no b
+	if got := plain(); strings.Contains(got, "column") || !strings.Contains(got, ": Go to") {
+		t.Errorf("narrow: %q", got)
+	}
+	press(t, s, "b")
+	if s.oneColumn || s.msg == nil {
+		t.Errorf("b when narrow should only say why: oneColumn %v msg %+v", s.oneColumn, s.msg)
+	}
+	s.setSize(200, 30)
+	press(t, s, "9") // two panes: no b
+	if got := plain(); strings.Contains(got, "column") {
+		t.Errorf("two panes: %q", got)
+	}
+}

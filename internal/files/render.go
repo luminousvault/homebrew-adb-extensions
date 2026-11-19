@@ -1035,14 +1035,18 @@ func (s *state) letterKeys() []string {
 		out = append(out, k("←→", "Up/Open"))
 	}
 	out = append(out, k("Space", "Select"), k("a", "All"), k("/", "Filter"))
+	out = append(out, k(".", map[bool]string{true: "Hide hidden", false: "Show hidden"}[s.showHidden]))
+	out = append(out, k("?", "Help"), k("q", "Quit"))
+	// Keys that work only in some views come last and are left out where
+	// they do nothing, so the row stays short and the keys before them
+	// never move: b needs one pane wide enough for two columns, : Go to a
+	// folder (not the recent view).
+	if !s.split && s.width >= minColumnsWidth {
+		out = append(out, k("b", map[bool]string{true: "2 columns", false: "1 column"}[s.oneColumn]))
+	}
 	if !p.recent {
 		out = append(out, k(":", "Go to"))
 	}
-	out = append(out, k(".", map[bool]string{true: "Hide hidden", false: "Show hidden"}[s.showHidden]))
-	if !s.split {
-		out = append(out, k("b", map[bool]string{true: "2 columns", false: "1 column"}[s.oneColumn]))
-	}
-	out = append(out, k("?", "Help"), k("q", "Quit"))
 	// Esc is not here: it shows where it acts, "Esc Cancel" on the progress
 	// line and "Esc clears" beside the filter on the status line. A key that
 	// came and went here would change how many rows the keys take.
