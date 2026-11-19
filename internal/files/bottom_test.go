@@ -24,13 +24,13 @@ func TestNumberKeys(t *testing.T) {
 	if read(t, filepath.Join(dev, "b.txt")) != "b.txt" {
 		t.Fatalf("5 on the PC should push: %+v", s.msg)
 	}
-	press(t, s, "1")
+	press(t, s, "?")
 	if s.mode != modeHelp {
-		t.Fatal("1 is help")
+		t.Fatal("? is help")
 	}
-	press(t, s, "x"+"2") // close help, then sort
+	press(t, s, "x"+"1") // close help, then sort
 	if s.cur().sortBy != sortNewest {
-		t.Errorf("2 is sort: %v", s.cur().sortBy)
+		t.Errorf("1 is sort: %v", s.cur().sortBy)
 	}
 	press(t, s, "9")
 	if !s.split {
@@ -53,8 +53,12 @@ func TestNumberKeys(t *testing.T) {
 		t.Error("8 deletes")
 	}
 	press(t, s, esc+"0")
+	if s.mode != modeInput || s.inputKind != inputRename {
+		t.Error("0 renames")
+	}
+	press(t, s, esc+"q")
 	if s.exit != exitQuit {
-		t.Error("0 quits")
+		t.Error("q quits")
 	}
 }
 
@@ -115,27 +119,33 @@ func TestNumberBar(t *testing.T) {
 	if ui.TextWidth(got) != 200 {
 		t.Fatalf("width %d: %q", ui.TextWidth(got), got)
 	}
-	// Each key with a label shows its letter alias after it, in parentheses:
-	// the keys of before the number bar still work and the bar says so.
-	// 3 Open is Enter.
-	for i, want := range []string{"1 Help (?)", "2 Sort (s)", "3 Open", "4 Recent (t)", "5 To computer (g)", "6", "7 Mkdir (n)", "8 Delete (d)", "9 Show computer (w)", "0 Quit (q)"} {
+	// Each key that works shows its letter alias after it, in parentheses; one
+	// that does nothing here keeps its label, dim, with an × when color is off.
+	for i, want := range []string{"1 Sort (s)", "2 Recent (t)", "3 ×Copy", "4 ×Cut", "5 ×To computer", "6 ×Paste", "7 Mkdir (n)", "8 ×Delete", "9 Show computer (w)", "0 ×Rename"} {
 		cell := strings.TrimRight(string([]rune(got)[i*20:i*20+20]), " ")
 		if cell != want {
 			t.Errorf("cell %d = %q, want %q", i, cell, want)
 		}
 	}
-	press(t, s, down) // on a file: rename works
-	if !strings.Contains(ui.Plain(s.bottomBar(200, 1)[0]), "6 Rename (r)") {
-		t.Error("6 Rename on a file")
-	}
-	press(t, s, tab) // PC: recent (the device's) and push
+	press(t, s, down) // on a file: copy, cut, send, delete and rename work
 	got = ui.Plain(s.bottomBar(200, 1)[0])
-	if !strings.Contains(got, "4 Recent (t)        5 To device (p)") {
+	for _, want := range []string{"3 Copy (c)", "4 Cut (x)", "5 To computer (g)", "8 Delete (d)", "0 Rename (r)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("on a file: %q lacks %q", got, want)
+		}
+	}
+	press(t, s, "c") // something in the clipboard: paste works
+	if got = ui.Plain(s.bottomBar(200, 1)[0]); !strings.Contains(got, "6 Paste (v)") {
+		t.Errorf("clipboard: %q", got)
+	}
+	press(t, s, tab) // PC: push
+	got = ui.Plain(s.bottomBar(200, 1)[0])
+	if !strings.Contains(got, "5 ×To device") {
 		t.Errorf("PC bar %q", got)
 	}
 	// Narrow: labels are cut to the cell, never wrapped.
 	got = ui.Plain(s.bottomBar(40, 1)[0])
-	if !strings.HasPrefix(got, "1He 2So 3Op 4Re 5To") || ui.TextWidth(got) != 40 {
+	if !strings.HasPrefix(got, "1So 2Re 3×C 4×C 5×T") || ui.TextWidth(got) != 40 {
 		t.Errorf("narrow %q", got)
 	}
 	// A question puts its keys in the bar's place.
@@ -197,10 +207,13 @@ func TestLetterKeysShown(t *testing.T) {
 		t.Errorf("want header, rule, letter keys: %q / %q / %q", ui.Plain(frame[0]), ui.Plain(frame[1]), ui.Plain(frame[2]))
 	}
 	all := ui.Plain(strings.Join(frame, "\n"))
-	for _, want := range []string{"Tab Computer", "Enter Open", "Bksp Up", "←→ Column", "Space Select", "a All", "/ Filter", ": Go to", ". Show hidden"} {
+	for _, want := range []string{"Tab Computer", "←→ Column", "Space Select", "a All", "/ Filter", ": Go to", ". Show hidden", "b 1 column", "? Help", "q Quit"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("wide: %q not shown", want)
 		}
+	}
+	if strings.Contains(all, "Enter Open") || strings.Contains(all, "Bksp Up") {
+		t.Error("Enter and Backspace are in the help, not on the key row")
 	}
 	if l := s.layout(); len(l.keys) != 1 {
 		t.Errorf("wide: %d rows of letter keys", len(l.keys))
@@ -274,12 +287,12 @@ func TestNumberBarTwoRows(t *testing.T) {
 	s.setSize(100, 20)
 	lines := s.frame()
 	top, bottom := ui.Plain(lines[len(lines)-2]), ui.Plain(lines[len(lines)-1])
-	for _, want := range []string{"1 Help (?)", "2 Sort (s)", "3 Open", "4 Recent (t)", "5 To computer (g)"} {
+	for _, want := range []string{"1 Sort (s)", "2 Recent (t)", "3 ×Copy", "4 ×Cut", "5 ×To computer"} {
 		if !strings.Contains(top, want) {
 			t.Errorf("first row %q lacks %q", top, want)
 		}
 	}
-	for _, want := range []string{"7 Mkdir (n)", "8 Delete (d)", "9 Show computer (w)", "0 Quit (q)"} {
+	for _, want := range []string{"6 ×Paste", "7 Mkdir (n)", "8 ×Delete", "9 Show computer (w)", "0 ×Rename"} {
 		if !strings.Contains(bottom, want) {
 			t.Errorf("second row %q lacks %q", bottom, want)
 		}
@@ -289,13 +302,13 @@ func TestNumberBarTwoRows(t *testing.T) {
 	s.setSize(minColumnsWidth, 20)
 	lines = s.frame()
 	top, bottom = ui.Plain(lines[len(lines)-2]), ui.Plain(lines[len(lines)-1])
-	if !strings.Contains(top, "5 To computer ") || !strings.Contains(bottom, "9 Show computer ") ||
-		!strings.Contains(top, "1 Help (?)") || strings.Contains(top+bottom, "…") {
+	if !strings.Contains(top, "5 ×To computer") || !strings.Contains(bottom, "9 Show computer ") ||
+		!strings.Contains(top, "1 Sort (s)") || strings.Contains(top+bottom, "…") {
 		t.Errorf("80 columns: %q / %q", top, bottom)
 	}
 	s.setSize(barOneRowWidth, 20)
 	lines = s.frame()
-	if last := ui.Plain(lines[len(lines)-1]); !strings.Contains(last, "1 Help (?)") || !strings.Contains(last, "0 Quit (q)") {
+	if last := ui.Plain(lines[len(lines)-1]); !strings.Contains(last, "1 Sort (s)") || !strings.Contains(last, "0 ×Rename") {
 		t.Errorf("wide: one row expected, got %q", last)
 	}
 }
@@ -343,7 +356,7 @@ func TestSortPerPane(t *testing.T) {
 	write(t, pc, "y.txt", "x.txt")
 	s.open(s.panes[Device], dev, "")
 	s.open(s.panes[PC], pc, "")
-	press(t, s, "2") // the device pane: newest
+	press(t, s, "1") // the device pane: newest
 	if s.panes[Device].sortBy != sortNewest || s.panes[PC].sortBy != sortName {
 		t.Errorf("sort device %v, computer %v", s.panes[Device].sortBy, s.panes[PC].sortBy)
 	}
@@ -360,7 +373,7 @@ func TestSortPerPane(t *testing.T) {
 	p.recent = true
 	p.recentList = []Entry{{Name: "small", Path: "/r/small", Size: 1}, {Name: "big", Path: "/r/big", Size: 9}}
 	s.refreshRows(p, "")
-	press(t, s, "2") // recent: newest -> size
+	press(t, s, "1") // recent: newest -> size
 	if p.recentSort != sortSize || p.sortBy != sortNewest || p.rows[0].Name != "big" {
 		t.Errorf("recent sort %v, folder sort %v, first %s", p.recentSort, p.sortBy, p.rows[0].Name)
 	}

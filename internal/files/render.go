@@ -48,6 +48,7 @@ func truncate(t string, w int) string {
 type frameLayout struct {
 	header, topRule, bottomRule bool
 	barGap                      bool     // a blank row between the status line and the number bar
+	clip                        bool     // the clipboard row over the status line, blank when empty
 	bar                         int      // rows of the number key bar: 2 when narrow, 1, or 0
 	keys                        []string // the letter keys, under the header: one or two rows
 	list                        int
@@ -59,7 +60,7 @@ type frameLayout struct {
 func (s *state) layout() frameLayout {
 	// The rows depend on the size only, never on a copy running, a question
 	// or an input, so the list does not jump when they come and go.
-	l := frameLayout{header: true, topRule: true, bottomRule: true, barGap: true, bar: 1}
+	l := frameLayout{header: true, topRule: true, bottomRule: true, barGap: true, clip: true, bar: 1}
 	if s.width < barOneRowWidth {
 		l.bar = 2 // 1-5 over 6-0, so the labels are not cut
 	}
@@ -71,7 +72,7 @@ func (s *state) layout() frameLayout {
 		// The rule between the header and the letter keys comes with the keys;
 		// the final 1 is the status line.
 		keysRule := b2i(l.header && len(l.keys) > 0)
-		return b2i(l.header) + keysRule + b2i(l.topRule) + b2i(l.bottomRule) + len(l.keys) + b2i(l.barGap && l.bar > 0) + l.bar + 1
+		return b2i(l.header) + keysRule + b2i(l.topRule) + b2i(l.bottomRule) + len(l.keys) + b2i(l.barGap && l.bar > 0) + b2i(l.clip) + l.bar + 1
 	}
 	// Too short: the gap over the bar, the letter keys (second row, then
 	// all), the bar's second row (back to one cut row), the bar, the rules,
@@ -80,6 +81,8 @@ func (s *state) layout() frameLayout {
 		switch {
 		case l.barGap:
 			l.barGap = false
+		case l.clip:
+			l.clip = false
 		case len(l.keys) > 0:
 			l.keys = l.keys[:len(l.keys)-1]
 		case l.bar > 0:
@@ -116,6 +119,9 @@ func (s *state) frame() []string {
 		}
 		if l.bottomRule {
 			lines = append(lines, s.bottomRuleLine(w))
+		}
+		if l.clip {
+			lines = append(lines, s.clipLine())
 		}
 		lines = append(lines, " "+s.statusText())
 		if l.bar > 0 {
@@ -159,6 +165,9 @@ func (s *state) frame() []string {
 	lines = append(lines, area[2:]...)
 	if l.bottomRule {
 		lines = append(lines, s.bottomRuleLine(w))
+	}
+	if l.clip {
+		lines = append(lines, s.clipLine())
 	}
 	lines = append(lines, " "+s.statusText())
 	if l.bar > 0 {
@@ -216,7 +225,7 @@ func helpSections() []helpSection {
 			{"PgUp PgDn", "", "A screen (in two columns, both columns)"},
 			{"Home End", "", "First and last item"},
 			{"← →", "", "Two columns: the other column. One column: parent folder, open"},
-			{"3 Open", "Enter", "Go into a folder or open a file (see How things work)"},
+			{"Enter", "", "Go into a folder or open a file (see How things work)"},
 			{"Backspace", "", "Parent folder"},
 			{":", "", "Go to a path you type"},
 		}},
@@ -224,15 +233,18 @@ func helpSections() []helpSection {
 			{"Space", "", "Select or unselect, then move down"},
 			{"a", "", "Select or unselect everything here (as in the install and pull pickers)"},
 			{"/", "", "Filter by name as you type; Esc turns it off"},
-			{"", "", "A selection is used by 5 and 8 only; selected items a filter or hidden files hide are left out"},
+			{"", "", "A selection is used by 3, 4, 5 and 8; selected items a filter or hidden files hide are left out"},
 		}},
 		{"Copy", []helpItem{
-			{"5 To computer", "g", "On the device side: copy to the computer side's current folder (adb pull)"},
-			{"5 To device", "p", "On the computer side: copy to the device side's current folder (adb push)"},
-			{"", "", "What: the selected items shown, or else the item under the cursor. The originals stay: there is no move; delete with 8 afterwards"},
+			{"5 To computer", "g", "On the device side: copy to the computer side's current folder now (adb pull)"},
+			{"5 To device", "p", "On the computer side: copy to the device side's current folder now (adb push)"},
+			{"3 Copy", "c", "Take the items into ak's clipboard to paste later; folders and panes can change meanwhile, so files from several folders go to one place"},
+			{"4 Cut", "x", "The same, and the paste moves them: the originals go once each copy is complete (on one side, a rename)"},
+			{"6 Paste", "v", "Paste the clipboard into the folder where the cursor is: device ↔ computer, or within the device or the computer. A copy stays in the clipboard for more pastes; what a cut moved leaves it"},
+			{"", "", "What 3, 4, 5 take: the selected items shown, or else the item under the cursor. In the same folder a copy gets ' (N)' and a cut does nothing; a folder never goes into itself"},
 			{"o s r", "", "A name already there: overwrite, skip, or rename with ' (N)'. A capital letter does all the rest; Esc or q cancels"},
-			{"", "", "Overwrite copies to a temporary name first, checks the size, then swaps it in; if that fails or is canceled, the old item stays"},
-			{"Esc", "", "Stops copying (a progress bar shows it) and removes the half-copied item"},
+			{"", "", "Overwrite copies to a temporary name first, checks the size, then swaps it in; if that fails or is canceled, the old item stays. A move keeps the original when the size can't be checked"},
+			{"Esc", "", "Stops copying (a progress bar shows it) and removes the half-copied item; else turns the filter off; else empties the clipboard"},
 		}},
 		{"How things work", []helpItem{
 			{"Open", "", "A folder: go into it. A device file is copied to " + tmp + " and opened with its default app; a big file takes a while (progress bar, Esc cancels). Files there are removed on a later start, a day after. A computer file opens at once. With a selection, only the file under the cursor opens"},
@@ -242,19 +254,19 @@ func helpSections() []helpSection {
 			{"Device", "", "Reached with adb's shell rights: the main user's storage (user 0) only, not a work profile"},
 		}},
 		{"Manage", []helpItem{
-			{"6 Rename", "r", "Rename the item under the cursor"},
+			{"0 Rename", "r", "Rename the item under the cursor (in the recent view too)"},
 			{"7 Mkdir", "n", "New folder"},
 			{"8 Delete", "d", "Delete the selection or the item (Delete key too)"},
 		}},
 		{"View", []helpItem{
 			{"Tab", "", "Device ↔ computer (two panes: the other pane)"},
-			{"v", "", "One pane: one wide column (whole long names) or two columns"},
+			{"b", "", "One pane: one wide column (whole long names) or two columns"},
 			{"9 Show computer", "w", "The computer pane beside the device on or off"},
-			{"4 Recent", "t", "The device's recent files ↔ its folder"},
-			{"2 Sort", "s", "Name → newest → size, for the pane with the cursor only; the recent view keeps its own order (newest first to start). Each pane's header shows its order"},
+			{"2 Recent", "t", "The device's recent files ↔ its folder"},
+			{"1 Sort", "s", "Name → newest → size, for the pane with the cursor only; the recent view keeps its own order (newest first to start). Each pane's header shows its order"},
 			{".", "", "Hidden files on or off"},
-			{"1 Help", "?", "This help"},
-			{"0 Quit", "q", "Quit (Ctrl+C too)"},
+			{"?", "", "This help"},
+			{"q", "", "Quit (Ctrl+C too)"},
 		}},
 		{"Colors", []helpItem{
 			{Red + "red" + NC, "", "can't be read"},
@@ -890,36 +902,32 @@ func (s *state) modeKeys() string {
 	return ""
 }
 
-// barLabels are the number keys 1-9 and 0 as mc shows its F keys; "" is a
-// key that does nothing here.
-func (s *state) barLabels() [10]string {
+// barLabels are the number keys 1-9 and 0 as mc shows its F keys, and
+// whether each does something here; one that does not keeps its label,
+// drawn dim (barRow).
+func (s *state) barLabels() (labels [10]string, on [10]bool) {
 	p := s.cur()
 	idle := s.task == nil
 	_, onEntry := s.cursorEntry(p)
-	l := [10]string{"Help", "Sort", "Open", "Recent", "", "", "", "", "Show computer", "Quit"}
-	switch {
-	case s.split:
-		l[8] = "Hide computer"
-	case s.width < minSplitWidth:
-		l[8] = "" // too narrow for two panes
+	hasTargets := onEntry || len(s.targetsSelected(p)) > 0
+	labels = [10]string{"Sort", "Recent", "Copy", "Cut", "", "Paste", "Mkdir", "Delete", "Show computer", "Rename"}
+	labels[4] = map[Side]string{Device: "To computer", PC: "To device"}[p.fs.Side()]
+	if s.split {
+		labels[8] = "Hide computer"
 	}
 	if p.fs.Side() == Device && p.recent {
-		l[3] = "Folder"
+		labels[1] = "Folder"
 	}
-	if idle {
-		l[4] = map[Side]string{Device: "To computer", PC: "To device"}[p.fs.Side()]
-		if !p.recent {
-			if onEntry {
-				l[5] = "Rename"
-			}
-			l[6] = "Mkdir"
-		}
-		l[7] = "Delete"
+	on = [10]bool{
+		true, true,
+		idle && hasTargets, idle && hasTargets, idle && hasTargets, // copy, cut, to the other side
+		idle && s.clip != nil && !p.recent, // paste
+		idle && !p.recent,                  // mkdir
+		idle && hasTargets,                 // delete
+		s.split || s.width >= minSplitWidth,
+		idle && onEntry, // rename (the recent view too)
 	}
-	if len(p.rows) == 0 {
-		l[2] = ""
-	}
-	return l
+	return labels, on
 }
 
 // barOneRowWidth is the width from which the number key bar fits on one
@@ -939,11 +947,12 @@ func (s *state) bottomBar(w, rows int) []string {
 		}
 		return out
 	}
-	labels, aliases := s.barLabels(), s.barAliases()
+	labels, on := s.barLabels()
+	aliases := s.barAliases()
 	if rows < 2 {
-		return []string{barRow(labels[:], aliases[:], 0, w)}
+		return []string{barRow(labels[:], aliases[:], on[:], 0, w)}
 	}
-	return []string{barRow(labels[:5], aliases[:5], 0, w), barRow(labels[5:], aliases[5:], 5, w)}
+	return []string{barRow(labels[:5], aliases[:5], on[:5], 0, w), barRow(labels[5:], aliases[5:], on[5:], 5, w)}
 }
 
 // barAliases are the letter keys that do the same as each number key, shown
@@ -961,7 +970,7 @@ func (s *state) barAliases() [10]string {
 // barRow draws labels as equal cells over w columns; first is the index of
 // the first key (its digit is (first+i+1)%10). A label is followed by its
 // letter alias, dim in parentheses, when the cell has room: "9 Show computer (w)".
-func barRow(labels, aliases []string, first, w int) string {
+func barRow(labels, aliases []string, on []bool, first, w int) string {
 	n := len(labels)
 	var b strings.Builder
 	for i, label := range labels {
@@ -974,6 +983,14 @@ func barRow(labels, aliases []string, first, w int) string {
 		}
 		digit := string(rune('0' + (first+i+1)%10))
 		cell := Cyan + Bold + digit + NC
+		if !on[i] {
+			// A key that does nothing here: all dim, and no alias. Without
+			// color an × before the label says it (writeFrame drops colors).
+			cell = Dim + digit + NC
+			if !ui.Err.Color && label != "" {
+				label = "×" + label
+			}
+		}
 		gap := " " // between the digit and its label; dropped when cells are tiny
 		if cw < 6 {
 			gap = ""
@@ -981,9 +998,13 @@ func barRow(labels, aliases []string, first, w int) string {
 		used := 1
 		if room := cw - 2 - len(gap); label != "" && room > 0 { // and a space before the next digit
 			cut := ui.Plain(ui.Fit(label, room))
-			cell += gap + cut
+			if on[i] {
+				cell += gap + cut
+			} else {
+				cell += gap + Dim + cut + NC
+			}
 			used += len(gap) + ui.TextWidth(cut)
-			if alias := " (" + aliases[i] + ")"; aliases[i] != "" && cut == label && used+len(alias) <= cw-1 {
+			if alias := " (" + aliases[i] + ")"; on[i] && aliases[i] != "" && cut == label && used+len(alias) <= cw-1 {
 				cell += Dim + alias + NC
 				used += len(alias)
 			}
@@ -995,7 +1016,7 @@ func barRow(labels, aliases []string, first, w int) string {
 
 // letterKeys are the keys without a number, for the row under the header,
 // right over the list (the number keys are at the bottom): every key is on
-// screen, and 1 Help explains them at more length.
+// screen, and ? explains them at more length.
 func (s *state) letterKeys() []string {
 	k := func(key, desc string) string { return Cyan + key + NC + " " + Dim + desc + NC }
 	p := s.cur()
@@ -1008,7 +1029,6 @@ func (s *state) letterKeys() []string {
 	default:
 		out = append(out, k("Tab", "Device"))
 	}
-	out = append(out, k("Enter", "Open"), k("Bksp", "Up"))
 	if s.columns() == 2 {
 		out = append(out, k("←→", "Column"))
 	} else {
@@ -1020,8 +1040,9 @@ func (s *state) letterKeys() []string {
 	}
 	out = append(out, k(".", map[bool]string{true: "Hide hidden", false: "Show hidden"}[s.showHidden]))
 	if !s.split {
-		out = append(out, k("v", map[bool]string{true: "2 columns", false: "1 column"}[s.oneColumn]))
+		out = append(out, k("b", map[bool]string{true: "2 columns", false: "1 column"}[s.oneColumn]))
 	}
+	out = append(out, k("?", "Help"), k("q", "Quit"))
 	// Esc is not here: it shows where it acts, "Esc Cancel" on the progress
 	// line and "Esc clears" beside the filter on the status line. A key that
 	// came and went here would change how many rows the keys take.
@@ -1181,4 +1202,18 @@ func dropColumns(t string, n, w int) string {
 		}
 	}
 	return b.String()
+}
+
+// clipLine is the row over the status line: the clipboard and how to use
+// it, or blank (the row stays so the list does not move).
+func (s *state) clipLine() string {
+	if s.clip == nil {
+		return ""
+	}
+	k := func(key, desc string) string { return "  " + Cyan + key + NC + " " + desc }
+	keys := k("6", "Paste") + k("Esc", "Clear")
+	head, src := s.clipParts()
+	// A long folder gives way first (its start), so the keys stay on screen.
+	room := s.width - 1 - ui.TextWidth(head) - visWidth(keys)
+	return " " + head + truncateLeft(src, max(room, 8)) + keys
 }

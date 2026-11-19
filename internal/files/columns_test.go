@@ -20,7 +20,7 @@ func columnsState(t *testing.T) (*state, string) {
 	}
 	write(t, dev, names...)
 	s.open(s.cur(), dev, "")
-	s.setSize(100, 20) // the bar takes two rows under 200 columns plus a gap over it, the letter keys two and a rule
+	s.setSize(100, 21) // the bar takes two rows under 200 columns plus a gap over it, the letter keys two and a rule, the clipboard row one
 	if h := s.listHeight(); h != 10 {
 		t.Fatalf("list height %d", h)
 	}
@@ -129,7 +129,7 @@ func TestColumnsAndPanesKeepCursor(t *testing.T) {
 
 func TestNarrowIsOneColumn(t *testing.T) {
 	s, dev := columnsState(t)
-	s.setSize(79, 20)
+	s.setSize(79, 21)
 	if s.columns() != 1 || strings.Contains(ui.Plain(s.frame()[2]), "│") {
 		t.Fatal("under 80 columns: one column")
 	}
@@ -196,7 +196,7 @@ func TestLongNames(t *testing.T) {
 	}
 }
 
-// v switches one pane between two columns and one wide column; the cursor
+// b (brief) switches one pane between two columns and one wide column; the cursor
 // stays on its item.
 func TestOneColumnToggle(t *testing.T) {
 	s, _ := columnsState(t)
@@ -205,19 +205,19 @@ func TestOneColumnToggle(t *testing.T) {
 	if s.columns() != 2 {
 		t.Fatal("two columns first")
 	}
-	press(t, s, "v")
+	press(t, s, "b")
 	if s.columns() != 1 || s.cur().rows[s.cur().cursor].Name != at {
-		t.Errorf("v: columns %d, cursor on %s", s.columns(), s.cur().rows[s.cur().cursor].Name)
+		t.Errorf("b: columns %d, cursor on %s", s.columns(), s.cur().rows[s.cur().cursor].Name)
 	}
-	press(t, s, "v")
+	press(t, s, "b")
 	if s.columns() != 2 {
-		t.Error("v again: two columns")
+		t.Error("b again: two columns")
 	}
-	press(t, s, "9") // two panes: v only says why
+	press(t, s, "9") // two panes: b only says why
 	before := s.oneColumn
-	press(t, s, "v")
+	press(t, s, "b")
 	if s.oneColumn != before || s.msg == nil {
-		t.Error("v in two panes should not change anything")
+		t.Error("b in two panes should not change anything")
 	}
 }
 

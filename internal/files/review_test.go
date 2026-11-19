@@ -153,7 +153,7 @@ func TestFrameRowsStayPut(t *testing.T) {
 		check("question")
 		press(t, s, esc+"/")
 		check("filter input")
-		press(t, s, esc+"6")
+		press(t, s, esc+"0")
 		check("rename input")
 		press(t, s, esc)
 		check("normal")

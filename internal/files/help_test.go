@@ -25,9 +25,9 @@ func TestHelpHasEveryKey(t *testing.T) {
 	for _, w := range []int{60, 140} {
 		all := helpAll(w)
 		for _, want := range []string{
-			"1 Help (?)", "2 Sort (s)", "3 Open (Enter)", "4 Recent (t)", "5 To computer (g)", "5 To device (p)",
-			"6 Rename (r)", "7 Mkdir (n)", "8 Delete (d)", "9 Show computer (w)", "0 Quit (q)",
-			"Tab", "Space", "a", "v", "/", ":", ".", "Esc", "Backspace", "← →", "↑ ↓", "PgUp PgDn", "Home End", "Ctrl+C",
+			"1 Sort (s)", "2 Recent (t)", "3 Copy (c)", "4 Cut (x)", "5 To computer (g)", "5 To device (p)",
+			"6 Paste (v)", "7 Mkdir (n)", "8 Delete (d)", "9 Show computer (w)", "0 Rename (r)",
+			"Tab", "Space", "a", "b", "/", ":", ".", "Esc", "Enter", "Backspace", "← →", "↑ ↓", "PgUp PgDn", "Home End", "Ctrl+C", "?", "q",
 			"o s r", "rm -rf", "MediaStore", "(user 0)", "adb pull", "adb push",
 		} {
 			if !strings.Contains(all, want) {
@@ -49,7 +49,7 @@ func TestHelpHasEveryKey(t *testing.T) {
 
 func TestHelpFitsAndScrolls(t *testing.T) {
 	s, _, _ := testState(t)
-	press(t, s, "1")
+	press(t, s, "?")
 	for _, w := range []int{30, 60, 100, 160} {
 		for _, h := range []int{8, 15, 60} {
 			s.setSize(w, h)

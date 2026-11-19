@@ -106,6 +106,15 @@ type message struct {
 	failures []failure // Enter opens the list
 }
 
+// clipboard is ak's own clipboard (not the system's): items taken with
+// 3/c (copy) or 4/x (cut) on one side, pasted with 6/v where the cursor is.
+// It lets files from several folders go to one place.
+type clipboard struct {
+	side  Side
+	items []Entry
+	cut   bool
+}
+
 // task is work that runs off the key loop: a push or pull, a delete,
 // opening a device file, loading the recent list. run returns a function
 // that applies the result to the state on the key loop.
@@ -156,9 +165,12 @@ type state struct {
 	delTargets []Entry
 
 	// modeConflict
-	plan *copyJob
-	push bool // the plan pushes (PC to device); else it pulls
-	ci   int  // op being asked about
+	plan    *copyJob
+	push    bool // a send that pushes (PC to device); else it pulls
+	pasting bool // the plan is a paste of the clipboard, not a send (5)
+
+	clip *clipboard // what c or x took, kept across folders and panes
+	ci   int        // op being asked about
 
 	failures []failure // modeFailures
 	helpTop  int       // modeHelp: first line shown
@@ -416,14 +428,10 @@ func (s *state) handle(k tui.Key) {
 // numberKeys maps the number key bar (mc's F keys as digits: macOS
 // terminals take F keys for the system) to the letter keys, which stay as
 // aliases.
-var numberKeys = map[byte]byte{'1': '?', '2': 's', '4': 't', '6': 'r', '7': 'n', '8': 'd', '9': 'w', '0': 'q'}
+var numberKeys = map[byte]byte{'1': 's', '2': 't', '3': 'c', '4': 'x', '6': 'v', '7': 'n', '8': 'd', '9': 'w', '0': 'r'}
 
 func (s *state) handleRune(p *pane, r byte) {
-	switch r {
-	case '3':
-		s.enter(p)
-		return
-	case '5': // copy to the other side: pull on the device, push on the PC
+	if r == '5' { // copy to the other side: pull on the device, push on the PC
 		r = map[Side]byte{Device: 'g', PC: 'p'}[p.fs.Side()]
 	}
 	if alias, ok := numberKeys[r]; ok {
@@ -444,7 +452,11 @@ func (s *state) handleRune(p *pane, r byte) {
 		s.toggleAll(p)
 	case '/':
 		s.mode, s.inputText, s.inputCursor = modeFilter, p.filter, len(p.filter)
+	case 'c', 'x':
+		s.toClipboard(p, r == 'x')
 	case 'v':
+		s.paste(p)
+	case 'b':
 		if s.split {
 			s.setMsg(msgInfo, "Two panes list in one column each: 9 hides the computer pane")
 			return
@@ -599,6 +611,8 @@ func (s *state) blocked() bool {
 	return false
 }
 
+// escape cancels the running task, else turns the filter off, else empties
+// the clipboard.
 func (s *state) escape(p *pane, msg *message) {
 	switch {
 	case s.task != nil && s.task.cancelable:
@@ -606,6 +620,10 @@ func (s *state) escape(p *pane, msg *message) {
 	case p.filter != "":
 		p.filter = ""
 		s.refreshRows(p, s.focusPath(p))
+	case msg != nil:
+		// the key only cleared the message
+	default:
+		s.clip = nil
 	}
 }
 
@@ -670,7 +688,7 @@ func (s *state) openFile(path string, note bool) {
 		return
 	}
 	if note {
-		s.setMsg(msgSuccess, "Opened %s (open takes the file under the cursor; the selection is for 5 and 8)", filepath.Base(path))
+		s.setMsg(msgSuccess, "Opened %s (open takes the file under the cursor; the selection is for 3, 4, 5 and 8)", filepath.Base(path))
 		return
 	}
 	s.setMsg(msgSuccess, "Opened %s", filepath.Base(path))
@@ -787,7 +805,7 @@ func (s *state) send(p *pane, push bool) {
 		used[fold(op.name)] = true
 		job.ops = append(job.ops, op)
 	}
-	s.plan, s.push, s.ci = job, push, -1
+	s.plan, s.push, s.pasting, s.ci = job, push, false, -1
 	s.nextConflict()
 }
 
@@ -861,14 +879,22 @@ func (s *state) nextConflict() {
 		}
 	}
 	s.mode = modeNormal
-	s.startSend(s.plan, s.push)
+	if s.pasting {
+		s.startPaste(s.plan)
+	} else {
+		s.startSend(s.plan, s.push)
+	}
 	s.plan = nil
 }
 
-// cancelPlan drops a push or pull while its names are asked about.
+// cancelPlan drops a push, pull or paste while its names are asked about.
 func (s *state) cancelPlan() {
 	s.mode, s.plan = modeNormal, nil
-	s.setMsg(msgInfo, "%s canceled", map[bool]string{true: "Push", false: "Pull"}[s.push])
+	what := map[bool]string{true: "Push", false: "Pull"}[s.push]
+	if s.pasting {
+		what = "Paste"
+	}
+	s.setMsg(msgInfo, "%s canceled", what)
 }
 
 func (s *state) handleConflict(k tui.Key) {
@@ -1118,19 +1144,15 @@ func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bo
 // ---- rename, new folder, go to ----
 
 func (s *state) askRename(p *pane) {
-	if p.recent {
-		s.setMsg(msgInfo, "Rename in the folder view: press t")
-		return
-	}
 	if e, ok := s.cursorEntry(p); ok && !s.blocked() {
 		s.askInput(p, inputRename, shown(e.Name)) // composed: Backspace takes a syllable, not a jamo
 	}
 }
 
 func (s *state) askInput(p *pane, kind inputKind, text string) {
-	if kind != inputGoto && (s.blocked() || p.err != nil || p.recent) {
+	if kind != inputGoto && (s.blocked() || (p.err != nil && !p.recent) || (p.recent && kind == inputMkdir)) {
 		if p.recent && kind == inputMkdir {
-			s.setMsg(msgInfo, "Make folders in the folder view: press t")
+			s.setMsg(msgInfo, "Make folders in the folder view: 2 shows it")
 		}
 		return
 	}
@@ -1253,36 +1275,78 @@ func (s *state) submitInput(p *pane) {
 		if !ok || shown(text) == shown(e.Name) { // unchanged (an NFD name pre-filled composed counts as the same)
 			return
 		}
-		if err := s.checkNewName(p, text, e.Name); err != nil {
+		dir, entries := p.dir, p.entries
+		if p.recent { // the item's own folder, read now
+			dir = p.fs.Dir(e.Path)
+			var err error
+			if entries, err = p.fs.List(dir); err != nil {
+				s.setMsg(msgError, "Couldn't rename '%s': %s", shown(e.Name), errText(err))
+				return
+			}
+		}
+		if err := checkNameIn(p.fs, dir, entries, text, e.Name); err != nil {
 			s.setMsg(msgError, "%v", err)
 			return
 		}
-		to := p.fs.Join(p.dir, text)
+		to := p.fs.Join(dir, text)
 		if err := renameEntry(p.fs, e, to); err != nil {
 			s.setMsg(msgError, "Couldn't rename '%s': %v", shown(e.Name), err)
 			s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't rename '%s' to '%s' on %s: %v", shown(e.Name), text, p.fs.Label(), err))
 			return
 		}
 		s.addDone(fmt.Sprintf("Renamed '%s' to '%s' on %s", shown(e.Name), text, p.fs.Label()), nil)
-		s.reload(p)
+		if p.recent {
+			s.renamedInRecent(p, e, text, to)
+		} else {
+			s.reload(p)
+		}
 		s.refreshRows(p, to)
 		s.setMsg(msgSuccess, "Renamed '%s' to '%s'", shown(e.Name), text)
+	}
+}
+
+// renamedInRecent puts a rename done in the recent view into its list
+// (MediaStore is not asked again) and into the folder views that show the
+// item's folder.
+func (s *state) renamedInRecent(p *pane, e Entry, name, to string) {
+	for i := range p.recentList {
+		if p.recentList[i].Path == e.Path {
+			p.recentList[i].Name, p.recentList[i].Path = name, to
+		}
+	}
+	if p.selected[e.Path] {
+		delete(p.selected, e.Path)
+		p.selected[to] = true
+	}
+	dir := p.fs.Dir(e.Path)
+	for _, q := range s.panes {
+		if q.fs == p.fs && q.dir == dir {
+			q.entries, q.err = q.fs.List(q.dir) // its folder view, shown now or later
+			if !q.recent {
+				s.refreshRows(q, s.focusPath(q))
+			}
+		}
 	}
 }
 
 // checkNewName refuses empty names, names with '/', and names in use
 // (by the file system's own rule for case, see nameLookup).
 func (s *state) checkNewName(p *pane, name, self string) error {
+	return checkNameIn(p.fs, p.dir, p.entries, name, self)
+}
+
+// checkNameIn is checkNewName for any folder and its listing.
+func checkNameIn(f FS, dir string, entries []Entry, name, self string) error {
 	if err := validName(name); err != nil {
 		return err
 	}
 	var others []Entry
-	for _, e := range p.entries {
+	for _, e := range entries {
 		if e.Name != self {
 			others = append(others, e)
 		}
 	}
-	if _, ok := nameLookup(p.fs, p.dir, others)(name); ok { // self out: a.txt -> A.txt is fine
+	if _, ok := nameLookup(f, dir, others)(name); ok { // self out: a.txt -> A.txt is fine
 		return fmt.Errorf("'%s' already exists", name)
 	}
 	return nil

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb/adbtest"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 // 1: "error:" in a file name is not an adb failure; adb's own error line is.
@@ -128,5 +129,20 @@ func itoa(i int) string {
 		if i /= 10; i == 0 {
 			return s
 		}
+	}
+}
+
+// A task that reports no progress (reading the recent files) shows a
+// spinner, not the bar the task before it left.
+func TestProgressResetsBetweenTasks(t *testing.T) {
+	var b progressBox
+	b.set(progress{index: 1, count: 1, name: "big.bin", done: 50, total: 100})
+	b.reset() // what starting the next task does
+	s, _, _ := testState(t)
+	s.task = &task{label: "Reading recent files"}
+	s.prog = b.get()
+	got := ui.Plain(s.progressText(100))
+	if strings.ContainsAny(got, "█░%") || !strings.ContainsAny(got, string(spinFrames)) {
+		t.Errorf("%q", got)
 	}
 }

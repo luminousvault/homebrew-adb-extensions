@@ -13,9 +13,11 @@ var cmdFiles = &Command{
 	Long: "A file manager for the device and this computer, with number keys like mc's F keys. Starts\n" +
 		"with the device and the computer side by side (80 columns or more); 9 hides the computer\n" +
 		"pane, and then the list runs in two columns and Tab switches between device and computer.\n" +
-		"5 copies the selection to the other side: on the device it pulls to the computer side's\n" +
-		"folder, on the computer it pushes to the device side's folder. Enter opens a folder or a\n" +
-		"file (device files are copied here first). Press 1 for every key.\n" +
+		"5 copies the selection to the other side at once: on the device it pulls to the computer\n" +
+		"side's folder, on the computer it pushes to the device side's folder. 3 copies or 4 cuts\n" +
+		"items into a clipboard that stays while you change folders; 6 pastes them where the cursor\n" +
+		"is (a cut moves). Enter opens a folder or a file (device files are copied here first).\n" +
+		"Press ? for every key.\n" +
 		"Needs a terminal; without one, use ak pull and ak push.",
 	ArgHelp:  [][2]string{{"path", "Device folder to start in (default: /sdcard)"}},
 	Examples: []string{"ak files", "ak files /sdcard/DCIM/Camera"},

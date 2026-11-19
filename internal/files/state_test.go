@@ -554,7 +554,7 @@ func TestOpenWithSelectionOpensOne(t *testing.T) {
 	if len(opened) != 1 || opened[0] != "b.txt" {
 		t.Fatalf("opened %q, want only b.txt", opened)
 	}
-	if s.msg == nil || !strings.Contains(s.msg.text, "the selection is for 5 and 8") {
+	if s.msg == nil || !strings.Contains(s.msg.text, "the selection is for 3, 4, 5 and 8") {
 		t.Errorf("no note about the selection: %+v", s.msg)
 	}
 	press(t, s, "aa") // select all, then none: open again with nothing selected
@@ -721,7 +721,7 @@ func TestNFDNameInMessagesAndRename(t *testing.T) {
 	nfd := norm.NFD.String("문서.txt")
 	write(t, dev, nfd)
 	s.open(s.cur(), dev, "")
-	press(t, s, down+"6")
+	press(t, s, down+"0")
 	if s.inputText != norm.NFC.String(nfd) {
 		t.Fatalf("pre-filled %q", s.inputText)
 	}
@@ -729,7 +729,7 @@ func TestNFDNameInMessagesAndRename(t *testing.T) {
 	if len(s.summary.Done) != 0 {
 		t.Errorf("an unchanged name was renamed: %+v", s.summary.Done)
 	}
-	press(t, s, "6")
+	press(t, s, "0")
 	s.inputText, s.inputCursor = "보고서.txt", len("보고서.txt")
 	press(t, s, enter)
 	if len(s.summary.Done) != 1 || !strings.Contains(s.summary.Done[0], "'문서.txt' to '보고서.txt'") ||

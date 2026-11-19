@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -25,12 +26,15 @@ type progress struct {
 	done, total  int64  // bytes of the current item; total < 0 when unknown (a spinner only)
 }
 
-// transfer copies src on from to dst on to: adb pull or adb push
-// (files-design.md §6).
+// transfer copies src on from to dst on to: adb pull or adb push between
+// the device and the computer, cp -r on one device, a file copy on the
+// computer (files-design.md §6).
 func transfer(ctx context.Context, from FS, src string, to FS, dst string) error {
 	fd, fromDevice := from.(*deviceFS)
 	td, toDevice := to.(*deviceFS)
 	switch {
+	case fromDevice && toDevice && fd == td:
+		return fd.copyWithin(ctx, src, dst)
 	case fromDevice && !toDevice:
 		return adbTransfer(ctx, fd.serial, "pull", src, dst)
 	case !fromDevice && toDevice:
@@ -41,7 +45,7 @@ func transfer(ctx context.Context, from FS, src string, to FS, dst string) error
 	case fromDevice && toDevice:
 		return errors.New("copying between two devices is not supported")
 	}
-	return copyLocal(ctx, src, dst) // tests: a local folder stands in for the device
+	return copyLocal(ctx, src, dst) // the computer; in tests a local folder stands in for the device
 }
 
 // adbTransfer runs adb pull or push. adb prints "adb: error: ..." on failure;
@@ -138,13 +142,19 @@ type copyOp struct {
 	existing  string // its path: it may differ from name in case or normalization
 }
 
-// copyJob copies the ops from one storage to a folder on the other.
+// copyJob copies (or, cut, moves) the ops into a folder: from one storage
+// to the other, or within one.
 type copyJob struct {
 	from, to FS
 	dstDir   string
 	inDir    func(string) (Entry, bool) // names in dstDir when it was planned (send's lookup)
 	ops      []copyOp
+	cut      bool // move: the original goes once the copy is complete
 }
+
+// sameFS reports whether the job stays on one storage (a paste within the
+// device or within the computer).
+func (j *copyJob) sameFS() bool { return j.from == j.to }
 
 type failure struct{ name, msg string }
 
@@ -175,6 +185,9 @@ func (j *copyJob) run(ctx context.Context, report func(progress)) copyResult {
 	for i, op := range todo {
 		report(progress{index: i + 1, count: len(todo), name: op.src.Name, total: -1})
 		sizes[i] = usage{op.src.Size, 1}
+		if j.cut && j.sameFS() {
+			continue // a rename: nothing to measure, nothing to wait for
+		}
 		if op.src.Dir || op.src.Size < 0 {
 			b, n, err := j.from.Usage(op.src.Path)
 			if err != nil {
@@ -218,12 +231,29 @@ type usage struct{ bytes, files int64 }
 
 var errExists = errors.New("already exists")
 
-// one copies a single item. It never deletes anything it did not make,
-// except the item an overwrite replaces, and that only after the new copy is
-// complete: the copy goes to a temporary name next to it first. On failure
-// or cancel only the temporary copy is removed.
+var (
+	errInSource   = errors.New("can't replace a folder that holds what is pasted")
+	errNoSize     = errors.New("couldn't check the size; the original was kept")
+	errIntoItself = errors.New("can't paste a folder into itself")
+)
+
+// one copies (or moves) a single item. It never deletes anything it did not
+// make, except the item an overwrite replaces, and that only after the new
+// copy is complete: the copy goes to a temporary name next to it first. A
+// move deletes its original only when the copy has the same size and file
+// count. On failure or cancel only what this copy wrote is removed.
 func (j *copyJob) one(ctx context.Context, op copyOp, size usage, report func(int64)) error {
 	dst := j.to.Join(j.dstDir, op.name)
+	existing := op.existing
+	if existing == "" {
+		existing = dst
+	}
+	if op.overwrite && j.sameFS() && holds(j.to, existing, op.src.Path) {
+		return errInSource // replacing /x/A with /x/A/A would delete what is pasted
+	}
+	if op.src.Dir && j.sameFS() && holds(j.to, op.src.Path, j.dstDir) {
+		return errIntoItself // paste checks this too; a copy into itself never ends
+	}
 	target := dst // where the new copy is written
 	if op.overwrite {
 		var err error
@@ -233,6 +263,21 @@ func (j *copyJob) one(ctx context.Context, op copyOp, size usage, report func(in
 	} else if _, err := j.to.Stat(dst); err == nil {
 		return errExists // appeared since the listing: never write over it
 	}
+	if j.cut && j.sameFS() {
+		err := j.to.Rename(op.src.Path, target) // mv: the item itself, at once
+		switch {
+		case err == nil && op.overwrite:
+			if err = j.replace(ctx, target, existing, dst); err != nil {
+				_ = j.to.Rename(target, op.src.Path) // put the original back
+			}
+			return err
+		case err == nil:
+			return nil
+		case !errors.Is(err, syscall.EXDEV):
+			return err
+		}
+		// Another volume of the computer: copy, check, then delete below.
+	}
 	var stop func()
 	if size.bytes > 0 {
 		stop = pollSize(j.to, target, size.bytes, pollEvery(size), report)
@@ -241,19 +286,52 @@ func (j *copyJob) one(ctx context.Context, op copyOp, size usage, report func(in
 	if stop != nil {
 		stop()
 	}
-	if err == nil && op.overwrite {
-		if err = j.check(target, size); err == nil { // before anything is replaced
-			old := op.existing
-			if old == "" {
-				old = dst
-			}
-			err = j.replace(ctx, target, old, dst)
+	if err == nil && (op.overwrite || j.cut) {
+		switch {
+		case j.cut && size.bytes < 0:
+			err = errNoSize // a move deletes its original only after a size check
+		default:
+			err = j.check(target, size) // before anything is replaced or deleted
 		}
 	}
-	if err != nil {
-		_ = j.to.Remove(target) // only what this copy wrote
+	if err == nil && op.overwrite {
+		err = j.replace(ctx, target, existing, dst)
+		target = "" // in place now: not ours to remove
 	}
-	return err
+	if err != nil {
+		if target != "" {
+			_ = j.to.Remove(target) // only what this copy wrote
+		}
+		return err
+	}
+	if j.cut {
+		if err := j.from.Remove(op.src.Path); err != nil {
+			return fmt.Errorf("copied, but couldn't delete the original: %w", err)
+		}
+	}
+	return nil
+}
+
+// holds reports whether path p is root or inside it, by the items
+// themselves (symbolic links and aliases such as /sdcard resolved).
+func holds(f FS, root, p string) bool {
+	real := realPaths(f, root, p)
+	return under(f, real[1], real[0])
+}
+
+// realPaths resolves symbolic links and aliases: one shell call on the
+// device, EvalSymlinks on the computer. "" for a path that can't be resolved.
+func realPaths(f FS, paths ...string) []string {
+	if r, ok := f.(interface{ realPaths([]string) []string }); ok {
+		return r.realPaths(paths)
+	}
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			out[i], _ = filepath.Abs(real)
+		}
+	}
+	return out
 }
 
 // check compares a copy with its source's size; with an unknown size it

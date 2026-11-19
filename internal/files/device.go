@@ -370,3 +370,34 @@ func (d *deviceFS) progressSize(p string) (int64, error) {
 	}
 	return strconv.ParseInt(f[0], 10, 64)
 }
+
+// copyWithin copies src to dst on the device with cp -r; Esc stops it.
+func (d *deviceFS) copyWithin(ctx context.Context, src, dst string) error {
+	out, err := runAdb(ctx, "-s", d.serial, "shell", "cp -r "+ShellQuote(src)+" "+ShellQuote(dst)+" 2>&1 && echo "+okMark)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if cerr := checkOK(out); cerr != nil {
+		return cerr
+	}
+	return err
+}
+
+// realPaths resolves paths on the device in one shell call (pwd -P in each
+// folder; a file's folder, then its name). "" for one that can't be read.
+func (d *deviceFS) realPaths(paths []string) []string {
+	var b strings.Builder
+	for _, p := range paths {
+		dir, base := path.Dir(p), path.Base(p)
+		b.WriteString("if [ -d " + ShellQuote(p) + " ]; then (cd " + ShellQuote(p) + " 2>/dev/null && pwd -P) || echo; ")
+		b.WriteString("else d=$(cd " + ShellQuote(dir) + " 2>/dev/null && pwd -P) && echo \"$d/\"" + ShellQuote(base) + " || echo; fi; ")
+	}
+	lines := strings.Split(adb.Out("-s", d.serial, "shell", b.String()), "\n")
+	out := make([]string, len(paths))
+	for i := range out {
+		if i < len(lines) {
+			out[i] = strings.TrimSpace(lines[i])
+		}
+	}
+	return out
+}

@@ -114,19 +114,13 @@ func loop(scr *tui.Screen, st *state) error {
 	defer signal.Stop(sig)
 
 	var (
-		mu       sync.Mutex
-		latest   progress
+		latest   progressBox
 		finished = make(chan func(*state), 1)
 	)
 	start := func(t *task) context.CancelFunc {
 		ctx, cancel := context.WithCancel(context.Background())
-		go func() {
-			finished <- t.run(ctx, func(p progress) {
-				mu.Lock()
-				latest = p
-				mu.Unlock()
-			})
-		}()
+		latest.reset() // a task that reports nothing shows a spinner, not the last task's bar
+		go func() { finished <- t.run(ctx, latest.set) }()
 		return cancel
 	}
 	tick := time.NewTicker(100 * time.Millisecond)
@@ -186,9 +180,7 @@ func loop(scr *tui.Screen, st *state) error {
 			}
 			if st.task != nil {
 				st.spin++
-				mu.Lock()
-				st.prog = latest
-				mu.Unlock()
+				st.prog = latest.get()
 				draw = true
 			}
 		case <-sig:
@@ -196,3 +188,14 @@ func loop(scr *tui.Screen, st *state) error {
 		}
 	}
 }
+
+// progressBox is the latest progress a running task reported, read by the
+// key loop's ticks.
+type progressBox struct {
+	mu sync.Mutex
+	p  progress
+}
+
+func (b *progressBox) set(p progress) { b.mu.Lock(); b.p = p; b.mu.Unlock() }
+func (b *progressBox) reset()         { b.set(progress{}) }
+func (b *progressBox) get() progress  { b.mu.Lock(); defer b.mu.Unlock(); return b.p }

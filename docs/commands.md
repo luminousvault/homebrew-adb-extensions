@@ -596,9 +596,11 @@ ak files [options] [path]
 A file manager for the device and this computer, with number keys like mc's F keys. Starts
 with the device and the computer side by side (80 columns or more); 9 hides the computer
 pane, and then the list runs in two columns and Tab switches between device and computer.
-5 copies the selection to the other side: on the device it pulls to the computer side's
-folder, on the computer it pushes to the device side's folder. Enter opens a folder or a
-file (device files are copied here first). Press 1 for every key.
+5 copies the selection to the other side at once: on the device it pulls to the computer
+side's folder, on the computer it pushes to the device side's folder. 3 copies or 4 cuts
+items into a clipboard that stays while you change folders; 6 pastes them where the cursor
+is (a cut moves). Enter opens a folder or a file (device files are copied here first).
+Press ? for every key.
 Needs a terminal; without one, use ak pull and ak push.
 
 **Arguments**
