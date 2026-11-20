@@ -647,6 +647,8 @@ func (s *state) escape(p *pane, msg *message) {
 		s.refreshRows(p, s.focusPath(p))
 	case msg != nil:
 		// the key only cleared the message
+	case len(p.selected) > 0:
+		p.selected = map[string]bool{} // this pane's; the clipboard stays for the next Esc
 	default:
 		s.clip = nil
 	}

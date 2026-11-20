@@ -466,3 +466,33 @@ func TestClipLineDimsUnusableKeys(t *testing.T) {
 		t.Errorf("filter on: Esc Clear should be dim: %q", l)
 	}
 }
+
+// Esc unselects the pane with the cursor before it empties the clipboard,
+// and leaves the other pane's selection alone.
+func TestEscUnselectsBeforeClipboard(t *testing.T) {
+	s, dev, pc := testState(t)
+	write(t, dev, "a.txt", "b.txt", "c.txt")
+	write(t, pc, "x.txt")
+	s.open(s.panes[Device], dev, "")
+	s.open(s.panes[PC], pc, "")
+	find(t, s, "a.txt")
+	press(t, s, "c")  // a.txt on the clipboard
+	press(t, s, "\t") // the computer pane: select x.txt
+	find(t, s, "x.txt")
+	press(t, s, " ")
+	press(t, s, "\t") // back: select b.txt and c.txt
+	find(t, s, "b.txt")
+	press(t, s, "  ")
+	if len(s.panes[Device].selected) != 2 || len(s.panes[PC].selected) != 1 || s.clip == nil {
+		t.Fatalf("setup: device %d, pc %d, clip %v", len(s.panes[Device].selected), len(s.panes[PC].selected), s.clip)
+	}
+	s.msg = nil
+	press(t, s, esc)
+	if len(s.panes[Device].selected) != 0 || len(s.panes[PC].selected) != 1 || s.clip == nil {
+		t.Fatalf("first Esc: device %d, pc %d, clip %v", len(s.panes[Device].selected), len(s.panes[PC].selected), s.clip)
+	}
+	press(t, s, esc)
+	if s.clip != nil {
+		t.Error("second Esc kept the clipboard")
+	}
+}

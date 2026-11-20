@@ -244,7 +244,7 @@ func helpSections() []helpSection {
 			{"", "", "What 3, 4, 5 take: the selected items shown, or else the item under the cursor. In the same folder a copy gets ' (N)' and a cut does nothing; a folder never goes into itself"},
 			{"o s r", "", "A name already there: overwrite, skip, or rename with ' (N)'. Press a first to answer for all the rest; Esc or q cancels"},
 			{"", "", "Overwrite copies to a temporary name first, checks the size, then swaps it in; if that fails or is canceled, the old item stays. A move keeps the original when the size can't be checked"},
-			{"Esc", "", "Stops copying (a progress bar shows it) and removes the half-copied item; else turns the filter off; else empties the clipboard"},
+			{"Esc", "", "Stops copying (a progress bar shows it) and removes the half-copied item; else turns the filter off; else unselects this pane; else empties the clipboard"},
 		}},
 		{"How things work", []helpItem{
 			{"Open", "", "A folder: go into it. A device file is copied to " + tmp + " and opened with its default app; a big file takes a while (progress bar, Esc cancels). Files there are removed on a later start, a day after. A computer file opens at once. With a selection, only the file under the cursor opens"},
