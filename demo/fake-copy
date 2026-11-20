@@ -1,0 +1,49 @@
+#!/usr/bin/python3
+# fake-copy SRC DST NAME pulled|pushed: what fake-adb's pull and push do.
+# Copies a file or a folder a chunk at a time at a phone-over-USB speed, so
+# ak's progress bar moves. A DST that is an existing folder gets SRC inside
+# it, like adb. NAME is SRC as adb was given it, for the messages.
+import os, shutil, sys, time
+
+RATE = 10 * 1024 * 1024  # bytes per second
+CHUNK = 256 * 1024
+
+src, dst = sys.argv[1], sys.argv[2]
+if not os.path.exists(src):
+    sys.stderr.write("adb: error: cannot stat '%s': No such file or directory\n" % sys.argv[3])
+    sys.exit(1)
+if os.path.isdir(dst):
+    dst = os.path.join(dst, os.path.basename(src.rstrip("/")))
+
+PULL = sys.argv[4] == "pulled"  # adb pull dates the copy now; push keeps the time
+
+
+def copy_file(s, d):
+    with open(s, "rb") as fi, open(d, "wb") as fo:
+        while True:
+            b = fi.read(CHUNK)
+            if not b:
+                break
+            fo.write(b)
+            fo.flush()
+            time.sleep(len(b) / RATE)
+    if not PULL:
+        shutil.copystat(s, d)
+
+start = time.time()
+time.sleep(0.25)  # adb's own start-up, so even a small file shows the spinner
+files = total = 0
+if os.path.isdir(src):
+    for d, dirs, names in os.walk(src):
+        out = os.path.join(dst, os.path.relpath(d, src))
+        os.makedirs(out, exist_ok=True)
+        for n in names:
+            copy_file(os.path.join(d, n), os.path.join(out, n))
+            files += 1
+            total += os.path.getsize(os.path.join(d, n))
+else:
+    copy_file(src, dst)
+    files, total = 1, os.path.getsize(src)
+secs = max(time.time() - start, 0.001)
+print("%s: %d file%s %s. %.1f MB/s (%d bytes in %.3fs)" % (
+    sys.argv[3], files, "" if files == 1 else "s", sys.argv[4], total / secs / 1e6, total, secs))

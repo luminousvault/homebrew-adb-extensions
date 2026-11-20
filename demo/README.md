@@ -9,7 +9,7 @@ From the repository root:
 
 ```bash
 go build -ldflags "-X main.version=2.x" -o demo/bin/ak ./cmd/ak
-vhs demo/hero.tape        # or confirm, doctor, screenshot, logcat, completion
+vhs demo/hero.tape        # or confirm, doctor, screenshot, logcat, completion, push, files
 ```
 
 The demo binary is built as version `2.x`, not the release number, so `doctor.gif` (the
@@ -24,11 +24,15 @@ screen changes or the major version does. Without `-ldflags` the version shows a
 | `screenshot.tape` | `screenshot.gif` | `ak screenshot` and `ak screenshot -c` (writes your real clipboard) |
 | `logcat.tape` | `logcat.gif` | `ak logcat` with two apps: colors, app bars, a wrapped line, framework lines hidden |
 | `completion.tape` | `completion.gif` | zsh Tab completion of commands, APK files and serials |
+| `push.tape` | `push.gif` | `ak push` of two files to both devices; one name is taken, so the copy gets ` (1)` |
+| `files.tape` | `files.gif` | `ak files`: pull five photos to `~/Downloads`, copy a PDF there and paste it into `/sdcard/Documents`, the summary on quit |
 
 `settings.tape` holds the shared look (font, size, theme). Every tape first runs
 `setup.sh` while hidden: it makes a throwaway `$HOME` at `demo/home` with sample APKs
-in `~/my-app` (copies of `internal/apk/testdata/aktest.apk`) and points ak at the fake
-adb, so nothing from your own machine appears on screen.
+in `~/my-app` (copies of `internal/apk/testdata/aktest.apk`), a few files in
+`~/Downloads`, and each fake device's storage (photos in `DCIM/Camera`, APKs and PDFs in
+`Download`, dated a few days back), and points ak at the fake adb, so nothing from your
+own machine appears on screen.
 
 GIFs loop straight back to the first frame, so every tape ends with a `Sleep` that keeps
 the final screen up for 3–5 s after the last output appears, and leaves about 1 s
@@ -42,6 +46,16 @@ board animates), `uninstall`, `exec-out screencap -p` (returns `assets/screen.pn
 `shell ps -A -o PID,NAME` and `logcat -v threadtime` (a scripted log: `com.example.app`
 is running, `com.example.shop` starts partway through, and a few framework lines that
 ak hides; it then waits like the real logcat).
+
+For `ak files` and `ak push` each device has storage: the folder
+`demo/home/devices/<serial>` holds `storage/emulated/0` and the link
+`sdcard -> storage/emulated/0`. A `shell` command that names `/sdcard`, `/storage/` or
+`/data/local/tmp`, or runs `content`, runs in bash with those paths moved under that
+folder and with `shim/` first on `PATH`: `stat -c`, `du -s -b`, `df -k` (fixed numbers)
+and `content query` (the files, newest first, as MediaStore rows) as Android has them
+and macOS does not. The folder is taken out of the output again. `pull` and `push`
+copy with `fake-copy` at about 10 MB/s, so progress bars move. It needs only macOS's
+bash 3.2 and `/usr/bin/python3`.
 Other `shell` commands succeed with no output; anything else fails.
 
 | Serial | Device |

@@ -105,6 +105,17 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 
 ![ak logcat으로 두 앱의 로그를 합쳐 보는 화면](demo/logcat.gif)
 
+### 디바이스와 컴퓨터 사이에 파일 옮기기
+
+`ak files`는 디바이스 폴더와 컴퓨터 폴더를 나란히 보여 줍니다. Space로 고르고, `5`는 반대쪽으로 바로 복사합니다(adb pull 또는 push, 작업 전체에 진행 막대 하나). `3` / `4`와 `6`은 폴더를 옮겨 다녀도 남아 있는 클립보드로 복사하거나 옮깁니다. 끝내면 무엇을 복사했는지 목록으로 남깁니다.
+
+![ak files로 사진을 컴퓨터로 꺼내고 파일을 디바이스 폴더에 붙여 넣는 화면](demo/files.gif)
+
+- `ak push`는 파일을 `/sdcard/Download`(`-d`로 다른 폴더)에 복사합니다. 디바이스 한 대, 또는 `-a`로 전부에. 이미 있는 이름은 덮어쓰지 않고 ` (1)`을 붙입니다
+- `ak pull`은 Files 앱의 '최근' 탭처럼 디바이스의 최근 파일을 골라 이 컴퓨터로 가져옵니다
+
+![ak push로 파일 두 개를 디바이스 두 대에 복사하는 화면](demo/push.gif)
+
 ### 화면, 그 밖에
 
 ![ak screenshot](demo/screenshot.gif)
@@ -139,7 +150,7 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 | | [`clear`](docs/commands.ko.md#ak-clear) · [`uninstall`](docs/commands.ko.md#ak-uninstall) | 데이터 삭제 · 제거 |
 | | [`activities`](docs/commands.ko.md#ak-activities) · [`logcat`](docs/commands.ko.md#ak-logcat) | 액티비티 스택 · 앱 하나 또는 여러 개의 로그 |
 | 화면 | [`screenshot`](docs/commands.ko.md#ak-screenshot) · [`record`](docs/commands.ko.md#ak-record) | PNG를 파일이나 클립보드로 · MP4 녹화 |
-| 파일 | [`pull`](docs/commands.ko.md#ak-pull) | 디바이스의 최근 파일을 골라 가져오기 |
+| 파일 | [`pull`](docs/commands.ko.md#ak-pull) · [`push`](docs/commands.ko.md#ak-push) · [`files`](docs/commands.ko.md#ak-files) | 디바이스의 최근 파일을 골라 가져오기 · 파일을 디바이스에 복사 · 양쪽을 둘러보며 넣기·꺼내기·삭제 |
 | 디바이스 | [`devices`](docs/commands.ko.md#ak-devices) · [`mac`](docs/commands.ko.md#ak-mac) · [`wifi`](docs/commands.ko.md#ak-wifi) | 디바이스 목록 · MAC 주소 · Wi-Fi 디버깅 |
 | 설정 | [`doctor`](docs/commands.ko.md#ak-doctor) · [`completion`](docs/commands.ko.md#ak-completion) | 설정 점검 · 셸 자동 완성 스크립트 |
 

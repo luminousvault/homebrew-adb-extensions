@@ -21,7 +21,7 @@ var docGroups = []struct {
 	{"APK", []string{"install", "extract", "signature"}},
 	{"App", []string{"info", "permissions", "launch", "kill", "clear", "uninstall", "restart", "activities", "logcat"}},
 	{"Screen", []string{"screenshot", "record"}},
-	{"Files", []string{"pull"}},
+	{"Files", []string{"pull", "push", "files"}},
 	{"Device", []string{"devices", "mac", "wifi"}},
 	{"Setup", []string{"doctor", "completion"}},
 }

@@ -1,0 +1,24 @@
+#!/usr/bin/python3
+# 'content query --uri content://media/external/file ...' for the fake device:
+# the files under storage/emulated/0, newest first, as MediaStore rows
+# (no Android/ or hidden paths). 'content delete' succeeds quietly.
+# AKDEMO_ROOT is the device's folder on this computer (set by fake-adb).
+import os, sys
+
+if len(sys.argv) < 2 or sys.argv[1] != "query":
+    sys.exit(0)
+root = os.environ["AKDEMO_ROOT"]
+top = os.path.join(root, "storage/emulated/0")
+rows = []
+for d, dirs, files in os.walk(top):
+    dirs[:] = [x for x in dirs if not x.startswith(".") and not (d == top and x == "Android")]
+    for n in files:
+        if n.startswith("."):
+            continue
+        p = os.path.join(d, n)
+        st = os.stat(p)
+        if st.st_size > 0:
+            rows.append((int(st.st_mtime), st.st_size, p[len(root):]))
+rows.sort(reverse=True)
+for i, (t, size, p) in enumerate(rows):
+    print("Row: %d _data=%s, date_modified=%d, date_added=%d, _size=%d" % (i, p, t, t, size))

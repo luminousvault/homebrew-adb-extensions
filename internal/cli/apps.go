@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/files"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
@@ -421,7 +422,7 @@ func runExtract(c *Ctx) error {
 	}
 	size := ""
 	if st, err := os.Stat(file); err == nil {
-		size = humanSize(strconv.FormatInt(st.Size(), 10)) + ", "
+		size = files.HumanSize(st.Size()) + ", "
 	}
 	ui.Success("Saved %s %s", q(file), ui.Err.Dim("("+size+elapsed(start)+")"))
 	if splits > 0 {

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -11,23 +10,17 @@ import (
 	"time"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/files"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/tui"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
-const pullRecentLimit = 300
-
-// recentFilesQuery lists the newest files in MediaStore, like the Files app 'Recents' tab.
-var recentFilesQuery = "content query --uri content://media/external/file" +
-	" --projection _data:date_modified:_size" +
-	` --where "(format IS NULL OR format != 12289) AND _size > 0 AND _data NOT LIKE '%/Android/%' AND _data NOT LIKE '%/.%'"` +
-	" --sort 'date_modified DESC' 2>&1 | head -n " + strconv.Itoa(pullRecentLimit)
-
 var cmdPull = &Command{
 	Name: "pull", Summary: "Pick recent files on a device and copy them here", Args: "[directory]",
 	Long: "Pick recently modified files on the device (like the Files app 'Recents' tab, via MediaStore)\n" +
-		"and pull them. Files keep their names; existing local files are overwritten, and selected\n" +
-		"files with the same name get a ' (N)' suffix. Lists up to the " + strconv.Itoa(pullRecentLimit) + " newest files.\n" +
+		"and pull them. Files keep their names; a file already in the directory (in any case) is kept\n" +
+		"and the pulled one gets a ' (N)' suffix, as do selected files with the same name. Lists up\n" +
+		"to the " + strconv.Itoa(files.RecentFilesLimit) + " newest files.\n" +
 		"Without a terminal, choose with -l or with a -f that matches one file.",
 	ArgHelp: [][2]string{{"directory", "Where to save (default: current directory; created after confirmation)"}},
 	Flags: []Flag{
@@ -39,86 +32,21 @@ var cmdPull = &Command{
 	Device:   oneDevice, Run: runPull,
 }
 
-// humanSize formats bytes like the Bash version (rounded B/KB, one decimal MB/GB).
-func humanSize(size string) string {
-	n, err := strconv.ParseInt(size, 10, 64)
-	if err != nil || n < 0 || size == "" {
-		return "?"
-	}
-	switch {
-	case n < 1024:
-		return fmt.Sprintf("%d B", n)
-	case n < 1048576:
-		return fmt.Sprintf("%d KB", (n+512)/1024)
-	case n < 1073741824:
-		t := (n*10 + 524288) / 1048576
-		return fmt.Sprintf("%d.%d MB", t/10, t%10)
-	}
-	t := (n*10 + 536870912) / 1073741824
-	return fmt.Sprintf("%d.%d GB", t/10, t%10)
-}
-
 // fileMeta returns "<folder relative to sdcard>, <size>" for the picker suffix.
-func fileMeta(p, size string) string {
+func fileMeta(p string, size int64) string {
 	dir := path.Dir(p)
 	rel := strings.TrimPrefix(dir, "/storage/emulated/0/")
 	if rel == "/storage/emulated/0" {
 		rel = "sdcard"
 	}
-	return rel + ", " + humanSize(size)
-}
-
-type recentFile struct{ path, size string }
-
-// parseRecentFiles parses `content query` rows:
-// "Row: 0 _data=<path>, date_modified=<ts>, _size=<bytes>".
-func parseRecentFiles(raw string) []recentFile {
-	var files []recentFile
-	for _, line := range strings.Split(raw, "\n") {
-		if !strings.HasPrefix(line, "Row:") {
-			continue
-		}
-		_, p, ok := strings.Cut(line, " _data=")
-		if !ok {
-			continue
-		}
-		if i := strings.Index(p, ", date_modified="); i >= 0 {
-			p = p[:i]
-		}
-		size := line
-		if i := strings.LastIndex(line, ", _size="); i >= 0 {
-			size = line[i+len(", _size="):]
-		}
-		if p == "" {
-			continue
-		}
-		files = append(files, recentFile{p, size})
-	}
-	return files
-}
-
-// uniqueName adds " (N)" before the extension when name was already used.
-func uniqueName(base string, used map[string]bool) string {
-	if !used[base] {
-		return base
-	}
-	name, ext := base, ""
-	if i := strings.LastIndex(base, "."); i >= 0 {
-		name, ext = base[:i], base[i:]
-	}
-	for n := 1; ; n++ {
-		c := fmt.Sprintf("%s (%d)%s", name, n, ext)
-		if !used[c] {
-			return c
-		}
-	}
+	return rel + ", " + files.HumanSize(size)
 }
 
 // filterRecentFiles keeps the files whose names match every word of filter (see matchesFilter).
-func filterRecentFiles(files []recentFile, filter string) []recentFile {
-	var out []recentFile
-	for _, f := range files {
-		if matchesFilter(path.Base(f.path), filter) {
+func filterRecentFiles(list []files.RecentFile, filter string) []files.RecentFile {
+	var out []files.RecentFile
+	for _, f := range list {
+		if matchesFilter(path.Base(f.Path), filter) {
 			out = append(out, f)
 		}
 	}
@@ -164,9 +92,13 @@ func runPull(c *Ctx) error {
 	if err != nil {
 		return err
 	}
-	raw := adb.Shell(serial, recentFilesQuery)
-	files := parseRecentFiles(raw)
-	if len(files) == 0 {
+	tui.ClearHeld()
+	sp := ui.Spin("Reading recent files on %s", deviceName(serial))
+	raw := adb.Shell(serial, files.RecentFilesQuery) // ~1s even for few rows: `content` starts a JVM
+	recent := files.ParseRecentFiles(raw)
+	recent = files.FillUnknownSizes(serial, recent) // files MediaStore has not scanned yet
+	sp.Stop()
+	if len(recent) == 0 {
 		if raw == "" || strings.Contains(raw, "No result found") {
 			return failErr("", "No recent files found on %s", deviceName(serial))
 		}
@@ -178,16 +110,16 @@ func runPull(c *Ctx) error {
 	}
 
 	if filter := c.String("--filter"); c.Bool("--filter") {
-		files = filterRecentFiles(files, filter)
-		if len(files) == 0 {
+		recent = filterRecentFiles(recent, filter)
+		if len(recent) == 0 {
 			return failErr("", "No recent files on %s match %s", deviceName(serial), q(filter))
 		}
 	}
 	chosen := []int{0} // -l, or -f with one match
-	if !c.Bool("--latest") && (!c.Bool("--filter") || len(files) > 1) {
-		items := make([]string, len(files))
-		for i, f := range files {
-			items[i] = path.Base(f.path) + "\t(" + fileMeta(f.path, f.size) + ")"
+	if !c.Bool("--latest") && (!c.Bool("--filter") || len(recent) > 1) {
+		items := make([]string, len(recent))
+		for i, f := range recent {
+			items[i] = path.Base(f.Path) + "\t(" + fileMeta(f.Path, f.Size) + ")"
 		}
 		r, err := pick(tui.Options{Multi: true, Prompt: "Select files to pull",
 			Location: []string{"Recent files on " + deviceName(serial) + " (newest first)"}, Items: items},
@@ -199,16 +131,34 @@ func runPull(c *Ctx) error {
 	}
 	release()
 
+	// Names already in dest (case and NFC/NFD ignored: macOS and Windows
+	// ignore them) and
+	// names given in this pull are not written over.
+	here := map[string]bool{}
+	if des, err := os.ReadDir(dest); err == nil {
+		for _, de := range des {
+			here[files.FoldName(de.Name())] = true
+		}
+	}
 	used := map[string]bool{}
+	taken := func(n string) bool { return here[files.FoldName(n)] || used[files.FoldName(n)] }
 	ok, failed := 0, 0
 	for _, i := range chosen {
-		remote := files[i].path
-		base := uniqueName(path.Base(remote), used)
-		used[base] = true
-		if base != path.Base(remote) {
-			ui.Warn("Duplicate file name, saving %s as %s", q(path.Base(remote)), q(base))
+		remote := recent[i].Path
+		name := path.Base(remote)
+		base := files.UniqueName(name, false, taken)
+		switch {
+		case base == name:
+		case here[files.FoldName(name)]:
+			ui.Warn("%s already exists in %s, saving as %s", q(name), q(dest), q(base))
+		default:
+			ui.Warn("Duplicate file name, saving %s as %s", q(name), q(base))
 		}
+		used[files.FoldName(base)] = true
 		local := filepath.Join(dest, base)
+		if strings.HasPrefix(local, "-") { // dest ".": adb would read "-x.txt" as an option
+			local = "." + string(filepath.Separator) + local
+		}
 		start := time.Now()
 		sp := ui.Spin("Pulling %s", q(path.Base(remote)))
 		out, err := adb.Combined("-s", serial, "pull", remote, local)
@@ -220,7 +170,7 @@ func runPull(c *Ctx) error {
 			continue
 		}
 		ok++
-		ui.Success("Pulled %s %s", q(local), ui.Err.Dim("("+fileMeta(remote, files[i].size)+", "+elapsed(start)+")"))
+		ui.Success("Pulled %s %s", q(local), ui.Err.Dim("("+fileMeta(remote, recent[i].Size)+", "+elapsed(start)+")"))
 	}
 	if failed > 0 {
 		ui.Errorf("%d of %d files failed", failed, ok+failed)

@@ -4,8 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `ak push [file]...` copies files to the device, into `/sdcard/Download` unless `-d, --dest DIR` gives another folder. It never overwrites: a name already there gets a ` (N)` suffix. Without files it picks from the current directory; `-s` repeated or `-a` pushes to several devices
+- `ak files [path]`: a file manager for the device and this computer, side by side in the terminal. Copy, cut and paste between them or within one side, send to the other side with one key, rename, make folders and delete, with a recent-files view, progress bars and Esc to cancel. Nothing is overwritten without asking, and an overwrite keeps the old file until the new one is complete. Number keys like mc's; `?` shows every key ([docs](docs/commands.md#ak-files))
+- Tab completion offers files for `push`
+
 ### Changed
 - `record` has no time limit by default: it records until Ctrl+C, and `-t 0` asks for that explicitly. Devices whose `screenrecord` cannot drop the limit (its `--help` lacks "Set to 0 to remove the time limit") keep the old 180-second cap, and `-t 0` or over 180 fails there with a hint
+- `pull` no longer overwrites a file already in the destination; it saves the new one with a ` (N)` suffix
+- `pull` lists a file that was just written (before MediaStore scans it), with its real size
+- `pull` shows a spinner while it reads the recent files
+- Korean names stored as separate jamo (as macOS saves them) line up correctly in all output
 
 ### Fixed
 - `permissions` listed each permission twice for updated system apps (e.g. Chrome): it also read the factory version under `Hidden system packages:`

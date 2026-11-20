@@ -105,6 +105,17 @@ Devices install in parallel while a status board shows each one. Common failures
 
 ![ak logcat merging two apps](demo/logcat.gif)
 
+### Move files between the device and the computer
+
+`ak files` shows a device folder and a computer folder side by side. Select with Space; `5` copies to the other side right away (adb pull or push, one progress bar for the whole job); `3` / `4` and `6` copy or move through a clipboard that stays while you change folders. When you quit, it lists what was copied.
+
+![ak files pulling photos to the computer and pasting a file into a device folder](demo/files.gif)
+
+- `ak push` copies files into `/sdcard/Download` (`-d` another folder) on one device or, with `-a`, every device; a name already there gets ` (1)` instead of being overwritten
+- `ak pull` picks the device's newest files, like the Files app's Recent tab, and copies them here
+
+![ak push copying two files to two devices](demo/push.gif)
+
 ### Screen and more
 
 ![ak screenshot](demo/screenshot.gif)
@@ -139,7 +150,7 @@ Commands, options, device serials (each with its model and Android version in zs
 | | [`clear`](docs/commands.md#ak-clear) · [`uninstall`](docs/commands.md#ak-uninstall) | Clear data · uninstall |
 | | [`activities`](docs/commands.md#ak-activities) · [`logcat`](docs/commands.md#ak-logcat) | Activity stack · logs of one or more apps |
 | Screen | [`screenshot`](docs/commands.md#ak-screenshot) · [`record`](docs/commands.md#ak-record) | PNG to a file or the clipboard · MP4 recording |
-| Files | [`pull`](docs/commands.md#ak-pull) | Pick recent files on the device and copy them here |
+| Files | [`pull`](docs/commands.md#ak-pull) · [`push`](docs/commands.md#ak-push) · [`files`](docs/commands.md#ak-files) | Pick recent files on the device and copy them here · copy files to the device · browse both and push, pull or delete |
 | Device | [`devices`](docs/commands.md#ak-devices) · [`mac`](docs/commands.md#ak-mac) · [`wifi`](docs/commands.md#ak-wifi) | Device list · MAC addresses · Wi-Fi debugging |
 | Setup | [`doctor`](docs/commands.md#ak-doctor) · [`completion`](docs/commands.md#ak-completion) | Check the setup · shell completion script |
 

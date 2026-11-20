@@ -1,0 +1,8 @@
+#!/usr/bin/python3
+# 'df -k dir' for the fake device: fixed numbers (a 128 GB phone with 61 GB
+# free), not the disk of the computer recording the demo.
+import sys
+
+path = ([a for a in sys.argv[1:] if not a.startswith("-")] or ["/storage/emulated"])[-1]
+print("Filesystem      1K-blocks     Used Available Use% Mounted on")
+print("/dev/fuse       119478592 55489536  63989056  47%% %s" % path)

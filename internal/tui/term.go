@@ -47,6 +47,16 @@ func Hold() {
 	screenMu.Unlock()
 }
 
+// ClearHeld blanks a held alternate screen, so work done between two pickers
+// (and its spinner) does not show over the picker that just closed.
+func ClearHeld() {
+	screenMu.Lock()
+	defer screenMu.Unlock()
+	if onAlt {
+		io.WriteString(os.Stderr, clearScreen)
+	}
+}
+
 // Release leaves the alternate screen if a held picker left it open.
 func Release() {
 	screenMu.Lock()
@@ -87,15 +97,7 @@ func Select(o Options) (Result, error) {
 			width, height = 80, 24 // same defaults tput uses for an unsized terminal
 		}
 		l := s.computeLayout(height, &fixedHeight, wasResized)
-		lines := s.frame(l, fixedHeight, width, height)
-		for i := range lines {
-			if !ui.Err.Color {
-				lines[i] = ui.Plain(lines[i]) // NO_COLOR / --no-color: ➤ and [✓] still mark focus and selection
-			}
-			lines[i] = ui.Fit(lines[i], width)
-		}
-		// Raw mode disables output post-processing, so end lines with \r\n.
-		io.WriteString(out, cursorHome+strings.Join(lines, "\r\n")+clearBelow)
+		writeFrame(out, s.frame(l, fixedHeight, width, height), width)
 	}
 	stopResize := watchResize(func() {
 		mu.Lock()
@@ -109,23 +111,11 @@ func Select(o Options) (Result, error) {
 		mu.Lock() // let a resize redraw finish before leaving the alternate screen
 		defer mu.Unlock()
 		closed = true
-		io.WriteString(out, showCursor+pasteModeOff)
-		screenMu.Lock()
-		if !held {
-			io.WriteString(out, altScreenOff)
-			onAlt = false
-		}
-		screenMu.Unlock()
+		leaveAlt(out)
 		_ = term.Restore(inFd, old)
 	}
 
-	screenMu.Lock()
-	if !onAlt {
-		io.WriteString(out, altScreenOn)
-		onAlt = true
-	}
-	screenMu.Unlock()
-	io.WriteString(out, pasteModeOn+clearScreen+hideCursor)
+	enterAlt(out)
 	buf := make([]byte, 0, inputBufferSize)
 	chunk := make([]byte, inputBufferSize)
 	mu.Lock()
@@ -140,7 +130,7 @@ func Select(o Options) (Result, error) {
 				return Result{Index: -1}, err
 			}
 			buf = append(buf, chunk[:n]...)
-			keys, used := parseKeys(buf)
+			keys, used := ParseKeys(buf)
 			buf = append(buf[:0], buf[used:]...)
 			if len(buf) == 1 && buf[0] == 0x1b && len(keys) == 0 {
 				buf = buf[:0] // lone ESC: ignored, as in the Bash version
@@ -169,4 +159,42 @@ func Select(o Options) (Result, error) {
 		draw(false)
 		mu.Unlock()
 	}
+}
+
+// enterAlt opens the alternate screen (once, if a held picker left it open),
+// clears it and hides the cursor.
+func enterAlt(out io.Writer) {
+	screenMu.Lock()
+	if !onAlt {
+		io.WriteString(out, altScreenOn)
+		onAlt = true
+	}
+	screenMu.Unlock()
+	io.WriteString(out, pasteModeOn+clearScreen+hideCursor)
+}
+
+// leaveAlt shows the cursor and leaves the alternate screen unless Hold is on.
+func leaveAlt(out io.Writer) {
+	io.WriteString(out, showCursor+pasteModeOff)
+	screenMu.Lock()
+	if !held {
+		io.WriteString(out, altScreenOff)
+		onAlt = false
+	}
+	screenMu.Unlock()
+}
+
+// writeFrame draws lines from the top-left corner, each cut to width, and
+// clears what is below them.
+func writeFrame(out io.Writer, lines []string, width int) {
+	for i := range lines {
+		if !ui.Err.Color {
+			lines[i] = ui.Plain(lines[i]) // NO_COLOR / --no-color: ➤ and [✓] still mark focus and selection
+		}
+		lines[i] = ui.Fit(lines[i], width)
+	}
+	// Raw mode disables output post-processing, so end lines with \r\n. Each
+	// line clears to its end: a shorter or blank line must not leave the
+	// previous frame's text behind (ak files keeps blank rows mid-screen).
+	io.WriteString(out, cursorHome+strings.Join(lines, clearLine+"\r\n")+clearBelow)
 }

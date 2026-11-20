@@ -107,6 +107,7 @@ const (
 	argPkg   argKind = iota // package name: nothing to offer
 	argAPK                  // APK files and directories
 	argDir                  // directories only (a place to save into)
+	argFile                 // any file (and directories to reach it)
 	argWords                // fixed words
 	argShell                // completion shells
 )
@@ -123,6 +124,8 @@ type compArg struct {
 var compArgs = map[string][]compArg{
 	"install":     {{desc: "APK files or directories", kind: argAPK, many: true}},
 	"pull":        {{desc: "destination directory", kind: argDir}},
+	"push":        {{desc: "files to push", kind: argFile, many: true}},
+	"files":       {{desc: "device folder", kind: argPkg}},
 	"extract":     {{desc: "package name or save file name", kind: argPkg}, {desc: "save file name or package name", kind: argDir}},
 	"info":        {{desc: "package name", kind: argPkg}},
 	"permissions": {{desc: "package name", kind: argPkg}},
@@ -200,6 +203,8 @@ func zshAction(a compArg) string {
 		return `_path_files -g "*.apk(-.)" -/` // _path_files: no fallback to every file
 	case argDir:
 		return `_path_files -/`
+	case argFile:
+		return `_files`
 	case argWords:
 		return "(" + strings.Join(a.words, " ") + ")"
 	case argShell:
@@ -343,6 +348,8 @@ func bashAction(a compArg) string {
 		return `COMPREPLY=($(compgen -d -- "$cur") $(compgen -f -X '!*.apk' -- "$cur"))`
 	case argDir:
 		return `COMPREPLY=($(compgen -d -- "$cur"))`
+	case argFile:
+		return `COMPREPLY=($(compgen -f -- "$cur"))`
 	case argWords: // the word list splits on IFS, which _ak sets to newline
 		return `IFS=' ' COMPREPLY=($(compgen -W ` + bashWords(a.words) + ` -- "$cur"))`
 	case argShell:
@@ -492,6 +499,8 @@ complete -c ak -n __fish_use_subcommand -l no-color -d 'Disable colored output'
 				fmt.Fprintf(&b, "complete -c ak %s -a '(__ak_apk_or_dir)'\n", cond)
 			case argDir:
 				fmt.Fprintf(&b, "complete -c ak %s -a '(__fish_complete_directories (commandline -ct))'\n", cond)
+			case argFile:
+				fmt.Fprintf(&b, "complete -c ak %s -F\n", cond)
 			case argWords:
 				fmt.Fprintf(&b, "complete -c ak %s -a %s\n", cond, fishQuote(strings.Join(a.words, " ")))
 			case argShell:
@@ -512,6 +521,8 @@ func psKind(a compArg) string {
 		return "apk"
 	case argDir:
 		return "dir"
+	case argFile:
+		return "file"
 	case argWords:
 		return "words:" + strings.Join(a.words, ",")
 	case argShell:
@@ -577,10 +588,10 @@ $global:__akComplete = {
   $words = { param($list) $list | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object { & $result $_ $_ 'ParameterValue' } }
   $files = { param($kind)
     [System.Management.Automation.CompletionCompleters]::CompleteFilename($wordToComplete) |
-      Where-Object { $_.ResultType -eq 'ProviderContainer' -or ($kind -eq 'apk' -and $_.CompletionText -like '*.apk*') }
+      Where-Object { $kind -eq 'file' -or $_.ResultType -eq 'ProviderContainer' -or ($kind -eq 'apk' -and $_.CompletionText -like '*.apk*') }
   }
   $offer = { param($kind)
-    if ($kind -eq 'dir' -or $kind -eq 'apk') { & $files $kind }
+    if ($kind -eq 'dir' -or $kind -eq 'apk' -or $kind -eq 'file') { & $files $kind }
     elseif ($kind -like 'words:*') { & $words ($kind.Substring(6) -split ',') }
     elseif ($kind -eq 'serial') {
       @(& ak __serials 2>$null) | ForEach-Object {

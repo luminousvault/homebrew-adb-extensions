@@ -11,7 +11,7 @@
 - **APK:** [install](#ak-install), [extract](#ak-extract), [signature](#ak-signature)
 - **앱:** [info](#ak-info), [permissions](#ak-permissions), [launch](#ak-launch), [kill](#ak-kill), [clear](#ak-clear), [uninstall](#ak-uninstall), [restart](#ak-restart), [activities](#ak-activities), [logcat](#ak-logcat)
 - **화면:** [screenshot](#ak-screenshot), [record](#ak-record)
-- **파일:** [pull](#ak-pull)
+- **파일:** [pull](#ak-pull), [push](#ak-push), [files](#ak-files)
 - **디바이스:** [devices](#ak-devices), [mac](#ak-mac), [wifi](#ak-wifi)
 - **설정:** [doctor](#ak-doctor), [completion](#ak-completion)
 - [전역 옵션](#전역-옵션)
@@ -518,8 +518,9 @@ ak pull [options] [directory]
 ```
 
 디바이스에서 최근 수정된 파일을 골라 가져옵니다(파일 앱의 '최근' 탭처럼 MediaStore 기준).
-파일 이름은 그대로 둡니다. 같은 이름의 로컬 파일은 덮어쓰고, 고른 파일끼리 이름이 같으면
-' (N)'을 붙입니다. 최신 파일을 최대 300개까지 보여 줍니다.
+파일 이름은 그대로 둡니다. 폴더에 같은 이름의 파일이 이미 있으면(대소문자 무관) 그대로 두고
+가져온 파일에 ' (N)'을 붙이며, 고른 파일끼리 이름이 같을 때도 그렇게 합니다. 최신 파일을
+최대 300개까지 보여 줍니다.
 터미널이 아니면 -l이나, 파일 하나만 맞는 -f로 고릅니다.
 
 **인자**
@@ -546,6 +547,80 @@ ak pull ~/Downloads/device
 ak pull new-dir -y
 ak pull -l
 ak pull -l -f Screenshot
+```
+
+## ak push
+
+이 컴퓨터의 파일을 디바이스에 복사.
+
+```
+ak push [options] [file]...
+```
+
+파일을 디바이스의 /sdcard/Download에 복사합니다. -d로 다른 폴더를 지정할 수 있습니다
+(폴더가 없으면 만듦). 디바이스에 이미 있는 파일은 덮어쓰지 않고 복사본 이름에
+' (N)'을 붙입니다. 파일을 주지 않으면 현재 폴더의 파일을 골라 올립니다(최신순).
+주 사용자(0번) 저장소만 다룹니다. adb는 업무 프로필에 접근할 수 없습니다.
+
+**인자**
+
+| 인자 | 설명 |
+|---|---|
+| `file` | 올릴 파일 (폴더는 지원하지 않음) |
+
+**옵션**
+
+| 옵션 | 설명 |
+|---|---|
+| `-d, --dest DIR` | 올릴 디바이스 폴더 (기본: /sdcard/Download) |
+| `-s, --serial ID` | 대상 디바이스, 여러 번 지정 가능 (기본: $ANDROID_SERIAL, 없으면 물어봄) |
+| `-a, --all` | 연결된 모든 디바이스 |
+| `-h, --help` | 이 도움말 보기 |
+
+**예시**
+
+```bash
+ak push
+ak push report.pdf
+ak push *.png -d /sdcard/Pictures
+ak push notes.txt --all
+```
+
+## ak files
+
+디바이스와 컴퓨터 폴더를 둘러보며 파일 넣기·꺼내기·삭제.
+
+```
+ak files [options] [path]
+```
+
+디바이스와 이 컴퓨터를 다루는 파일 관리자입니다. mc의 F키처럼 숫자 키를 씁니다. 디바이스와
+컴퓨터를 나란히 보며 시작합니다(80칸 이상). 9로 컴퓨터 창을 닫으면 목록이 두 단이 되고
+Tab으로 디바이스와 컴퓨터를 바꿉니다. 5는 고른 것을 바로 반대쪽으로 복사합니다: 디바이스
+쪽이면 컴퓨터 쪽 폴더로 꺼내고, 컴퓨터 쪽이면 디바이스 쪽 폴더에 넣습니다. 3은 복사, 4는
+잘라내기로 클립보드에 담고(폴더를 옮겨도 유지), 6은 커서가 있는 곳에 붙여넣습니다(잘라내기는
+이동). Enter는 폴더나 파일을 엽니다(디바이스 파일은 먼저 이 컴퓨터로 가져옴). ?를 누르면
+모든 키를 봅니다.
+터미널이 필요합니다. 터미널이 없으면 ak pull과 ak push를 쓰세요.
+
+**인자**
+
+| 인자 | 설명 |
+|---|---|
+| `path` | 처음 열 디바이스 폴더 (기본: /sdcard) |
+
+**옵션**
+
+| 옵션 | 설명 |
+|---|---|
+| `-s, --serial ID` | 대상 디바이스 (기본: $ANDROID_SERIAL, 없으면 물어봄) |
+| `-h, --help` | 이 도움말 보기 |
+
+**예시**
+
+```bash
+ak files
+ak files /sdcard/DCIM/Camera
 ```
 
 ## ak devices

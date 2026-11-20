@@ -84,6 +84,7 @@ var completionCases = []completionCase{
 	{"ak info ", nil},                                         // a package name: nothing
 	{"ak wifi ", []string{"off"}},                             // fixed words
 	{"ak logcat -l ", []string{"D", "E", "F", "I", "V", "W"}}, // option values
+	{"ak push ", []string{"app.apk", "notes.txt", "sub"}},     // any file
 	{"ak completion ", []string{"bash", "fish", "powershell", "zsh"}},
 }
 

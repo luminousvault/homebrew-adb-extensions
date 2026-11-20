@@ -19,6 +19,15 @@
 #
 # logcat: com.example.app (pid 4321) is running; com.example.shop starts
 # (pid 4410) partway through the log, and only then shows up in 'ps'.
+#
+# Storage (ak files, ak push): each device's files are a folder on this
+# computer, $HOME/devices/<serial> (demo/setup.sh fills it), holding
+# storage/emulated/0 and the link sdcard -> storage/emulated/0. A shell
+# command that names /sdcard, /storage/ or /data/local/tmp, or runs
+# 'content', runs in bash with those paths moved under that folder and with
+# demo/shim first on PATH (stat, du, df and content as Android's toybox has
+# them); the folder is taken out of the output again. 'pull' and 'push'
+# copy at phone speed (demo/fake-copy) so progress bars move.
 
 set -u
 self=$0
@@ -47,6 +56,29 @@ install_time() {
   esac
 }
 
+# The device's storage on this computer.
+root="$HOME/devices/$serial"
+
+# devpath <device path>: where it is on this computer.
+devpath() {
+  case "$1" in
+  /*) echo "$root$1" ;;
+  *) echo "$1" ;;
+  esac
+}
+
+# device_shell <command>: run a shell command against the device's folder.
+device_shell() {
+  local cmd=$1 out code
+  cmd=${cmd//\/sdcard/$root/sdcard}
+  cmd=${cmd//\/storage\//$root/storage/}
+  cmd=${cmd//\/data\/local\/tmp/$root/data/local/tmp}
+  out=$(AKDEMO_ROOT=$root PATH="$here/shim:$PATH" bash -c "$cmd" 2>&1)
+  code=$?
+  [ -n "$out" ] && printf '%s\n' "${out//$root/}"
+  return $code
+}
+
 case "${1:-}" in
 version)
   echo "Android Debug Bridge version 1.0.41"
@@ -73,6 +105,9 @@ shell)
     emulator-5554) getprop google "Pixel 9" 16 36 ;;
     emulator-5556) getprop samsung "Galaxy S25" 15 35 ;;
     esac
+    ;;
+  *"/sdcard"* | *"/storage/"* | *"/data/local/tmp"* | "content "*)
+    [ -d "$root" ] && device_shell "$2"
     ;;
   esac
   # Any other shell command: no output, like a quiet success.
@@ -123,6 +158,16 @@ logcat)
   line 0.5 31.470 4321 4321 E Billing "purchase failed: responseCode=1 (USER_CANCELED)"
   line 0 31.475 4321 4380 W qdgralloc "getInterlacedFlag: getMetaData returned 3"
   exec sleep 3600 # follow: wait for more, like the real logcat (exec: stopping adb closes the output)
+  ;;
+
+pull)
+  # pull <device path> <local path>
+  exec "$here/fake-copy" "$(devpath "$2")" "$3" "$2" pulled
+  ;;
+
+push)
+  # push <local path> <device path>
+  exec "$here/fake-copy" "$2" "$(devpath "$3")" "$2" pushed
   ;;
 
 exec-out)

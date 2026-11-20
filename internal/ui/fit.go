@@ -13,6 +13,11 @@ func runeWidth(r rune) int {
 	if unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r) || r == 0x200d || (r >= 0xfe00 && r <= 0xfe0f) {
 		return 0
 	}
+	// Hangul medial vowels and final consonants as separate jamo (NFD, as
+	// macOS stores names): they join the initial consonant before them.
+	if (r >= 0x1160 && r <= 0x11ff) || (r >= 0xd7b0 && r <= 0xd7ff) {
+		return 0
+	}
 	switch width.LookupRune(r).Kind() {
 	case width.EastAsianWide, width.EastAsianFullwidth:
 		return 2
