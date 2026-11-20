@@ -29,7 +29,8 @@ func TestPullDashFileIntoCurrentDir(t *testing.T) {
 	t.Chdir(dir)
 	f := baseFake()
 	f.Responses["-s "+serial+" shell "+files.RecentFilesQuery] = adbtest.Response{Stdout: "Row: 0 _data=/storage/emulated/0/Download/-x.txt, date_modified=2, _size=10\n"}
-	f.Responses["-s "+serial+" pull /storage/emulated/0/Download/-x.txt ./-x.txt"] = adbtest.Response{}
+	local := "." + string(filepath.Separator) + "-x.txt" // never "-x.txt": adb would read an option
+	f.Responses["-s "+serial+" pull /storage/emulated/0/Download/-x.txt "+local] = adbtest.Response{}
 	r := ak(t, f, "pull", "-l")
 	if r.code != 0 {
 		t.Errorf("code %d\n%s\ncalls %q", r.code, r.err, f.Calls)

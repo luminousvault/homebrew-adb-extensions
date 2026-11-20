@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -36,7 +37,7 @@ func TestSummaryRenameMkdirCancel(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(pc, 0o755) })
 	press(t, s, esc+"nblocked"+enter)
-	if os.Getuid() != 0 && (len(s.summary.Failed) != 1 || !strings.HasPrefix(s.summary.Failed[0], "Couldn't make folder 'blocked' in ")) {
+	if os.Getuid() != 0 && runtime.GOOS != "windows" && (len(s.summary.Failed) != 1 || !strings.HasPrefix(s.summary.Failed[0], "Couldn't make folder 'blocked' in ")) {
 		t.Errorf("failed %q", s.summary.Failed)
 	}
 	_ = os.Chmod(pc, 0o755)

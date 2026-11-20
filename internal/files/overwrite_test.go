@@ -33,6 +33,9 @@ func TestOverwriteKeepsExistingOnFailure(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("root reads unreadable files")
 	}
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0 only makes a file read-only on Windows: it stays readable")
+	}
 	src, dst := t.TempDir(), t.TempDir()
 	write(t, src, "f.txt", "d/ok.txt", "d/secret.txt")
 	write(t, dst, "f.txt", "d/old.txt")

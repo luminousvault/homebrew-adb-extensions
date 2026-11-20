@@ -330,8 +330,8 @@ func TestDoctorAgentSkill(t *testing.T) {
 	mixed := agentSkillCategory(false, home, []agentskill.Status{
 		{Path: path(".claude"), State: agentskill.Current}, {Path: path(".agents"), State: agentskill.Removed}})
 	got := render(mixed)
-	if mixed.level() != levelOK || !strings.Contains(got, "/.claude/skills/ak is current") ||
-		!strings.Contains(got, "/.agents/skills/ak was removed") || !strings.Contains(got, "skills-installed") {
+	if mixed.level() != levelOK || !strings.Contains(got, filepath.FromSlash("/.claude/skills/ak")+" is current") ||
+		!strings.Contains(got, filepath.FromSlash("/.agents/skills/ak")+" was removed") || !strings.Contains(got, "skills-installed") {
 		t.Errorf("current + removed:\n%s", got)
 	}
 

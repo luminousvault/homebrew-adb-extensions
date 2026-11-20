@@ -62,20 +62,23 @@ func TestRenameRefusesAnExistingTarget(t *testing.T) {
 
 // 6: going to a path lists it once; a failure keeps the folder.
 func TestGotoListsOnce(t *testing.T) {
-	s, dev, _ := testState(t)
-	write(t, dev, "sub/x.txt")
-	s.open(s.panes[Device], dev, "")
-	counter := &countFS{localFS: localFS{Device, "Test Phone"}}
-	s.panes[Device].fs = counter
-	press(t, s, ":"+strings.Repeat(back, 300)+filepath.Join(dev, "sub")+enter)
-	if counter.lists != 1 || s.panes[Device].dir != filepath.Join(dev, "sub") {
-		t.Errorf("lists %d, dir %s", counter.lists, s.panes[Device].dir)
+	// The computer pane: its paths are the OS's own, where a local folder
+	// standing in for the device would have C:\ paths on Windows.
+	s, _, pc := testState(t)
+	write(t, pc, "sub/x.txt")
+	s.active = PC
+	s.open(s.panes[PC], pc, "")
+	counter := &countFS{localFS: localFS{PC, computerLabel}}
+	s.panes[PC].fs = counter
+	press(t, s, ":"+strings.Repeat(back, 300)+filepath.Join(pc, "sub")+enter)
+	if counter.lists != 1 || s.panes[PC].dir != filepath.Join(pc, "sub") {
+		t.Errorf("lists %d, dir %s", counter.lists, s.panes[PC].dir)
 	}
 	press(t, s, ":"+strings.Repeat(back, 300)+"/no/such/place"+enter)
-	if s.panes[Device].dir != filepath.Join(dev, "sub") || s.msg == nil || !strings.HasPrefix(s.msg.text, "Can't open") {
-		t.Errorf("failed go to: dir %s msg %+v", s.panes[Device].dir, s.msg)
+	if s.panes[PC].dir != filepath.Join(pc, "sub") || s.msg == nil || !strings.HasPrefix(s.msg.text, "Can't open") {
+		t.Errorf("failed go to: dir %s msg %+v", s.panes[PC].dir, s.msg)
 	}
-	if len(s.panes[Device].rows) == 0 || s.panes[Device].err != nil {
+	if len(s.panes[PC].rows) == 0 || s.panes[PC].err != nil {
 		t.Error("the folder should still be listed")
 	}
 }
