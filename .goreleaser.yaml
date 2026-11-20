@@ -48,7 +48,9 @@ checksum:
   name_template: checksums.txt
 
 changelog:
-  disable: true
+  # The release workflow passes the notes (--release-notes), which this pipe
+  # reads: disabling it dropped them, and every 2.x release had an empty body.
+  use: git
 
 release:
   # The release workflow passes notes from CHANGELOG.md (--release-notes) and a
