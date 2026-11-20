@@ -224,7 +224,7 @@ func helpSections() []helpSection {
 			{"↑ ↓", "", "One item; in two columns they run on into the next column"},
 			{"PgUp PgDn", "", "A screen (in two columns, both columns)"},
 			{"Home End", "", "First and last item"},
-			{"← →", "", "Two columns: the other column. One column: parent folder, open"},
+			{"← →", "", "Two columns: the other column. One column: parent folder, into a folder (a file opens with Enter only)"},
 			{"Enter", "", "Go into a folder or open a file (see How things work)"},
 			{"Backspace", "", "Parent folder"},
 			{":", "", "Go to a path you type"},
@@ -242,9 +242,9 @@ func helpSections() []helpSection {
 			{"4 Cut", "x", "The same, and the paste moves them: the originals go once each copy is complete (on one side, a rename)"},
 			{"6 Paste", "v", "Paste the clipboard into the folder where the cursor is: device ↔ computer, or within the device or the computer. A copy stays in the clipboard for more pastes; what a cut moved leaves it"},
 			{"", "", "What 3, 4, 5 take: the selected items shown, or else the item under the cursor. In the same folder a copy gets ' (N)' and a cut does nothing; a folder never goes into itself"},
-			{"o s r", "", "A name already there: overwrite, skip, or rename with ' (N)'. A capital letter does all the rest; Esc or q cancels"},
+			{"o s r", "", "A name already there: overwrite, skip, or rename with ' (N)'. Press a first to answer for all the rest; Esc or q cancels"},
 			{"", "", "Overwrite copies to a temporary name first, checks the size, then swaps it in; if that fails or is canceled, the old item stays. A move keeps the original when the size can't be checked"},
-			{"Esc", "", "Stops copying (a progress bar shows it) and removes the half-copied item; else turns the filter off; else empties the clipboard"},
+			{"Esc", "", "Stops copying (a progress bar shows it) and removes the half-copied item; else turns the filter off; else unselects this pane; else empties the clipboard"},
 		}},
 		{"How things work", []helpItem{
 			{"Open", "", "A folder: go into it. A device file is copied to " + tmp + " and opened with its default app; a big file takes a while (progress bar, Esc cancels). Files there are removed on a later start, a day after. A computer file opens at once. With a selection, only the file under the cursor opens"},
@@ -256,7 +256,8 @@ func helpSections() []helpSection {
 		{"Manage", []helpItem{
 			{"0 Rename", "r", "Rename the item under the cursor (in the recent view too)"},
 			{"7 Mkdir", "n", "New folder"},
-			{"8 Delete", "d", "Delete the selection or the item (Delete key too)"},
+			{"8 Delete", "d", "Delete the selection or the item (Delete key too), after a [y/N] question"},
+			{"Shift+Delete", "", "Delete without the question"},
 		}},
 		{"View", []helpItem{
 			{"Tab", "", "Device ↔ computer (two panes: the other pane)"},
@@ -687,6 +688,15 @@ func (s *state) row(p *pane, i, w int, active, compact, brief bool) string {
 
 // statusText is the status line: a question or an input line, the progress,
 // a message, or else where the cursor is and what the folder holds.
+// toAll is the a key of the name question: dim while off, lit once
+// pressed (the next answer then covers the rest).
+func toAll(on bool) string {
+	if on {
+		return "  " + Cyan + "a" + NC + " " + Green + "All the rest ✓" + NC
+	}
+	return "  " + Dim + "a All the rest" + NC
+}
+
 func (s *state) statusText() string {
 	key := func(k, desc string) string { return "  " + Cyan + k + NC + " " + desc }
 	switch s.mode {
@@ -696,7 +706,7 @@ func (s *state) statusText() string {
 	case modeConflict:
 		op := s.plan.ops[s.ci]
 		return fmt.Sprintf("%s'%s' already exists.%s", Yellow, op.name, NC) +
-			key("o", "Overwrite") + key("s", "Skip") + key("r", "Rename (N)") + "  " + Dim + "· Shift = all" + NC
+			key("o", "Overwrite") + key("s", "Skip") + key("r", "Rename (N)") + toAll(s.toAll)
 	case modeFilter:
 		return "Filter: " + s.inputLine()
 	case modeInput:

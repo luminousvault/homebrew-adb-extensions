@@ -47,6 +47,10 @@ func TestParseKeys(t *testing.T) {
 	if keys[7].Text != "x y" {
 		t.Errorf("paste text %q", keys[7].Text)
 	}
+	// Shift+Delete is a Delete with Shift set; plain Delete has none.
+	if keys, _ := ParseKeys([]byte("\x1b[3;2~\x1b[3~")); len(keys) != 2 || keys[0].Kind != KeyDelete || !keys[0].Shift || keys[1].Shift {
+		t.Errorf("shift delete: %+v", keys)
+	}
 	// Incomplete sequences wait for more input.
 	if _, used := ParseKeys([]byte("\x1b[")); used != 0 {
 		t.Errorf("incomplete CSI consumed %d", used)

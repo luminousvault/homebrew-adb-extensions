@@ -299,15 +299,15 @@ func TestPushPullConflicts(t *testing.T) {
 	if s.mode != modeConflict {
 		t.Fatal("4.txt should still be asked about")
 	}
-	press(t, s, "O") // the rest: overwrite
+	press(t, s, "ao") // the rest: overwrite
 	want := map[string]string{"1.txt": "1.txt", "2.txt": "old", "3.txt": "old", "3 (1).txt": "3.txt", "4.txt": "4.txt"}
 	for n, w := range want {
 		if b, _ := os.ReadFile(filepath.Join(pc, n)); string(b) != w {
 			t.Errorf("%s = %q, want %q", n, b, w)
 		}
 	}
-	// Shift = all; Esc cancels.
-	press(t, s, "ag"+"S")
+	// a = all; Esc cancels.
+	press(t, s, "ag"+"as")
 	if s.mode != modeNormal || s.msg == nil || !strings.Contains(s.msg.text, "skipped") {
 		t.Errorf("S: %+v", s.msg)
 	}
@@ -759,5 +759,120 @@ func TestLeavingRecentReloadsFolder(t *testing.T) {
 	s.toggleRecent(p)
 	if got := names(p); strings.Contains(got, "big.mp4") || !strings.Contains(got, "keep.txt") {
 		t.Errorf("folder after recent: %s", got)
+	}
+}
+
+// Caps Lock flips the case of letters, and the terminal does not say so:
+// capitals are the same keys, and only a (not Shift) answers for all.
+func TestCapsLockLetters(t *testing.T) {
+	s, dev, pc := testState(t)
+	write(t, dev, "1.txt", "2.txt", "sub/")
+	write(t, pc, "1.txt", "2.txt")
+	s.open(s.panes[Device], dev, "")
+	press(t, s, "N")
+	if s.mode != modeInput || s.inputKind != inputMkdir {
+		t.Fatalf("N: mode %v", s.mode)
+	}
+	press(t, s, esc)
+	press(t, s, "AG") // select all, pull
+	if s.mode != modeConflict {
+		t.Fatal("no question")
+	}
+	press(t, s, "S") // this one only, though it is a capital
+	if s.mode != modeConflict || s.plan.ops[s.ci].name != "2.txt" {
+		t.Fatalf("S answered more than one: mode %v", s.mode)
+	}
+	press(t, s, "aa") // on, off again
+	if s.toAll {
+		t.Fatal("a twice should be off")
+	}
+	if !strings.Contains(ui.Plain(s.statusText()), "a All the rest") {
+		t.Errorf("status %q", ui.Plain(s.statusText()))
+	}
+	press(t, s, "A")
+	if !strings.Contains(ui.Plain(s.statusText()), "All the rest ✓") {
+		t.Errorf("status %q", ui.Plain(s.statusText()))
+	}
+	press(t, s, "s")
+	if s.mode != modeNormal {
+		t.Fatalf("mode %v", s.mode)
+	}
+	press(t, s, "Q")
+	if s.exit != exitQuit {
+		t.Error("Q did not quit")
+	}
+}
+
+// Shift+Delete deletes without the question and says so; plain Delete asks.
+func TestShiftDeleteDoesNotAsk(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "a.txt", "b.txt")
+	s.open(s.panes[Device], dev, "")
+	find(t, s, "a.txt")
+	press(t, s, "\x1b[3~")
+	if s.mode != modeDelete {
+		t.Fatalf("Delete did not ask: mode %v", s.mode)
+	}
+	press(t, s, "n")
+	find(t, s, "a.txt")
+	press(t, s, "\x1b[3;2~")
+	if _, err := os.Stat(filepath.Join(dev, "a.txt")); !os.IsNotExist(err) {
+		t.Fatalf("a.txt is still there: %v", err)
+	}
+	if s.msg == nil || s.msg.text != "Deleted 'a.txt' (Shift+Delete, not asked)" {
+		t.Errorf("message %+v", s.msg)
+	}
+	if last := s.summary.Done[len(s.summary.Done)-1]; !strings.HasSuffix(last, "(Shift+Delete, not asked)") {
+		t.Errorf("summary %q", last)
+	}
+	if _, err := os.Stat(filepath.Join(dev, "b.txt")); err != nil {
+		t.Error("b.txt went too")
+	}
+}
+
+// Korean input sends UTF-8 text: no key runs, and the status line says why.
+func TestKoreanInputSaysWhy(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "a.txt")
+	s.open(s.panes[Device], dev, "")
+	press(t, s, "요") // d then y with a Korean input source
+	if s.mode != modeNormal || s.msg == nil || !strings.Contains(s.msg.text, "English input") {
+		t.Fatalf("mode %v msg %+v", s.mode, s.msg)
+	}
+	if _, err := os.Stat(filepath.Join(dev, "a.txt")); err != nil {
+		t.Error("a.txt was deleted")
+	}
+	press(t, s, "1") // number keys still work
+	if s.msg != nil && strings.Contains(s.msg.text, "English input") {
+		t.Error("the note stayed after a number key")
+	}
+}
+
+// In one column → goes into a folder but does not open a file: it is too
+// easy to hit on the way; Enter opens.
+func TestRightDoesNotOpenFiles(t *testing.T) {
+	s, _, pc := testState(t)
+	write(t, pc, "a.txt", "sub/b.txt")
+	var opened []string
+	s.openLocal = func(p string) error { opened = append(opened, filepath.Base(p)); return nil }
+	s.oneColumn = true
+	s.active = PC
+	s.open(s.panes[PC], pc, "")
+	if s.columns() != 1 {
+		t.Fatalf("columns %d", s.columns())
+	}
+	find(t, s, "a.txt")
+	press(t, s, "\x1b[C")
+	if len(opened) != 0 {
+		t.Fatalf("→ opened %v", opened)
+	}
+	press(t, s, enter)
+	if len(opened) != 1 || opened[0] != "a.txt" {
+		t.Fatalf("Enter opened %v", opened)
+	}
+	find(t, s, "sub")
+	press(t, s, "\x1b[C")
+	if p := s.panes[PC]; p.dir != filepath.Join(pc, "sub") {
+		t.Errorf("→ on a folder: in %s", p.dir)
 	}
 }

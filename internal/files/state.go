@@ -173,6 +173,9 @@ type state struct {
 
 	clip *clipboard // what c or x took, kept across folders and panes
 	ci   int        // op being asked about
+	// toAll: a was pressed while a name is asked about, so the answer
+	// covers the rest too. A letter, not Shift: Caps Lock flips the case.
+	toAll bool
 
 	failures []failure // modeFailures
 	failDone []string  // modeFailures: the items that went through
@@ -406,8 +409,8 @@ func (s *state) handle(k tui.Key) {
 	case tui.KeyRight:
 		if s.columns() == 2 {
 			s.sideways(p, 1)
-		} else {
-			s.enter(p)
+		} else if e, ok := s.cursorEntry(p); !ok || e.Dir {
+			s.enter(p) // into a folder; a file opens with Enter only, → is too easy to hit
 		}
 	case tui.KeyLeft:
 		if s.columns() == 2 {
@@ -422,7 +425,11 @@ func (s *state) handle(k tui.Key) {
 	case tui.KeyEsc:
 		s.escape(p, msg)
 	case tui.KeyDelete:
-		s.askDelete(p)
+		if k.Shift {
+			s.deleteUnasked(p)
+		} else {
+			s.askDelete(p)
+		}
 	case tui.KeyRune:
 		s.handleRune(p, k.Rune)
 	}
@@ -434,6 +441,17 @@ func (s *state) handle(k tui.Key) {
 var numberKeys = map[byte]byte{'1': 's', '2': 't', '3': 'c', '4': 'x', '6': 'v', '7': 'n', '8': 'd', '9': 'w', '0': 'r'}
 
 func (s *state) handleRune(p *pane, r byte) {
+	if r >= 'A' && r <= 'Z' {
+		r |= 0x20 // Caps Lock on: the same keys
+	}
+	if r >= 0x80 {
+		// UTF-8 text: a Korean (or other) input source is on. Its letters
+		// are not mapped to keys: the input method holds a jamo until the
+		// next key and sends a syllable, and d then y as one syllable must
+		// not delete unasked. Say why nothing happened.
+		s.setMsg(msgWarn, "Letter keys need English input; the number keys work in any input")
+		return
+	}
 	if r == '5' { // copy to the other side: pull on the device, push on the PC
 		r = map[Side]byte{Device: 'g', PC: 'p'}[p.fs.Side()]
 	}
@@ -451,7 +469,7 @@ func (s *state) handleRune(p *pane, r byte) {
 			}
 			s.move(p, 1)
 		}
-	case 'a', 'A': // as in ak's other pickers (install, pull, push)
+	case 'a': // as in ak's other pickers (install, pull, push)
 		s.toggleAll(p)
 	case '/':
 		s.mode, s.inputText, s.inputCursor = modeFilter, p.filter, len(p.filter)
@@ -629,6 +647,8 @@ func (s *state) escape(p *pane, msg *message) {
 		s.refreshRows(p, s.focusPath(p))
 	case msg != nil:
 		// the key only cleared the message
+	case len(p.selected) > 0:
+		p.selected = map[string]bool{} // this pane's; the clipboard stays for the next Esc
 	default:
 		s.clip = nil
 	}
@@ -813,7 +833,7 @@ func (s *state) send(p *pane, push bool) {
 		used[fold(op.name)] = true
 		job.ops = append(job.ops, op)
 	}
-	s.plan, s.push, s.pasting, s.ci = job, push, false, -1
+	s.plan, s.push, s.pasting, s.ci, s.toAll = job, push, false, -1, false
 	s.nextConflict()
 }
 
@@ -915,22 +935,28 @@ func (s *state) handleConflict(k tui.Key) {
 		return
 	case tui.KeyRune:
 		choice = k.Rune
-		if choice == 'q' { // like Esc; a second q quits
+		if choice >= 'A' && choice <= 'Z' {
+			choice |= 0x20 // Caps Lock on: the same keys
+		}
+		switch choice {
+		case 'q': // like Esc; a second q quits
 			s.cancelPlan()
+			return
+		case 'a':
+			s.toAll = !s.toAll
 			return
 		}
 	default:
 		return
 	}
-	all := choice >= 'A' && choice <= 'Z'
-	choice |= 0x20 // lower case
 	if choice != 'o' && choice != 's' && choice != 'r' {
 		return
 	}
 	end := s.ci + 1
-	if all {
+	if s.toAll {
 		end = len(s.plan.ops)
 	}
+	s.toAll = false
 	for i := s.ci; i < end; i++ {
 		s.resolve(i, choice)
 	}
@@ -1087,6 +1113,17 @@ func (s *state) askDelete(p *pane) {
 	}
 }
 
+// deleteUnasked deletes the targets without the [y/N] question (Shift+Delete):
+// a key apart from the letters, so Caps Lock can't make d into it.
+func (s *state) deleteUnasked(p *pane) {
+	if s.blocked() {
+		return
+	}
+	if targets := s.targets(p); len(targets) > 0 {
+		s.startDelete(p, targets, true)
+	}
+}
+
 // handleDelete takes y; anything else keeps the files ([y/N]).
 func (s *state) handleDelete(k tui.Key) {
 	s.mode = modeNormal
@@ -1094,8 +1131,12 @@ func (s *state) handleDelete(k tui.Key) {
 		s.setMsg(msgInfo, "Nothing deleted")
 		return
 	}
-	p := s.cur()
-	targets := s.delTargets
+	s.startDelete(s.cur(), s.delTargets, false)
+}
+
+// startDelete deletes targets in p; unasked marks a Shift+Delete in the
+// messages, so a delete nobody confirmed is never silent.
+func (s *state) startDelete(p *pane, targets []Entry, unasked bool) {
 	f := p.fs
 	// Esc stops between items: the item being deleted (one rm -rf) runs to
 	// its end, so nothing is left half deleted by ak.
@@ -1116,11 +1157,11 @@ func (s *state) handleDelete(k tui.Key) {
 			}
 			flushMedia(f)
 			stopped := len(done)+len(failed) < len(targets)
-			return func(s *state) { s.finishDelete(p, done, failed, stopped, len(targets)) }
+			return func(s *state) { s.finishDelete(p, done, failed, stopped, len(targets), unasked) }
 		}}
 }
 
-func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bool, total int) {
+func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bool, total int, unasked bool) {
 	p.recentList = withoutPaths(p.recentList, done)
 	if s.clip != nil && s.clip.side == p.fs.Side() { // deleted items are no longer there to paste
 		if s.clip.items = withoutPaths(s.clip.items, done); len(s.clip.items) == 0 {
@@ -1134,8 +1175,12 @@ func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bo
 		}
 	}
 	where := p.fs.Label()
+	how := ""
+	if unasked {
+		how = " (Shift+Delete, not asked)"
+	}
 	if len(done) > 0 {
-		s.addDone(fmt.Sprintf("Deleted %s on %s", countItems(done), where), itemNames(done, nil))
+		s.addDone(fmt.Sprintf("Deleted %s on %s%s", countItems(done), where, how), itemNames(done, nil))
 	}
 	for _, f := range failed {
 		s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't delete '%s' on %s: %s", f.name, where, f.msg))
@@ -1150,7 +1195,7 @@ func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bo
 	case stopped:
 		s.setMsg(msgInfo, "Canceled: %d of %d deleted", len(done), total)
 	default:
-		s.setMsg(msgSuccess, "Deleted %s", countItems(done))
+		s.setMsg(msgSuccess, "Deleted %s%s", countItems(done), how)
 	}
 }
 
