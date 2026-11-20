@@ -103,7 +103,9 @@ func (localFS) Rename(from, to string) error {
 // followed if it is a link, as the list shows a linked folder as a folder;
 // links inside are copied as links, never followed: a link back up would
 // loop, and Usage, which the copy is checked against, does not follow them
-// either. Other special files (sockets, pipes) are skipped. On failure it
+// either (on Windows, where making a link needs extra rights and junctions
+// count as links, they are skipped). Other special files (sockets, pipes) are
+// skipped. On failure it
 // leaves what it wrote; the caller removes its own copy.
 func copyLocal(ctx context.Context, from, to string) error {
 	fi, err := os.Stat(from)
@@ -116,11 +118,7 @@ func copyLocal(ctx context.Context, from, to string) error {
 func copyTree(ctx context.Context, from, to string, fi fs.FileInfo) error {
 	switch {
 	case fi.Mode()&fs.ModeSymlink != 0:
-		target, err := os.Readlink(from)
-		if err != nil {
-			return err
-		}
-		return os.Symlink(target, to)
+		return copyLink(from, to)
 	case fi.Mode().IsRegular():
 		return copyFile(ctx, from, to, fi.Mode().Perm())
 	case !fi.IsDir():

@@ -227,3 +227,20 @@ func clipSource(f FS, list []Entry) string {
 	}
 	return location(f, dir)
 }
+
+// renamedOnClipboard follows a rename: clipboard items at or under the old
+// path now live at the new one, so a later paste still finds them.
+func (s *state) renamedOnClipboard(f FS, from, to string) {
+	if s.clip == nil || s.clip.side != f.Side() {
+		return
+	}
+	for i, it := range s.clip.items {
+		if !under(f, it.Path, from) {
+			continue
+		}
+		s.clip.items[i].Path = to + it.Path[len(from):]
+		if it.Path == from {
+			s.clip.items[i].Name = f.Base(to)
+		}
+	}
+}

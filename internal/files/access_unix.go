@@ -5,6 +5,7 @@ package files
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"syscall"
 )
 
@@ -29,3 +30,12 @@ func access(p string, fi fs.FileInfo) (r, w, x bool) {
 // crossDevice reports a rename that failed because the two paths are on
 // different volumes: the move then copies, checks and deletes.
 func crossDevice(err error) bool { return errors.Is(err, syscall.EXDEV) }
+
+// copyLink copies the link from as a link at to.
+func copyLink(from, to string) error {
+	target, err := os.Readlink(from)
+	if err != nil {
+		return err
+	}
+	return os.Symlink(target, to)
+}

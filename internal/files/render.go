@@ -1225,8 +1225,20 @@ func (s *state) clipLine() string {
 	if s.clip == nil {
 		return ""
 	}
-	k := func(key, desc string) string { return "  " + Cyan + key + NC + " " + desc }
-	keys := k("6", "Paste") + k("Esc", "Clear")
+	// The same rule as the number bar: a key that does nothing right now
+	// (the recent view, a task running, Esc taken by the filter) is dim.
+	k := func(key, desc string, on bool) string {
+		if !on {
+			if !ui.Err.Color {
+				desc = "×" + desc
+			}
+			return "  " + Dim + key + " " + desc + NC
+		}
+		return "  " + Cyan + key + NC + " " + desc
+	}
+	_, on := s.barLabels()
+	escClears := s.task == nil && s.cur().filter == ""
+	keys := k("6", "Paste", on[5]) + k("Esc", "Clear", escClears)
 	head, src := s.clipParts()
 	// A long folder gives way first (its start), so the keys stay on screen.
 	room := s.width - 1 - ui.TextWidth(head) - visWidth(keys)

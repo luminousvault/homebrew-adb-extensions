@@ -396,3 +396,55 @@ func TestDeleteTakesItemsOffClipboard(t *testing.T) {
 		t.Errorf("all deleted: clipboard should be empty, got %+v", s.clip)
 	}
 }
+
+// A rename moves clipboard items with it: the item itself, or items inside a
+// renamed folder.
+func TestRenameFollowsClipboard(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "a.txt", "box/in.txt")
+	s.open(s.panes[Device], dev, "")
+	find(t, s, "a.txt")
+	press(t, s, "3")
+	press(t, s, "0")
+	s.inputText, s.inputCursor = "b.txt", len("b.txt")
+	press(t, s, enter)
+	if s.clip == nil || s.clip.items[0].Path != filepath.Join(dev, "b.txt") || s.clip.items[0].Name != "b.txt" {
+		t.Fatalf("clipboard after renaming the item: %+v", s.clip)
+	}
+	cd(s, Device, filepath.Join(dev, "box"))
+	find(t, s, "in.txt")
+	press(t, s, "3")
+	cd(s, Device, dev)
+	find(t, s, "box")
+	press(t, s, "0")
+	s.inputText, s.inputCursor = "crate", len("crate")
+	press(t, s, enter)
+	if s.clip == nil || s.clip.items[0].Path != filepath.Join(dev, "crate", "in.txt") || s.clip.items[0].Name != "in.txt" {
+		t.Errorf("clipboard after renaming its folder: %+v", s.clip)
+	}
+}
+
+// The clipboard row dims 6 Paste where it does nothing (the recent view) and
+// Esc Clear while a filter would take Esc first.
+func TestClipLineDimsUnusableKeys(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "a.txt")
+	s.open(s.panes[Device], dev, "")
+	find(t, s, "a.txt")
+	press(t, s, "3")
+	if l := s.clipLine(); !strings.Contains(l, style.Cyan+"6"+style.NC) || !strings.Contains(l, style.Cyan+"Esc"+style.NC) {
+		t.Errorf("both keys usable: %q", l)
+	}
+	p := s.cur()
+	p.recent, p.recentList = true, []Entry{}
+	s.refreshRows(p, "")
+	if l := s.clipLine(); !strings.Contains(l, style.Dim+"6 ") {
+		t.Errorf("recent view: 6 Paste should be dim: %q", l)
+	}
+	p.recent = false
+	s.refreshRows(p, "")
+	p.filter = "a"
+	if l := s.clipLine(); !strings.Contains(l, style.Dim+"Esc ") {
+		t.Errorf("filter on: Esc Clear should be dim: %q", l)
+	}
+}

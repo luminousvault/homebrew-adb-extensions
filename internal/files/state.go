@@ -1304,6 +1304,7 @@ func (s *state) submitInput(p *pane) {
 			return
 		}
 		s.addDone(fmt.Sprintf("Renamed '%s' to '%s' on %s", shown(e.Name), text, p.fs.Label()), nil)
+		s.renamedOnClipboard(p.fs, e.Path, to)
 		if p.recent {
 			s.renamedInRecent(p, e, text, to)
 		} else {
