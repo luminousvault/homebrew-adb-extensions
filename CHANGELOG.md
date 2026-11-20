@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-20
+
 ### Added
 - `ak push [file]...` copies files to the device, into `/sdcard/Download` unless `-d, --dest DIR` gives another folder. It never overwrites: a name already there gets a ` (N)` suffix. Without files it picks from the current directory; `-s` repeated or `-a` pushes to several devices
 - `ak files [path]`: a file manager for the device and this computer, side by side in the terminal. Copy, cut and paste between them or within one side, send to the other side with one key, rename, make folders and delete, with a recent-files view, progress bars and Esc to cancel. Nothing is overwritten without asking, and an overwrite keeps the old file until the new one is complete. Number keys like mc's; `?` shows every key ([docs](docs/commands.md#ak-files))
