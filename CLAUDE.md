@@ -79,6 +79,7 @@ adb-extensions/
 │   ├── files/                  # ak files: 저장소(FS: device.go adb, local.go os), 상태·키(state.go, 순수),
 │   │                           #   그리기(render.go), 루프(run.go), 복사·덮어쓰기·진행률(transfer.go), 최근 파일 쿼리(recent.go),
 │   │                           #   클립보드·붙여넣기(clipboard.go), 권한·링크·드라이브 간 이동의 OS 차이(access_unix/windows.go)
+│   ├── agentskill/             # AI 에이전트용 SKILL.md(go:embed): 첫 실행 시 ~/.claude · ~/.agents에 설치, 업그레이드 시 갱신, 삭제하면 다시 넣지 않음
 │   ├── apk/                    # APK 패키지명·서명 인증서 (aapt/apksigner 대체), testdata/aktest.apk
 │   ├── style/                  # 선택 UI(tui) 내부 색상 상수
 │   └── debuglog/               # AK_DEBUG=1 로그

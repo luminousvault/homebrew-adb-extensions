@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/luminousvault/homebrew-adb-extensions/internal/agentskill"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
@@ -310,5 +311,31 @@ func TestDoctorEnvironmentLines(t *testing.T) {
 	}
 	if got := environmentLines(environment{ak: "dev", adb: "not found"}); got[len(got)-1] != "  Devices  none" {
 		t.Errorf("no devices: %q", got[len(got)-1])
+	}
+}
+
+// The skill is reported but never counts as an issue.
+func TestDoctorAgentSkill(t *testing.T) {
+	ui.Out = &ui.Stream{}
+	home := t.TempDir()
+	path := func(agent string) string { return home + "/" + agent + "/skills/ak/SKILL.md" }
+	render := func(c checkCategory) string { return strings.Join(doctorLines([]checkCategory{c}, true), "\n") }
+
+	none := agentSkillCategory(false, home, []agentskill.Status{
+		{Path: path(".claude"), State: agentskill.NoAgent}, {Path: path(".agents"), State: agentskill.NoAgent}})
+	if got := render(none); !strings.HasPrefix(got, "[✓] AI agent skill (no AI agent found)") {
+		t.Errorf("no agent:\n%s", got)
+	}
+
+	mixed := agentSkillCategory(false, home, []agentskill.Status{
+		{Path: path(".claude"), State: agentskill.Current}, {Path: path(".agents"), State: agentskill.Removed}})
+	got := render(mixed)
+	if mixed.level() != levelOK || !strings.Contains(got, "/.claude/skills/ak is current") ||
+		!strings.Contains(got, "/.agents/skills/ak was removed") || !strings.Contains(got, "skills-installed") {
+		t.Errorf("current + removed:\n%s", got)
+	}
+
+	if off := agentSkillCategory(true, home, nil); off.summary != "off" || off.level() != levelOK {
+		t.Errorf("off: %+v", off)
 	}
 }

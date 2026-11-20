@@ -164,6 +164,8 @@ Every option and example is in **[docs/commands.md](docs/commands.md)**; `ak <co
 - Exit codes: `0` success, `1` failure (also partial), `2` usage error, `130` interrupted
 - Short options combine (`-ea` is `-e -a`) and may come before or after arguments; colors only on terminals (`NO_COLOR`, `--no-color`)
 
+**Skill for AI agents.** The first time ak runs, it adds a skill to `~/.claude/skills/ak` and `~/.agents/skills/ak` (only where `~/.claude` or `~/.agents` exists), so coding agents such as Claude Code use ak instead of raw adb. The skill tells the agent to read `ak --help`, so it follows the installed version; ak updates the file after upgrades. Delete the folder to remove it (ak does not add it back), delete the `managed-by: ak` line to keep your own edits, or set `AK_NO_SKILL=1` to never add it. `ak doctor` shows where it is.
+
 ## Troubleshooting
 
 Start with `ak doctor`. Common cases — macOS blocking a downloaded binary, devices dropping while Android Studio is open, installs waiting on a Play Protect prompt, old tab completion — are in **[docs/troubleshooting.md](docs/troubleshooting.md)**.

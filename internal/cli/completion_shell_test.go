@@ -112,7 +112,7 @@ func TestBashCompletion(t *testing.T) {
 		script := `eval "$(ak completion bash)"; COMP_WORDS=(` + strings.Join(quoted, " ") + `); COMP_CWORD=` +
 			itoa(len(words)-1) + `; _ak; printf '%s\n' "${COMPREPLY[@]}"`
 		cmd := exec.Command("bash", "-c", script)
-		cmd.Dir, cmd.Env = dir, append(os.Environ(), "PATH="+path)
+		cmd.Dir, cmd.Env = dir, append(os.Environ(), "PATH="+path, "AK_NO_SKILL=1")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("%q: %v\n%s", line, err, out)
@@ -127,7 +127,7 @@ func TestFishCompletion(t *testing.T) {
 	}
 	runCompletionCases(t, func(dir, path, line string) string {
 		cmd := exec.Command("fish", "--no-config", "-c", `ak completion fish | source; complete -C "`+line+`"`)
-		cmd.Dir, cmd.Env = dir, append(os.Environ(), "PATH="+path)
+		cmd.Dir, cmd.Env = dir, append(os.Environ(), "PATH="+path, "AK_NO_SKILL=1")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("%q: %v\n%s", line, err, out)
@@ -144,7 +144,7 @@ func TestPowerShellCompletion(t *testing.T) {
 		script := `ak completion powershell | Out-String | Invoke-Expression; ` +
 			`(TabExpansion2 -inputScript '` + line + `' -cursorColumn ` + itoa(len(line)) + `).CompletionMatches | ForEach-Object { $_.CompletionText }`
 		cmd := exec.Command("pwsh", "-NoProfile", "-NonInteractive", "-Command", script)
-		cmd.Dir, cmd.Env = dir, append(os.Environ(), "PATH="+path)
+		cmd.Dir, cmd.Env = dir, append(os.Environ(), "PATH="+path, "AK_NO_SKILL=1")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("%q: %v\n%s", line, err, out)

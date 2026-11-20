@@ -37,6 +37,7 @@ var docGlobals = [][2]string{
 var docEnv = [][2]string{
 	{"ANDROID_SERIAL", "Default target device"},
 	{"AK_ADB", "Path to the adb binary"},
+	{"AK_NO_SKILL", "Do not add the ak skill for AI agents"},
 	{"NO_COLOR", "Disable colored output"},
 	{"AK_DEBUG", "Set to 1 to write a debug log to $TMPDIR/ak-debug.log (AK_DEBUG_LOG changes the path)"},
 }
