@@ -92,7 +92,7 @@ func (s *state) paste(p *pane) {
 		s.setMsg(msgInfo, "Already here: nothing to move")
 		return
 	}
-	s.plan, s.pasting, s.ci = job, true, -1
+	s.plan, s.pasting, s.ci, s.toAll = job, true, -1, false
 	s.nextConflict()
 }
 

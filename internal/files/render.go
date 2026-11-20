@@ -242,7 +242,7 @@ func helpSections() []helpSection {
 			{"4 Cut", "x", "The same, and the paste moves them: the originals go once each copy is complete (on one side, a rename)"},
 			{"6 Paste", "v", "Paste the clipboard into the folder where the cursor is: device ↔ computer, or within the device or the computer. A copy stays in the clipboard for more pastes; what a cut moved leaves it"},
 			{"", "", "What 3, 4, 5 take: the selected items shown, or else the item under the cursor. In the same folder a copy gets ' (N)' and a cut does nothing; a folder never goes into itself"},
-			{"o s r", "", "A name already there: overwrite, skip, or rename with ' (N)'. A capital letter does all the rest; Esc or q cancels"},
+			{"o s r", "", "A name already there: overwrite, skip, or rename with ' (N)'. Press a first to answer for all the rest; Esc or q cancels"},
 			{"", "", "Overwrite copies to a temporary name first, checks the size, then swaps it in; if that fails or is canceled, the old item stays. A move keeps the original when the size can't be checked"},
 			{"Esc", "", "Stops copying (a progress bar shows it) and removes the half-copied item; else turns the filter off; else empties the clipboard"},
 		}},
@@ -687,6 +687,15 @@ func (s *state) row(p *pane, i, w int, active, compact, brief bool) string {
 
 // statusText is the status line: a question or an input line, the progress,
 // a message, or else where the cursor is and what the folder holds.
+// toAll is the a key of the name question: dim while off, lit once
+// pressed (the next answer then covers the rest).
+func toAll(on bool) string {
+	if on {
+		return "  " + Cyan + "a" + NC + " " + Green + "All the rest ✓" + NC
+	}
+	return "  " + Dim + "a All the rest" + NC
+}
+
 func (s *state) statusText() string {
 	key := func(k, desc string) string { return "  " + Cyan + k + NC + " " + desc }
 	switch s.mode {
@@ -696,7 +705,7 @@ func (s *state) statusText() string {
 	case modeConflict:
 		op := s.plan.ops[s.ci]
 		return fmt.Sprintf("%s'%s' already exists.%s", Yellow, op.name, NC) +
-			key("o", "Overwrite") + key("s", "Skip") + key("r", "Rename (N)") + "  " + Dim + "· Shift = all" + NC
+			key("o", "Overwrite") + key("s", "Skip") + key("r", "Rename (N)") + toAll(s.toAll)
 	case modeFilter:
 		return "Filter: " + s.inputLine()
 	case modeInput:

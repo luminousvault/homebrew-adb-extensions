@@ -75,7 +75,7 @@ func TestSummaryShowsNewNames(t *testing.T) {
 	if !strings.Contains(s.msg.text, "'KEEP.TXT' as 'KEEP (1).TXT'") {
 		t.Errorf("message %q", s.msg.text)
 	}
-	press(t, s, "ag"+"R") // two conflicts, all renamed
+	press(t, s, "ag"+"ar") // two conflicts, all renamed
 	last = s.summary.Done[len(s.summary.Done)-1]
 	if !strings.HasPrefix(last, "Pulled 3 files (2 renamed) from ") {
 		t.Errorf("summary %q", last)

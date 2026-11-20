@@ -173,6 +173,9 @@ type state struct {
 
 	clip *clipboard // what c or x took, kept across folders and panes
 	ci   int        // op being asked about
+	// toAll: a was pressed while a name is asked about, so the answer
+	// covers the rest too. A letter, not Shift: Caps Lock flips the case.
+	toAll bool
 
 	failures []failure // modeFailures
 	failDone []string  // modeFailures: the items that went through
@@ -434,6 +437,9 @@ func (s *state) handle(k tui.Key) {
 var numberKeys = map[byte]byte{'1': 's', '2': 't', '3': 'c', '4': 'x', '6': 'v', '7': 'n', '8': 'd', '9': 'w', '0': 'r'}
 
 func (s *state) handleRune(p *pane, r byte) {
+	if r >= 'A' && r <= 'Z' {
+		r |= 0x20 // Caps Lock on: the same keys
+	}
 	if r == '5' { // copy to the other side: pull on the device, push on the PC
 		r = map[Side]byte{Device: 'g', PC: 'p'}[p.fs.Side()]
 	}
@@ -451,7 +457,7 @@ func (s *state) handleRune(p *pane, r byte) {
 			}
 			s.move(p, 1)
 		}
-	case 'a', 'A': // as in ak's other pickers (install, pull, push)
+	case 'a': // as in ak's other pickers (install, pull, push)
 		s.toggleAll(p)
 	case '/':
 		s.mode, s.inputText, s.inputCursor = modeFilter, p.filter, len(p.filter)
@@ -813,7 +819,7 @@ func (s *state) send(p *pane, push bool) {
 		used[fold(op.name)] = true
 		job.ops = append(job.ops, op)
 	}
-	s.plan, s.push, s.pasting, s.ci = job, push, false, -1
+	s.plan, s.push, s.pasting, s.ci, s.toAll = job, push, false, -1, false
 	s.nextConflict()
 }
 
@@ -915,22 +921,28 @@ func (s *state) handleConflict(k tui.Key) {
 		return
 	case tui.KeyRune:
 		choice = k.Rune
-		if choice == 'q' { // like Esc; a second q quits
+		if choice >= 'A' && choice <= 'Z' {
+			choice |= 0x20 // Caps Lock on: the same keys
+		}
+		switch choice {
+		case 'q': // like Esc; a second q quits
 			s.cancelPlan()
+			return
+		case 'a':
+			s.toAll = !s.toAll
 			return
 		}
 	default:
 		return
 	}
-	all := choice >= 'A' && choice <= 'Z'
-	choice |= 0x20 // lower case
 	if choice != 'o' && choice != 's' && choice != 'r' {
 		return
 	}
 	end := s.ci + 1
-	if all {
+	if s.toAll {
 		end = len(s.plan.ops)
 	}
+	s.toAll = false
 	for i := s.ci; i < end; i++ {
 		s.resolve(i, choice)
 	}

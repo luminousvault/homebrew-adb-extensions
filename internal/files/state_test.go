@@ -299,15 +299,15 @@ func TestPushPullConflicts(t *testing.T) {
 	if s.mode != modeConflict {
 		t.Fatal("4.txt should still be asked about")
 	}
-	press(t, s, "O") // the rest: overwrite
+	press(t, s, "ao") // the rest: overwrite
 	want := map[string]string{"1.txt": "1.txt", "2.txt": "old", "3.txt": "old", "3 (1).txt": "3.txt", "4.txt": "4.txt"}
 	for n, w := range want {
 		if b, _ := os.ReadFile(filepath.Join(pc, n)); string(b) != w {
 			t.Errorf("%s = %q, want %q", n, b, w)
 		}
 	}
-	// Shift = all; Esc cancels.
-	press(t, s, "ag"+"S")
+	// a = all; Esc cancels.
+	press(t, s, "ag"+"as")
 	if s.mode != modeNormal || s.msg == nil || !strings.Contains(s.msg.text, "skipped") {
 		t.Errorf("S: %+v", s.msg)
 	}
@@ -759,5 +759,46 @@ func TestLeavingRecentReloadsFolder(t *testing.T) {
 	s.toggleRecent(p)
 	if got := names(p); strings.Contains(got, "big.mp4") || !strings.Contains(got, "keep.txt") {
 		t.Errorf("folder after recent: %s", got)
+	}
+}
+
+// Caps Lock flips the case of letters, and the terminal does not say so:
+// capitals are the same keys, and only a (not Shift) answers for all.
+func TestCapsLockLetters(t *testing.T) {
+	s, dev, pc := testState(t)
+	write(t, dev, "1.txt", "2.txt", "sub/")
+	write(t, pc, "1.txt", "2.txt")
+	s.open(s.panes[Device], dev, "")
+	press(t, s, "N")
+	if s.mode != modeInput || s.inputKind != inputMkdir {
+		t.Fatalf("N: mode %v", s.mode)
+	}
+	press(t, s, esc)
+	press(t, s, "AG") // select all, pull
+	if s.mode != modeConflict {
+		t.Fatal("no question")
+	}
+	press(t, s, "S") // this one only, though it is a capital
+	if s.mode != modeConflict || s.plan.ops[s.ci].name != "2.txt" {
+		t.Fatalf("S answered more than one: mode %v", s.mode)
+	}
+	press(t, s, "aa") // on, off again
+	if s.toAll {
+		t.Fatal("a twice should be off")
+	}
+	if !strings.Contains(ui.Plain(s.statusText()), "a All the rest") {
+		t.Errorf("status %q", ui.Plain(s.statusText()))
+	}
+	press(t, s, "A")
+	if !strings.Contains(ui.Plain(s.statusText()), "All the rest ✓") {
+		t.Errorf("status %q", ui.Plain(s.statusText()))
+	}
+	press(t, s, "s")
+	if s.mode != modeNormal {
+		t.Fatalf("mode %v", s.mode)
+	}
+	press(t, s, "Q")
+	if s.exit != exitQuit {
+		t.Error("Q did not quit")
 	}
 }

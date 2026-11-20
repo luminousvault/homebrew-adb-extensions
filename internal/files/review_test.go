@@ -101,7 +101,7 @@ func TestCanceledQuestionKeepsSelection(t *testing.T) {
 	if n := len(s.targetsSelected(s.panes[Device])); n != 2 {
 		t.Errorf("selection after Esc: %d", n)
 	}
-	press(t, s, "g"+"S") // copying starts: now the selection goes
+	press(t, s, "g"+"as") // copying starts: now the selection goes
 	if n := len(s.panes[Device].selected); n != 0 {
 		t.Errorf("selection after copying: %d", n)
 	}
