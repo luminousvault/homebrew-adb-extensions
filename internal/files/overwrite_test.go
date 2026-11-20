@@ -107,8 +107,21 @@ func TestOverwriteReplaces(t *testing.T) {
 	assertNoTemp(t, dst)
 }
 
-// R4: names collide regardless of case.
+// foldsCase reports whether the temp disk ignores case (macOS, Windows),
+// as /sdcard does; Linux's ext4 keeps photo.jpg and PHOTO.JPG apart.
+func foldsCase(t *testing.T) bool {
+	t.Helper()
+	dir := t.TempDir()
+	write(t, dir, "x")
+	_, err := os.Stat(filepath.Join(dir, "X"))
+	return err == nil
+}
+
+// R4: names collide regardless of case, where the disk ignores case.
 func TestCaseInsensitiveNames(t *testing.T) {
+	if !foldsCase(t) {
+		t.Skip("the temp disk keeps names that differ in case apart: no collision to find")
+	}
 	s, dev, pc := testState(t)
 	write(t, dev, "photo.jpg", "b.txt")
 	write(t, pc, "PHOTO.JPG")
