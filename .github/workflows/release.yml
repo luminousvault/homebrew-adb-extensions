@@ -85,6 +85,13 @@ jobs:
             echo "Error: No CHANGELOG entry found for version $VERSION"
             exit 1
           fi
+          # Optional highlights written for this release (what is new, with
+          # demo GIFs) go above the CHANGELOG list.
+          HIGHLIGHTS=".github/release-notes/${VERSION}.md"
+          if [ -f "$HIGHLIGHTS" ]; then
+            { cat "$HIGHLIGHTS"; printf '\n## All changes\n\n'; cat "$RUNNER_TEMP/notes.md"; } > "$RUNNER_TEMP/full.md"
+            mv "$RUNNER_TEMP/full.md" "$RUNNER_TEMP/notes.md"
+          fi
           cat "$RUNNER_TEMP/notes.md"
 
       - name: Create source archive

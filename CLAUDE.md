@@ -194,7 +194,7 @@ tail -f "${TMPDIR:-/tmp}/ak-debug.log"    # AK_DEBUG_LOG로 경로 변경 가능
 ## 릴리즈
 
 * 버전: 루트 `VERSION` (단일 소스)
-* `CHANGELOG.md`에 `## [x.y.z]` 항목이 있어야 릴리즈됩니다
+* `CHANGELOG.md`에 `## [x.y.z]` 항목이 있어야 릴리즈됩니다. 큰 기능이 들어간 릴리즈는 `.github/release-notes/x.y.z.md`에 Highlights(소개 · 데모 GIF, 이미지는 `https://raw.githubusercontent.com/luminousvault/homebrew-adb-extensions/vx.y.z/demo/…` 절대 URL)를 쓰면 릴리즈 노트에서 CHANGELOG 목록(`## All changes`) 위에 붙습니다
 * GitHub Actions `release.yml` — main에서 수동 실행: `gh workflow run release.yml --ref main` (버전은 `VERSION` 파일, `-f version=x.y.z`는 확인용). 테스트 → 소스 아카이브 → 태그 → GoReleaser가 바이너리·소스 아카이브를 GitHub Release에 업로드 → `dist/checksums.txt`로 `Formula/ak.rb`를 생성해 main에 커밋. main이 아니면 실패합니다(tap은 main의 formula를 읽음)
 * Homebrew formula는 GitHub Release의 플랫폼별 바이너리(tar.gz)를 내려받습니다. 사용자 Mac에 Go가 필요 없습니다. cask가 아니라 formula라서 quarantine이 붙지 않습니다. `Formula/ak.rb`는 직접 고치지 말고 `.github/formula/ak.rb.tmpl`(렌더링은 `.github/formula/render.sh`)을 고칩니다
 
