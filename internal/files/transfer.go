@@ -165,6 +165,20 @@ type copyJob struct {
 	inDir    func(string) (Entry, bool) // names in dstDir when it was planned (send's lookup)
 	ops      []copyOp
 	cut      bool // move: the original goes once the copy is complete
+
+	mu       sync.Mutex
+	finished []copyOp // done and not yet shown (takeFinished)
+}
+
+// takeFinished returns the items done since it was last called, for the
+// panes to show while the rest is copying: a finished item stays, whatever
+// happens to the ones after it.
+func (j *copyJob) takeFinished() []copyOp {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	f := j.finished
+	j.finished = nil
+	return f
 }
 
 // sameFS reports whether the job stays on one storage (a paste within the
@@ -239,6 +253,9 @@ func (j *copyJob) run(ctx context.Context, report func(progress)) copyResult {
 		if err == nil {
 			res.done = append(res.done, op.src) // finished, even if Esc came meanwhile
 			res.doneAs = append(res.doneAs, op.name)
+			j.mu.Lock()
+			j.finished = append(j.finished, op)
+			j.mu.Unlock()
 		} else if ctx.Err() == nil {
 			res.failed = append(res.failed, failure{shown(op.src.Name), err.Error()})
 		}

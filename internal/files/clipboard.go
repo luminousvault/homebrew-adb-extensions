@@ -125,7 +125,8 @@ func (s *state) startPaste(job *copyJob) {
 		run: func(ctx context.Context, report func(progress)) func(*state) {
 			res := job.run(ctx, report)
 			return func(s *state) { s.finishPaste(job, res) }
-		}}
+		},
+		tick: func(s *state) { s.showFinished(job) }}
 }
 
 // pasteRoute is where a paste goes: across, the device on the left as for

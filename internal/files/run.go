@@ -224,6 +224,9 @@ func loop(scr *tui.Screen, st *state) error {
 			if st.task != nil {
 				st.spin++
 				st.prog = latest.get()
+				if st.task.tick != nil {
+					st.task.tick(st)
+				}
 				draw = true
 			}
 		case <-sig:

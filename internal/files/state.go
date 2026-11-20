@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -128,6 +129,9 @@ type task struct {
 	cancelable bool
 	started    time.Time // when it began running: the spinner shows how long
 	run        func(ctx context.Context, report func(progress)) func(*state)
+	// tick, when set, runs on the key loop's ticks while run is running, to
+	// show what run has done so far.
+	tick func(*state)
 }
 
 type exitKind int
@@ -1020,7 +1024,58 @@ func (s *state) startSend(job *copyJob, push bool) {
 		run: func(ctx context.Context, report func(progress)) func(*state) {
 			res := job.run(ctx, report)
 			return func(s *state) { s.finishSend(job, push, res) }
-		}}
+		},
+		tick: func(s *state) { s.showFinished(job) }}
+}
+
+// showFinished puts the items a copy has finished into the panes as they
+// finish, without listing the folder again (no adb call per item, and no
+// half-copied temporary file shown): a copy into the folder shown, and for
+// a move its original out. The job's end lists the folders again for their
+// exact dates and permissions.
+func (s *state) showFinished(job *copyJob) {
+	done := job.takeFinished()
+	if len(done) == 0 {
+		return
+	}
+	for _, p := range s.panes {
+		if p.recent || p.err != nil {
+			continue
+		}
+		changed := false
+		if p.fs == job.to && p.fs.Join(p.dir, "") == job.to.Join(job.dstDir, "") {
+			for _, op := range done {
+				e := Entry{Name: op.name, Path: job.to.Join(job.dstDir, op.name), Dir: op.src.Dir, Size: op.src.Size, ModTime: s.now()}
+				if e.Dir {
+					e.Size = 0
+				}
+				p.entries = append(withoutNamed(p.entries, e.Path, op.existing), e) // an overwrite replaces the old row
+			}
+			changed = true
+		}
+		if job.cut && p.fs == job.from {
+			for _, op := range done {
+				if containsPath(p.entries, op.src.Path) {
+					p.entries = withoutNamed(p.entries, op.src.Path)
+					changed = true
+				}
+			}
+		}
+		if changed {
+			s.refreshRows(p, s.focusPath(p))
+		}
+	}
+}
+
+// withoutNamed is list without the entries at the paths given.
+func withoutNamed(list []Entry, paths ...string) []Entry {
+	var kept []Entry
+	for _, e := range list {
+		if e.Path == "" || !slices.Contains(paths, e.Path) {
+			kept = append(kept, e)
+		}
+	}
+	return kept
 }
 
 // finishSend reports a push or pull: "Pushed 'a.txt' to Pixel:/sdcard ← Computer",

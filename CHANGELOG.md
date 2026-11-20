@@ -7,6 +7,9 @@ All notable changes to this project will be documented in this file.
 ### Added
 - `files`: Tab in Go to (`:`) completes a folder name as a shell does: one match is filled in, several are filled to the part they share and listed in columns over the list. Tab again picks from them as zsh's menu does: Tab and Shift+Tab go to the next and previous folder, the arrows move in the list, Enter goes there and Esc puts the text back
 
+### Changed
+- `files`: copying or moving several items shows each one in the folder as it finishes, instead of all at the end; a finished item is kept even if a later one fails or the copy is canceled
+
 ## [2.4.0] - 2026-11-20
 
 ### Added
