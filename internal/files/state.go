@@ -409,8 +409,8 @@ func (s *state) handle(k tui.Key) {
 	case tui.KeyRight:
 		if s.columns() == 2 {
 			s.sideways(p, 1)
-		} else {
-			s.enter(p)
+		} else if e, ok := s.cursorEntry(p); !ok || e.Dir {
+			s.enter(p) // into a folder; a file opens with Enter only, → is too easy to hit
 		}
 	case tui.KeyLeft:
 		if s.columns() == 2 {

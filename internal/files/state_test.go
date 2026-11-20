@@ -847,3 +847,32 @@ func TestKoreanInputSaysWhy(t *testing.T) {
 		t.Error("the note stayed after a number key")
 	}
 }
+
+// In one column → goes into a folder but does not open a file: it is too
+// easy to hit on the way; Enter opens.
+func TestRightDoesNotOpenFiles(t *testing.T) {
+	s, _, pc := testState(t)
+	write(t, pc, "a.txt", "sub/b.txt")
+	var opened []string
+	s.openLocal = func(p string) error { opened = append(opened, filepath.Base(p)); return nil }
+	s.oneColumn = true
+	s.active = PC
+	s.open(s.panes[PC], pc, "")
+	if s.columns() != 1 {
+		t.Fatalf("columns %d", s.columns())
+	}
+	find(t, s, "a.txt")
+	press(t, s, "\x1b[C")
+	if len(opened) != 0 {
+		t.Fatalf("→ opened %v", opened)
+	}
+	press(t, s, enter)
+	if len(opened) != 1 || opened[0] != "a.txt" {
+		t.Fatalf("Enter opened %v", opened)
+	}
+	find(t, s, "sub")
+	press(t, s, "\x1b[C")
+	if p := s.panes[PC]; p.dir != filepath.Join(pc, "sub") {
+		t.Errorf("→ on a folder: in %s", p.dir)
+	}
+}

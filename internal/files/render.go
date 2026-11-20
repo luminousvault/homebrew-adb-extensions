@@ -224,7 +224,7 @@ func helpSections() []helpSection {
 			{"↑ ↓", "", "One item; in two columns they run on into the next column"},
 			{"PgUp PgDn", "", "A screen (in two columns, both columns)"},
 			{"Home End", "", "First and last item"},
-			{"← →", "", "Two columns: the other column. One column: parent folder, open"},
+			{"← →", "", "Two columns: the other column. One column: parent folder, into a folder (a file opens with Enter only)"},
 			{"Enter", "", "Go into a folder or open a file (see How things work)"},
 			{"Backspace", "", "Parent folder"},
 			{":", "", "Go to a path you type"},
