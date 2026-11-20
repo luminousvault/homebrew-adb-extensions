@@ -752,6 +752,7 @@ func (s *state) toggleRecent(p *pane) {
 	}
 	p.folderPath = s.focusPath(p)
 	p.recent, p.filter, p.cursor, p.top = true, "", 0, 0
+	p.recentSort = sortNewest // each visit starts with what is new; s only sorts this visit
 	p.selected = map[string]bool{}
 	p.recentList, p.recentErr = nil, nil
 	p.loadingNote = "Reading recent files"

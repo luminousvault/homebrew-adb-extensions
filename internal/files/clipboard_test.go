@@ -339,6 +339,24 @@ func TestRenameInRecentView(t *testing.T) {
 	}
 }
 
+// The recent view's sort lasts one visit: it opens newest first again.
+func TestRecentViewOpensNewestFirst(t *testing.T) {
+	s, dev, _ := testState(t)
+	list := []Entry{{Name: "a.txt", Path: filepath.Join(dev, "a.txt"), Size: 10, Folder: dev}}
+	s.panes[Device].fs = recentFS{localFS{Device, "Test Phone"}, &list}
+	press(t, s, "2")
+	p := s.cur()
+	press(t, s, "1") // newest -> size
+	if p.recentSort != sortSize {
+		t.Fatalf("sort %v", p.recentSort)
+	}
+	press(t, s, "2") // the folder
+	press(t, s, "2") // recent again
+	if p.recentSort != sortNewest {
+		t.Errorf("reopened with %v", p.recentSort)
+	}
+}
+
 // On the device a copy within is cp -r, and paths resolve in one call.
 func TestDeviceCopyWithinAndRealPaths(t *testing.T) {
 	d := &deviceFS{serial: serial, name: "Test Phone"}

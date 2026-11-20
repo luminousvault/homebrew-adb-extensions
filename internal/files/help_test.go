@@ -9,13 +9,14 @@ import (
 
 func helpAll(w int) string { return ui.Plain(strings.Join(helpText(w), "\n")) }
 
-// The help says that 2 sorts one pane, the recent view on its own (the
+// The help says that 2 sorts one pane, the recent view on its own and
+// newest first each time it opens (the
 // description wraps, so spaces are compared loosely; one help column, as
 // two columns interleave line by line).
 func TestHelpExplainsSortPerPane(t *testing.T) {
 	for _, w := range []int{60, 100} {
 		flat := strings.Join(strings.Fields(helpAll(w)), " ")
-		if !strings.Contains(flat, "for the pane with the cursor only") || !strings.Contains(flat, "recent view keeps its own order") {
+		if !strings.Contains(flat, "for the pane with the cursor only") || !strings.Contains(flat, "newest first each time it opens") {
 			t.Errorf("width %d: help does not explain per-pane sorting", w)
 		}
 	}

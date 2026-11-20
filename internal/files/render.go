@@ -263,7 +263,7 @@ func helpSections() []helpSection {
 			{"b", "", "One pane: one wide column (whole long names) or two columns"},
 			{"9 Show computer", "w", "The computer pane beside the device on or off"},
 			{"2 Recent", "t", "The device's recent files ↔ its folder"},
-			{"1 Sort", "s", "Name → newest → size, for the pane with the cursor only; the recent view keeps its own order (newest first to start). Each pane's header shows its order"},
+			{"1 Sort", "s", "Name → newest → size, for the pane with the cursor only; the recent view has its own, newest first each time it opens. Each pane's header shows its order"},
 			{".", "", "Hidden files on or off"},
 			{"?", "", "This help"},
 			{"q", "", "Quit (Ctrl+C too)"},
