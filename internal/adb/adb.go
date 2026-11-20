@@ -3,9 +3,11 @@ package adb
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/debuglog"
 )
@@ -112,4 +114,16 @@ func ParseGetprop(out string) map[string]string {
 		props[k[1:]] = strings.TrimSuffix(v, "]")
 	}
 	return props
+}
+
+// KilledBySignal reports whether adb ended by a signal (Ctrl+C reaching it,
+// or another program killing it) rather than exiting.
+func KilledBySignal(err error) bool {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
+			return true
+		}
+	}
+	return false
 }

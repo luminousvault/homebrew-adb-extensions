@@ -187,7 +187,7 @@ func (s *state) finishPaste(job *copyJob, res copyResult) {
 	case res.canceled:
 		s.setMsg(msgWarn, "Canceled %s: %d of %d %s", ing, len(res.done), res.todo, strings.ToLower(past))
 	case len(res.failed) > 0:
-		s.msg = &message{kind: msgError, failures: res.failed,
+		s.msg = &message{kind: msgError, failures: res.failed, done: itemNames(res.done, res.doneAs),
 			text: fmt.Sprintf("%d of %d %s, %d failed", len(res.done), total, strings.ToLower(past), len(res.failed))}
 	default:
 		s.setMsg(msgSuccess, "%s %s %s %s", past, what, prep, dest)

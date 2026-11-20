@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path"
 	"path/filepath"
@@ -12,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
@@ -399,20 +397,10 @@ func adbInstall(serial string, opts []string, apkFile string) string {
 		return resultStopped
 	}
 	out, err := adb.Combined(append(append([]string{"-s", serial, "install"}, opts...), apkFile)...)
-	if installStop.Load() || killedBySignal(err) {
+	if installStop.Load() || adb.KilledBySignal(err) {
 		return resultStopped // the terminal sent SIGINT to adb as well
 	}
 	return strings.TrimRight(out, "\n")
-}
-
-func killedBySignal(err error) bool {
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		if ws, ok := ee.Sys().(syscall.WaitStatus); ok && ws.Signaled() {
-			return true
-		}
-	}
-	return false
 }
 
 func hasOpt(opts []string, opt string) bool {

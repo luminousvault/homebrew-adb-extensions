@@ -104,6 +104,7 @@ type message struct {
 	text     string
 	kind     msgKind
 	failures []failure // Enter opens the list
+	done     []string  // and shows what went through too
 }
 
 // clipboard is ak's own clipboard (not the system's): items taken with
@@ -174,6 +175,7 @@ type state struct {
 	ci   int        // op being asked about
 
 	failures []failure // modeFailures
+	failDone []string  // modeFailures: the items that went through
 	helpTop  int       // modeHelp: first line shown
 
 	task     *task // running
@@ -397,7 +399,7 @@ func (s *state) handle(k tui.Key) {
 		p.cursor = max(len(p.rows)-1, 0)
 	case tui.KeyEnter:
 		if msg != nil && len(msg.failures) > 0 {
-			s.failures, s.mode = msg.failures, modeFailures
+			s.failures, s.failDone, s.mode = msg.failures, msg.done, modeFailures
 			return
 		}
 		s.enter(p)
@@ -1015,7 +1017,7 @@ func (s *state) finishSend(job *copyJob, push bool, res copyResult) {
 	case res.canceled:
 		s.setMsg(msgWarn, "Canceled %s: %d of %d %s", ing, len(res.done), res.todo, strings.ToLower(past))
 	case len(res.failed) > 0:
-		s.msg = &message{kind: msgError, failures: res.failed,
+		s.msg = &message{kind: msgError, failures: res.failed, done: itemNames(res.done, res.doneAs),
 			text: fmt.Sprintf("%d of %d %s, %d failed", len(res.done), total, strings.ToLower(past), len(res.failed))}
 	default:
 		s.setMsg(msgSuccess, "%s %s", past, where(what))
@@ -1142,7 +1144,7 @@ func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bo
 	}
 	switch {
 	case len(failed) > 0:
-		s.msg = &message{kind: msgError, failures: failed,
+		s.msg = &message{kind: msgError, failures: failed, done: itemNames(done, nil),
 			text: fmt.Sprintf("%d of %d deleted, %d failed", len(done), total, len(failed))}
 	case stopped:
 		s.setMsg(msgInfo, "Canceled: %d of %d deleted", len(done), total)

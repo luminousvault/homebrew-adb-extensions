@@ -11,9 +11,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/luminousvault/homebrew-adb-extensions/internal/adb"
 )
 
 var errSizeMismatch = errors.New("the copy's size differs from the source; the existing item was kept")
+
+// errStopped is adb ended by a signal ak did not send (Esc cancels with
+// ctx): another program killed it.
+var errStopped = errors.New("adb was stopped from outside ak")
+
+func stopped(err error) error { return fmt.Errorf("%w (%v); try again", errStopped, err) }
 
 // pollInterval is how often a copy's destination size is read for progress.
 var pollInterval = 300 * time.Millisecond
@@ -58,6 +66,9 @@ func adbTransfer(ctx context.Context, serial, verb, src, dst string) error {
 	out, err := runAdb(ctx, "-s", serial, verb, src, dst)
 	if ctx.Err() != nil {
 		return ctx.Err()
+	}
+	if adb.KilledBySignal(err) {
+		return stopped(err)
 	}
 	// adb's own error lines start with "adb: error:"; "error:" elsewhere may
 	// be part of a file name. Old adb exits 0 even on errors, so look for
@@ -296,6 +307,13 @@ func (j *copyJob) one(ctx context.Context, op copyOp, size usage, report func(in
 		stop = pollSize(j.to, target, size.bytes, pollEvery(size), report)
 	}
 	err := transfer(ctx, j.from, op.src.Path, j.to, target)
+	if errors.Is(err, errStopped) && ctx.Err() == nil {
+		// Killed from outside, often for a moment: once more, from nothing
+		// (a folder pulled into its half copy would land one level down).
+		if err = j.to.Remove(target); err == nil {
+			err = transfer(ctx, j.from, op.src.Path, j.to, target)
+		}
+	}
 	if stop != nil {
 		stop()
 	}

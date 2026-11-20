@@ -234,3 +234,38 @@ func captureStderr(t *testing.T, f func()) string {
 	f()
 	return b.String()
 }
+
+// The failure list (Enter on "3 of 5 pulled, 2 failed") shows what went
+// through as well, and fits its rows with the failures first.
+func TestFailureLinesShowDone(t *testing.T) {
+	fails := []failure{{"b2.png", "adb was stopped"}, {"b3.png", "adb was stopped"}}
+	done := []string{"b1.png", "c.png", "dual.png"}
+	plain := func(lines []string) string {
+		var b strings.Builder
+		for _, l := range lines {
+			b.WriteString(ui.Plain(l) + "\n")
+		}
+		return b.String()
+	}
+
+	got := plain(failureLines(fails, done, 60, 20))
+	want := " Failed (2)\n ✗ b2.png  adb was stopped\n ✗ b3.png  adb was stopped\n\n Done (3)\n ✓ b1.png  c.png  dual.png\n"
+	if got != want {
+		t.Errorf("roomy:\n%s\nwant:\n%s", got, want)
+	}
+
+	// Many failures: the last row counts the rest, the done names stay.
+	many := []failure{{"a", "x"}, {"b", "x"}, {"c", "x"}, {"d", "x"}, {"e", "x"}}
+	got = plain(failureLines(many, done, 60, 7))
+	want = " Failed (5)\n ✗ a  x\n ✗ b  x\n   … and 3 more failed\n\n Done (3)\n ✓ b1.png  c.png  dual.png\n"
+	if got != want {
+		t.Errorf("many failures:\n%s\nwant:\n%s", got, want)
+	}
+
+	// No room for the done names: only their count.
+	got = plain(failureLines(fails, done, 60, 5))
+	want = " Failed (2)\n ✗ b2.png  adb was stopped\n ✗ b3.png  adb was stopped\n\n ✓ 3 done\n"
+	if got != want {
+		t.Errorf("small:\n%s\nwant:\n%s", got, want)
+	}
+}

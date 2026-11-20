@@ -383,11 +383,17 @@ func (d *deviceFS) copyWithin(ctx context.Context, src, dst string) error {
 	cmd := "cp -r " + ShellQuote(src) + " " + ShellQuote(dst) + " 2>&1 & p=$!; echo $p > " + pidFile +
 		"; wait $p; r=$?; rm -f " + pidFile + "; [ $r -eq 0 ] && echo " + okMark
 	out, err := runAdb(ctx, "-s", d.serial, "shell", cmd)
-	if ctx.Err() != nil {
+	canceled, killed := ctx.Err() != nil, adb.KilledBySignal(err)
+	if canceled || killed {
+		// cp may go on without the adb that started it: stop it, then the
+		// caller removes the half copy.
 		stop := "p=$(cat " + pidFile + " 2>/dev/null); [ -n \"$p\" ] && kill $p 2>/dev/null; " +
 			"while [ -n \"$p\" ] && kill -0 $p 2>/dev/null; do sleep 0.1; done; rm -f " + pidFile
-		_ = adb.Shell(d.serial, stop) // then the caller removes the half copy
-		return ctx.Err()
+		_ = adb.Shell(d.serial, stop)
+		if canceled {
+			return ctx.Err()
+		}
+		return stopped(err)
 	}
 	if cerr := checkOK(out); cerr != nil {
 		return cerr

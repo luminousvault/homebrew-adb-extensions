@@ -115,7 +115,7 @@ func (s *state) frame() []string {
 		if s.mode == modeHelp {
 			lines = s.helpPage(w, rows)
 		} else {
-			lines = s.overlay(failureLines(s.failures), w, rows)
+			lines = s.overlay(failureLines(s.failures, s.failDone, w, rows), w, rows)
 		}
 		if l.bottomRule {
 			lines = append(lines, s.bottomRuleLine(w))
@@ -445,12 +445,42 @@ func (s *state) helpPage(w, rows int) []string {
 	return out
 }
 
-func failureLines(list []failure) []string {
-	lines := []string{" " + Bold + "Failed" + NC, ""}
-	for _, f := range list {
+// failureLines is what Enter shows after "3 of 5 pulled, 2 failed" in h
+// rows: the failures, then the items that went through side by side in at
+// most two rows, so a partly failed job does not look failed as a whole.
+// Failures come first: the done names give way to a count when they would
+// leave the failures fewer than three rows, and failures that don't fit are
+// counted on their last row. The whole
+// list is in the summary after quitting.
+func failureLines(list []failure, done []string, w, h int) []string {
+	var tail []string
+	if len(done) > 0 {
+		tail = []string{"", " " + Bold + fmt.Sprintf("Done (%d)", len(done)) + NC}
+		for i, r := range packItems(done, w-3, 2) {
+			mark := "   "
+			if i == 0 {
+				mark = " " + Green + "✓" + NC + " "
+			}
+			tail = append(tail, mark+Dim+r+NC)
+		}
+		need := min(len(list), 3) // rows the failures get before the done names
+		if h-1-len(tail) < need {
+			tail = []string{"", " " + Green + "✓" + NC + " " + fmt.Sprintf("%d done", len(done))}
+		}
+		if h-1-len(tail) < 1 {
+			tail = nil
+		}
+	}
+	room := max(h-1-len(tail), 1)
+	lines := []string{" " + Bold + fmt.Sprintf("Failed (%d)", len(list)) + NC}
+	for i, f := range list {
+		if i == room-1 && len(list) > room {
+			lines = append(lines, "   "+Dim+fmt.Sprintf("… and %d more failed", len(list)-i)+NC)
+			break
+		}
 		lines = append(lines, " "+Red+"✗"+NC+" "+f.name+"  "+Dim+f.msg+NC)
 	}
-	return append(lines, "", " "+Dim+"Press any key to close"+NC)
+	return append(lines, tail...)
 }
 
 // paneLines is a pane's header, rule and h list rows. With two columns the
