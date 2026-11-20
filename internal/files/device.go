@@ -371,10 +371,22 @@ func (d *deviceFS) progressSize(p string) (int64, error) {
 	return strconv.ParseInt(f[0], 10, 64)
 }
 
-// copyWithin copies src to dst on the device with cp -r; Esc stops it.
+// cpPidFile names the file a background cp's pid goes in (tests fix it).
+var cpPidFile = func() string { return fmt.Sprintf("/data/local/tmp/.ak-cp-%d", time.Now().UnixNano()) }
+
+// copyWithin copies src to dst on the device with cp -r. Esc kills only
+// the local adb client, and cp would go on on the device and race the
+// removal of the half copy, so cp runs in the background with its pid in a
+// file, and a cancel kills it and waits for it to end before returning.
 func (d *deviceFS) copyWithin(ctx context.Context, src, dst string) error {
-	out, err := runAdb(ctx, "-s", d.serial, "shell", "cp -r "+ShellQuote(src)+" "+ShellQuote(dst)+" 2>&1 && echo "+okMark)
+	pidFile := ShellQuote(cpPidFile())
+	cmd := "cp -r " + ShellQuote(src) + " " + ShellQuote(dst) + " 2>&1 & p=$!; echo $p > " + pidFile +
+		"; wait $p; r=$?; rm -f " + pidFile + "; [ $r -eq 0 ] && echo " + okMark
+	out, err := runAdb(ctx, "-s", d.serial, "shell", cmd)
 	if ctx.Err() != nil {
+		stop := "p=$(cat " + pidFile + " 2>/dev/null); [ -n \"$p\" ] && kill $p 2>/dev/null; " +
+			"while [ -n \"$p\" ] && kill -0 $p 2>/dev/null; do sleep 0.1; done; rm -f " + pidFile
+		_ = adb.Shell(d.serial, stop) // then the caller removes the half copy
 		return ctx.Err()
 	}
 	if cerr := checkOK(out); cerr != nil {

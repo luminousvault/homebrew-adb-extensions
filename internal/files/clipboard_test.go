@@ -342,16 +342,57 @@ func TestRenameInRecentView(t *testing.T) {
 // On the device a copy within is cp -r, and paths resolve in one call.
 func TestDeviceCopyWithinAndRealPaths(t *testing.T) {
 	d := &deviceFS{serial: serial, name: "Test Phone"}
+	old := cpPidFile
+	cpPidFile = func() string { return "/data/local/tmp/.ak-cp-1" }
+	t.Cleanup(func() { cpPidFile = old })
+	pf := "'/data/local/tmp/.ak-cp-1'"
 	f := fakeADB(t, map[string]adbtest.Response{
-		shellKey("cp -r '/sdcard/a b' '/sdcard/x/a b' 2>&1 && echo ak-ok"): {Stdout: "ak-ok\n"},
+		shellKey("cp -r '/sdcard/a b' '/sdcard/x/a b' 2>&1 & p=$!; echo $p > " + pf + "; wait $p; r=$?; rm -f " + pf + "; [ $r -eq 0 ] && echo ak-ok"): {Stdout: "ak-ok\n"},
 	})
 	if err := d.copyWithin(context.Background(), "/sdcard/a b", "/sdcard/x/a b"); err != nil {
 		t.Errorf("cp: %v (%q)", err, f.Calls)
+	}
+	// Canceled: the cp on the device is killed and waited for before the
+	// caller removes the half copy.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := d.copyWithin(ctx, "/sdcard/a b", "/sdcard/x/a b"); err == nil {
+		t.Error("a canceled copy should fail")
+	}
+	killed := false
+	for _, c := range f.Calls {
+		if strings.Contains(c, "kill $p") && strings.Contains(c, pf) {
+			killed = true
+		}
+	}
+	if !killed {
+		t.Errorf("cp not stopped on cancel: %q", f.Calls)
 	}
 	cmd := "if [ -d '/sdcard/x' ]; then (cd '/sdcard/x' 2>/dev/null && pwd -P) || echo; else d=$(cd '/sdcard' 2>/dev/null && pwd -P) && echo \"$d/\"'x' || echo; fi; " +
 		"if [ -d '/sdcard/x/y' ]; then (cd '/sdcard/x/y' 2>/dev/null && pwd -P) || echo; else d=$(cd '/sdcard/x' 2>/dev/null && pwd -P) && echo \"$d/\"'y' || echo; fi; "
 	f.Responses[shellKey(cmd)] = adbtest.Response{Stdout: "/storage/emulated/0/x\n/storage/emulated/0/x/y\n"}
 	if !holds(d, "/sdcard/x", "/sdcard/x/y") {
 		t.Errorf("holds: calls %q", f.Calls)
+	}
+}
+
+// Deleting items that are on the clipboard takes them off it (and clears it
+// when none is left).
+func TestDeleteTakesItemsOffClipboard(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "a.txt", "b.txt", "c.txt")
+	s.open(s.panes[Device], dev, "")
+	press(t, s, "a3") // copy all three
+	if s.clip == nil || len(s.clip.items) != 3 {
+		t.Fatalf("clipboard %+v", s.clip)
+	}
+	find(t, s, "b.txt")
+	press(t, s, "8y")
+	if s.clip == nil || len(s.clip.items) != 2 {
+		t.Fatalf("after deleting one: %+v", s.clip)
+	}
+	press(t, s, "a8y")
+	if s.clip != nil {
+		t.Errorf("all deleted: clipboard should be empty, got %+v", s.clip)
 	}
 }

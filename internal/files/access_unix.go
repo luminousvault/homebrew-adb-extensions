@@ -3,6 +3,7 @@
 package files
 
 import (
+	"errors"
 	"io/fs"
 	"syscall"
 )
@@ -24,3 +25,7 @@ func access(p string, fi fs.FileInfo) (r, w, x bool) {
 	}
 	return r, w, ok(xOK)
 }
+
+// crossDevice reports a rename that failed because the two paths are on
+// different volumes: the move then copies, checks and deletes.
+func crossDevice(err error) bool { return errors.Is(err, syscall.EXDEV) }

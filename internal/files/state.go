@@ -1118,6 +1118,11 @@ func (s *state) handleDelete(k tui.Key) {
 
 func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bool, total int) {
 	p.recentList = withoutPaths(p.recentList, done)
+	if s.clip != nil && s.clip.side == p.fs.Side() { // deleted items are no longer there to paste
+		if s.clip.items = withoutPaths(s.clip.items, done); len(s.clip.items) == 0 {
+			s.clip = nil
+		}
+	}
 	for _, q := range s.panes {
 		if q.fs == p.fs {
 			s.reload(q)

@@ -98,16 +98,33 @@ func (localFS) Rename(from, to string) error {
 	return os.Rename(from, to)
 }
 
-// copyLocal copies a file or folder between two local folders: tests use a
-// local folder in place of the device. On failure it leaves what it wrote;
-// the caller removes its own copy.
+// copyLocal copies a file or folder between two local folders (the computer;
+// in tests a local folder stands in for the device). The item itself is
+// followed if it is a link, as the list shows a linked folder as a folder;
+// links inside are copied as links, never followed: a link back up would
+// loop, and Usage, which the copy is checked against, does not follow them
+// either. Other special files (sockets, pipes) are skipped. On failure it
+// leaves what it wrote; the caller removes its own copy.
 func copyLocal(ctx context.Context, from, to string) error {
 	fi, err := os.Stat(from)
 	if err != nil {
 		return err
 	}
-	if !fi.IsDir() {
+	return copyTree(ctx, from, to, fi)
+}
+
+func copyTree(ctx context.Context, from, to string, fi fs.FileInfo) error {
+	switch {
+	case fi.Mode()&fs.ModeSymlink != 0:
+		target, err := os.Readlink(from)
+		if err != nil {
+			return err
+		}
+		return os.Symlink(target, to)
+	case fi.Mode().IsRegular():
 		return copyFile(ctx, from, to, fi.Mode().Perm())
+	case !fi.IsDir():
+		return nil // a socket, a pipe, a device: nothing to copy
 	}
 	if err := os.Mkdir(to, fi.Mode().Perm()|0o700); err != nil {
 		return err
@@ -117,7 +134,14 @@ func copyLocal(ctx context.Context, from, to string) error {
 		return err
 	}
 	for _, de := range des {
-		if err := copyLocal(ctx, filepath.Join(from, de.Name()), filepath.Join(to, de.Name())); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		info, err := de.Info() // Lstat: a link stays a link
+		if err != nil {
+			return err
+		}
+		if err := copyTree(ctx, filepath.Join(from, de.Name()), filepath.Join(to, de.Name()), info); err != nil {
 			return err
 		}
 	}

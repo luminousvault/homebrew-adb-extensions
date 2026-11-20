@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -189,5 +190,34 @@ func TestCancelAfterSuccessCountsDone(t *testing.T) {
 	res := job.run(ctx, func(progress) {})
 	if !res.canceled || len(res.done) != 1 {
 		t.Fatalf("result %+v", res)
+	}
+}
+
+// A local folder copy keeps links as links: a link back up does not loop,
+// and the copy's size matches the source's (Usage does not follow links
+// either), so a move's check passes.
+func TestLocalCopyKeepsLinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	src, dst := t.TempDir(), t.TempDir()
+	proj := filepath.Join(src, "proj")
+	write(t, src, "proj/a.txt", "outside.txt")
+	if err := os.Symlink("..", filepath.Join(proj, "up")); err != nil { // a loop if followed
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(src, "outside.txt"), filepath.Join(proj, "out.txt")); err != nil {
+		t.Fatal(err)
+	}
+	f := localFS{PC, computerLabel}
+	b, n, _ := f.Usage(proj)
+	if err := copyLocal(context.Background(), proj, filepath.Join(dst, "proj")); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Lstat(filepath.Join(dst, "proj", "up")); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("up should stay a link: %v %v", fi, err)
+	}
+	if b2, n2, _ := f.Usage(filepath.Join(dst, "proj")); b2 != b || n2 != n {
+		t.Errorf("sizes differ: source %d/%d, copy %d/%d", b, n, b2, n2)
 	}
 }

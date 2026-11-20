@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -287,7 +286,7 @@ func (j *copyJob) one(ctx context.Context, op copyOp, size usage, report func(in
 			return err
 		case err == nil:
 			return nil
-		case !errors.Is(err, syscall.EXDEV):
+		case !crossDevice(err):
 			return err
 		}
 		// Another volume of the computer: copy, check, then delete below.
