@@ -238,7 +238,7 @@ func helpSections() []helpSection {
 		{"Copy", []helpItem{
 			{"5 To computer", "g", "On the device side: copy to the computer side's current folder now (adb pull)"},
 			{"5 To device", "p", "On the computer side: copy to the device side's current folder now (adb push)"},
-			{"3 Copy", "c", "Take the items into ak's clipboard to paste later; folders and panes can change meanwhile, so files from several folders go to one place"},
+			{"3 Copy", "c", "Take the items into ak's clipboard to paste later: it stays while you go to other folders and panes (a selection does not). A new copy or cut replaces it"},
 			{"4 Cut", "x", "The same, and the paste moves them: the originals go once each copy is complete (on one side, a rename)"},
 			{"6 Paste", "v", "Paste the clipboard into the folder where the cursor is: device ↔ computer, or within the device or the computer. A copy stays in the clipboard for more pastes; what a cut moved leaves it"},
 			{"", "", "What 3, 4, 5 take: the selected items shown, or else the item under the cursor. In the same folder a copy gets ' (N)' and a cut does nothing; a folder never goes into itself"},

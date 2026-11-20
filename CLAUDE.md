@@ -28,7 +28,7 @@
 * **디바이스 지정:** `-s/--serial`, `ANDROID_SERIAL`, `-a/--all`. 터미널이 아니면 선택 UI 대신 `-s`를 요구
 * **여러 디바이스 동시 설치:** 상태판, 확인이 필요하면 바로 묻고 겹치면 대기열 ([docs/dev/cli-design.md](docs/dev/cli-design.md))
 * **`push`:** PC 파일을 기기(기본 `/sdcard/Download`)에 복사. 기기에 있는 이름(대소문자 무시)은 덮어쓰지 않고 ` (N)`
-* **`files`:** 기기와 컴퓨터 폴더를 한 화면에서 보는 대화형 파일 관리자(mc식 번호 키, 넣기·꺼내기·삭제·이름 바꾸기). 터미널 전용, 비대화형은 `pull`·`push`
+* **`files`:** 기기와 컴퓨터 폴더를 한 화면에서 보는 대화형 파일 관리자(mc식 번호 키: 정렬·최근 파일·복사/잘라내기/붙여넣기(클립보드)·반대쪽으로 바로 보내기·새 폴더·삭제·이름 바꾸기). 터미널 전용, 비대화형은 `pull`·`push`
 
 **지원 플랫폼:** macOS, Linux, Windows
 
@@ -74,9 +74,11 @@ adb-extensions/
 │   ├── adb/                    # adb 실행·탐색(locate.go)·SDK build-tools 탐색(sdk.go)·파싱
 │   │   └── adbtest/            # 가짜 adb Runner
 │   ├── tui/                    # 인터랙티브 선택 UI (state.go 로직, render.go 화면, keys.go 키 파싱, term.go 터미널)
-│   │                           #   screen.go: 다른 전체 화면 UI(files)용 raw 모드·대체 화면·키·크기 변경 (OpenScreen)
+│   │                           #   screen.go: 다른 전체 화면 UI(files)용 raw 모드·대체 화면·키·크기 변경·휠을 방향키로 (OpenScreen)
+│   │                           #   poll_*.go: 입력 대기(ESC 뒤 40ms로 방향키와 Esc 구분, 닫은 뒤 입력을 가져가지 않음)
 │   ├── files/                  # ak files: 저장소(FS: device.go adb, local.go os), 상태·키(state.go, 순수),
-│   │                           #   그리기(render.go), 루프(run.go), 복사·덮어쓰기·진행률(transfer.go), 최근 파일 쿼리(recent.go)
+│   │                           #   그리기(render.go), 루프(run.go), 복사·덮어쓰기·진행률(transfer.go), 최근 파일 쿼리(recent.go),
+│   │                           #   클립보드·붙여넣기(clipboard.go), 권한·링크·드라이브 간 이동의 OS 차이(access_unix/windows.go)
 │   ├── apk/                    # APK 패키지명·서명 인증서 (aapt/apksigner 대체), testdata/aktest.apk
 │   ├── style/                  # 선택 UI(tui) 내부 색상 상수
 │   └── debuglog/               # AK_DEBUG=1 로그

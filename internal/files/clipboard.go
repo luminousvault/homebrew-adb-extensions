@@ -10,8 +10,9 @@ import (
 )
 
 // toClipboard takes the targets of p (3/c copy, 4/x cut). The clipboard
-// stays while folders and panes change, so items from several folders can
-// go to one place; a new c or x replaces it. The folder's selection is used
+// stays while folders and panes change (a folder's selection does not), so
+// the items can be pasted after going elsewhere; a new c or x replaces it,
+// so it holds one folder's items at a time. The folder's selection is used
 // up.
 func (s *state) toClipboard(p *pane, cut bool) {
 	if s.blocked() {

@@ -108,7 +108,8 @@ type message struct {
 
 // clipboard is ak's own clipboard (not the system's): items taken with
 // 3/c (copy) or 4/x (cut) on one side, pasted with 6/v where the cursor is.
-// It lets files from several folders go to one place.
+// It stays while folders and panes change, which a selection does not; a
+// new copy or cut replaces it.
 type clipboard struct {
 	side  Side
 	items []Entry

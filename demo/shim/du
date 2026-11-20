@@ -1,0 +1,21 @@
+#!/usr/bin/python3
+# 'du -s -b path' for the fake device: apparent bytes of everything under path
+# (macOS du has no -b).
+import os, sys
+
+paths = [a for a in sys.argv[1:] if not a.startswith("-")]
+code = 0
+for p in paths:
+    if not os.path.lexists(p):
+        sys.stderr.write("du: %s: No such file or directory\n" % p)
+        code = 1
+        continue
+    total = os.lstat(p).st_size
+    for root, dirs, files in os.walk(p):
+        for n in dirs + files:
+            try:
+                total += os.lstat(os.path.join(root, n)).st_size
+            except OSError:
+                pass
+    sys.stdout.write("%d\t%s\n" % (total, p))
+sys.exit(code)

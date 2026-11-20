@@ -105,6 +105,17 @@ Devices install in parallel while a status board shows each one. Common failures
 
 ![ak logcat merging two apps](demo/logcat.gif)
 
+### Move files between the device and the computer
+
+`ak files` shows a device folder and a computer folder side by side. Select with Space; `5` copies to the other side right away (adb pull or push, one progress bar for the whole job); `3` / `4` and `6` copy or move through a clipboard that stays while you change folders. When you quit, it lists what was copied.
+
+![ak files pulling photos to the computer and pasting a file into a device folder](demo/files.gif)
+
+- `ak push` copies files into `/sdcard/Download` (`-d` another folder) on one device or, with `-a`, every device; a name already there gets ` (1)` instead of being overwritten
+- `ak pull` picks the device's newest files, like the Files app's Recent tab, and copies them here
+
+![ak push copying two files to two devices](demo/push.gif)
+
 ### Screen and more
 
 ![ak screenshot](demo/screenshot.gif)
