@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `files`: Tab in Go to (`:`) completes a folder name as a shell does: one match is filled in, several are filled to the part they share and listed in columns over the list. Tab again picks from them as zsh's menu does: Tab and Shift+Tab go to the next and previous folder, the arrows move in the list, Enter goes there and Esc puts the text back
+
 ## [2.4.0] - 2026-11-20
 
 ### Added

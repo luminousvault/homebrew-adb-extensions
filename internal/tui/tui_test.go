@@ -51,6 +51,10 @@ func TestParseKeys(t *testing.T) {
 	if keys, _ := ParseKeys([]byte("\x1b[3;2~\x1b[3~")); len(keys) != 2 || keys[0].Kind != KeyDelete || !keys[0].Shift || keys[1].Shift {
 		t.Errorf("shift delete: %+v", keys)
 	}
+	// Shift+Tab is a Tab with Shift set.
+	if keys, _ := ParseKeys([]byte("\x1b[Z\t")); len(keys) != 2 || keys[0].Kind != KeyTab || !keys[0].Shift || keys[1].Shift {
+		t.Errorf("shift tab: %+v", keys)
+	}
 	// Incomplete sequences wait for more input.
 	if _, used := ParseKeys([]byte("\x1b[")); used != 0 {
 		t.Errorf("incomplete CSI consumed %d", used)

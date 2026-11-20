@@ -163,6 +163,9 @@ func (s *state) frame() []string {
 		lines = append(lines, area[1])
 	}
 	lines = append(lines, area[2:]...)
+	panel := s.menuPanel(w, l.list) // Tab's folders, over the bottom of the list
+	copy(lines[len(lines)-len(panel):], panel)
+	s.menuDrawn = len(panel) > 0
 	if l.bottomRule {
 		lines = append(lines, s.bottomRuleLine(w))
 	}
@@ -227,7 +230,7 @@ func helpSections() []helpSection {
 			{"← →", "", "Two columns: the other column. One column: parent folder, into a folder (a file opens with Enter only)"},
 			{"Enter", "", "Go into a folder or open a file (see How things work)"},
 			{"Backspace", "", "Parent folder"},
-			{":", "", "Go to a path you type"},
+			{":", "", "Go to a path you type; Tab completes a folder name, and Tab again (Shift+Tab, arrows) picks from the folders listed"},
 		}},
 		{"Select", []helpItem{
 			{"Space", "", "Select or unselect, then move down"},
@@ -940,6 +943,15 @@ func (s *state) modeKeys() string {
 	case modeFilter:
 		return k("Enter", "Keep filter") + k("Esc", "Clear filter") + k("↑↓", "Move")
 	case modeInput:
+		if s.inputHint != "" {
+			return Yellow + s.inputHint + NC
+		}
+		if s.menuDrawn {
+			return k("Tab", "Next") + k("Shift+Tab", "Previous") + k("↑↓←→", "Move") + k("Enter", "Go") + k("Esc", "Back")
+		}
+		if s.inputKind == inputGoto {
+			return k("Enter", "OK") + k("Esc", "Cancel") + k("Tab", "Complete")
+		}
 		return k("Enter", "OK") + k("Esc", "Cancel")
 	case modeDelete:
 		return k("y", "Delete") + k("n Esc q", "Keep")
@@ -951,6 +963,59 @@ func (s *state) modeKeys() string {
 		return k("Any key", "Close")
 	}
 	return ""
+}
+
+// menuPanel draws Tab's folders in columns, filled column by column as ls
+// does, under a rule that counts them: as many rows as they need up to a
+// third of the screen, scrolled to keep the picked one in view, with a
+// "rows a-b of n" line when they do not all fit. Nothing when the menu is
+// closed or the list has under two rows.
+func (s *state) menuPanel(w, listRows int) []string {
+	n := len(s.inputMatches)
+	if s.mode != modeInput || n == 0 || listRows < 2 {
+		return nil
+	}
+	cols, rows, colW := s.menuGrid()
+	h := min(1+rows, max(3, s.height/3), listRows)
+	vis := h - 1
+	if rows > vis {
+		vis = h - 2 // a line for where the rows are
+	}
+	if vis < 1 {
+		return nil
+	}
+	if s.menuSel >= 0 {
+		r := s.menuSel % rows
+		if r < s.menuTop {
+			s.menuTop = r
+		}
+		if r >= s.menuTop+vis {
+			s.menuTop = r - vis + 1
+		}
+	}
+	s.menuTop = max(min(s.menuTop, rows-vis), 0)
+	title := plural(n, "folder")
+	out := []string{Dim + "── " + NC + title + " " + Dim + strings.Repeat("─", max(w-4-ui.TextWidth(title), 0)) + NC}
+	for r := s.menuTop; r < s.menuTop+vis; r++ {
+		line := " "
+		for c := range cols {
+			i := c*rows + r
+			if i >= n {
+				break
+			}
+			cell := truncate(s.inputMatches[i], colW-2)
+			pad := strings.Repeat(" ", max(colW-ui.TextWidth(cell), 0))
+			if i == s.menuSel {
+				cell = "\033[7m" + cell + "\033[0m"
+			}
+			line += cell + pad
+		}
+		out = append(out, fitPad(line, w))
+	}
+	if vis < rows {
+		out = append(out, Dim+fmt.Sprintf(" rows %d-%d of %d", s.menuTop+1, s.menuTop+vis, rows)+NC)
+	}
+	return out
 }
 
 // barLabels are the number keys 1-9 and 0 as mc shows its F keys, and

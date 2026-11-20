@@ -33,8 +33,9 @@ type Key struct {
 	Kind KeyKind
 	Rune byte
 	Text string
-	// Shift is set for Shift+Delete (ESC [3;2~), which is otherwise a
-	// KeyDelete: only screens that give it a meaning of its own look.
+	// Shift is set for Shift+Delete (ESC [3;2~) and Shift+Tab (ESC [Z),
+	// which are otherwise a KeyDelete and a KeyTab: only screens that give
+	// them a meaning of their own look.
 	Shift bool
 }
 
@@ -44,11 +45,14 @@ var escSeqs = map[string]KeyKind{
 	"[H": KeyHome, "[F": KeyEnd, "OH": KeyHome, "OF": KeyEnd,
 	"[1~": KeyHome, "[4~": KeyEnd, "[7~": KeyHome, "[8~": KeyEnd,
 	"[3~": KeyDelete, "[5~": KeyPgUp, "[6~": KeyPgDn,
-	shiftDelete: KeyDelete,
+	shiftDelete: KeyDelete, shiftTab: KeyTab,
 }
 
 // shiftDelete is Shift+Delete after ESC (xterm's modifier 2 = Shift).
 const shiftDelete = "[3;2~"
+
+// shiftTab is Shift+Tab after ESC (back tab).
+const shiftTab = "[Z"
 
 const (
 	pasteStart = "\x1b[200~"
@@ -84,7 +88,8 @@ func ParseKeys(buf []byte) ([]Key, int) {
 		if !complete {
 			return keys, i
 		}
-		keys = append(keys, Key{Kind: k, Shift: string(rest[1:1+n]) == shiftDelete})
+		seq := string(rest[1 : 1+n])
+		keys = append(keys, Key{Kind: k, Shift: seq == shiftDelete || seq == shiftTab})
 		i += 1 + n
 	}
 	return keys, i

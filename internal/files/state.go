@@ -12,8 +12,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/tui"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 // minColumnsWidth is the narrowest terminal that shows one pane's list in
@@ -162,6 +164,18 @@ type state struct {
 	inputKind   inputKind
 	inputText   string
 	inputCursor int // byte offset
+	// Go to: what Tab found, in the key line until the next key
+	inputMatches []string           // the folders, each with its separator
+	inputHint    string             // or why there are none
+	gotoLists    map[string][]Entry // folders Tab read while this Go to is open
+	// Tab's menu over inputMatches, as zsh's: Tab again picks the next
+	// folder into the text, which is menuText with the name at menuAt.
+	menuSel    int    // the picked folder; -1 before the second Tab
+	menuTop    int    // the first grid row drawn (set while drawing)
+	menuText   string // the text when the menu opened
+	menuCursor int    // its cursor
+	menuAt     int    // where the folder name starts in it
+	menuDrawn  bool   // set while drawing: the menu has its panel
 
 	// modeDelete
 	delTargets []Entry
@@ -1215,13 +1229,23 @@ func (s *state) askInput(p *pane, kind inputKind, text string) {
 		return
 	}
 	s.mode, s.inputKind, s.inputText, s.inputCursor = modeInput, kind, text, len(text)
+	s.gotoLists = nil
 }
 
 // handleInput edits the filter or name line. The filter applies as it is
 // typed; Enter keeps it, Esc clears it.
 func (s *state) handleInput(k tui.Key) {
 	p := s.cur()
+	if len(s.inputMatches) > 0 && s.menuKey(k) {
+		return
+	}
+	s.inputHint, s.inputMatches = "", nil
 	switch k.Kind {
+	case tui.KeyTab:
+		if s.mode == modeInput && s.inputKind == inputGoto {
+			s.completeGoto(p)
+		}
+		return
 	case tui.KeyEsc:
 		if s.mode == modeFilter {
 			p.filter = ""
@@ -1283,6 +1307,188 @@ func (s *state) handleInput(k tui.Key) {
 	}
 }
 
+// gotoPath is the folder a typed Go to path names. A relative path is from
+// the folder shown, as in a shell's cd.
+func gotoPath(p *pane, text string) string {
+	dir := expandHome(p.fs, text)
+	if p.fs.Side() == PC {
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(p.dir, dir)
+		}
+		if abs, err := filepath.Abs(dir); err == nil {
+			dir = abs // paths reach adb whole: never "-x" or relative
+		}
+	} else if !strings.HasPrefix(dir, "/") {
+		dir = p.fs.Join(p.dir, dir)
+	}
+	return dir
+}
+
+// completeGoto completes the folder name before the cursor, as a shell's
+// Tab: one match is filled in with a separator after it, several are filled
+// to the part they share and listed in the key line. A name with the same
+// case wins; only when none has it does case not matter. Hidden folders
+// show only for a name begun with a dot.
+func (s *state) completeGoto(p *pane) {
+	before := s.inputText[:s.inputCursor]
+	seps, sep := "/", "/"
+	if p.fs.Side() == PC && filepath.Separator == '\\' {
+		seps, sep = `/\`, `\`
+	}
+	i := strings.LastIndexAny(before, seps)
+	if i >= 0 {
+		sep = before[i : i+1] // the separator the path already uses
+	}
+	dirPart, prefix := before[:i+1], before[i+1:]
+	if dirPart == "" && prefix == "~" && p.fs.Side() == PC {
+		s.insertText(sep)
+		return
+	}
+	entries, err := s.gotoList(p, gotoPath(p, strings.TrimSpace(dirPart)))
+	if err != nil {
+		s.inputHint = fmt.Sprintf("Can't read %s: %s", strings.TrimSpace(dirPart), errText(err))
+		if dirPart == "" {
+			s.inputHint = "Can't read this folder: " + errText(err)
+		}
+		return
+	}
+	var exact, folded []string
+	for _, e := range entries {
+		if !e.Dir || e.Name == "." || e.Name == ".." || (strings.HasPrefix(e.Name, ".") && !strings.HasPrefix(prefix, ".")) {
+			continue
+		}
+		if strings.HasPrefix(e.Name, prefix) {
+			exact = append(exact, e.Name)
+		} else if len(e.Name) >= len(prefix) && strings.EqualFold(e.Name[:len(prefix)], prefix) {
+			folded = append(folded, e.Name)
+		}
+	}
+	match := exact
+	if len(match) == 0 {
+		match = folded
+	}
+	switch len(match) {
+	case 0:
+		s.inputHint = fmt.Sprintf("No folder starts with '%s'", prefix)
+		if prefix == "" {
+			s.inputHint = "No folders here"
+		}
+		return
+	case 1:
+		s.replaceBeforeCursor(len(prefix), match[0]+sep)
+		return
+	}
+	sort.Slice(match, func(a, b int) bool { return strings.ToLower(match[a]) < strings.ToLower(match[b]) })
+	if common := sharedPrefix(match); len(common) >= len(prefix) {
+		s.replaceBeforeCursor(len(prefix), common)
+	}
+	for _, m := range match {
+		s.inputMatches = append(s.inputMatches, m+sep)
+	}
+	s.menuSel, s.menuTop = -1, 0
+	s.menuText, s.menuCursor, s.menuAt = s.inputText, s.inputCursor, i+1
+}
+
+// menuKey handles a key while Tab's menu is open: Tab and Shift+Tab pick
+// the next and previous folder, the arrows move in the grid (filled
+// column by column, as ls lists), Esc closes it and puts the text back. Any other key
+// closes it, keeping the folder picked, and does what it does (Enter goes).
+func (s *state) menuKey(k tui.Key) bool {
+	n := len(s.inputMatches)
+	_, rows, _ := s.menuGrid()
+	sel := s.menuSel
+	switch k.Kind {
+	case tui.KeyTab:
+		switch {
+		case k.Shift && sel <= 0:
+			sel = n - 1
+		case k.Shift:
+			sel--
+		default:
+			sel = (sel + 1) % n
+		}
+	case tui.KeyDown, tui.KeyUp, tui.KeyRight, tui.KeyLeft:
+		// Up and down stay in the column; left and right in the row.
+		step := map[tui.KeyKind]int{tui.KeyDown: 1, tui.KeyUp: -1, tui.KeyRight: rows, tui.KeyLeft: -rows}[k.Kind]
+		t, r := sel+step, sel%rows
+		switch {
+		case sel < 0:
+			sel = 0
+		case k.Kind == tui.KeyDown && r == rows-1, k.Kind == tui.KeyUp && r == 0:
+		case t >= 0 && t < n:
+			sel = t
+		}
+	case tui.KeyEsc:
+		s.inputText, s.inputCursor = s.menuText, s.menuCursor
+		s.inputMatches = nil
+		return true
+	default:
+		return false
+	}
+	s.menuSel = sel
+	name := s.inputMatches[sel]
+	s.inputText = s.menuText[:s.menuAt] + name + s.menuText[s.menuCursor:]
+	s.inputCursor = s.menuAt + len(name)
+	return true
+}
+
+// menuGrid is how Tab's folders lay out across the screen: columns of
+// colW, rows deep, filled column by column.
+func (s *state) menuGrid() (cols, rows, colW int) {
+	for _, m := range s.inputMatches {
+		colW = max(colW, ui.TextWidth(m)+2)
+	}
+	colW = min(colW, max(s.width-1, 1))
+	cols = max((s.width-1)/max(colW, 1), 1)
+	rows = (len(s.inputMatches) + cols - 1) / cols
+	return cols, rows, colW
+}
+
+// gotoList lists dir for Tab without asking adb again for what is known:
+// the folder the pane shows is its own listing, and a folder Tab read is
+// kept while this Go to is open (closing it forgets them, so nothing goes
+// stale). A failure is not kept.
+func (s *state) gotoList(p *pane, dir string) ([]Entry, error) {
+	dir = p.fs.Join(dir, "") // one spelling: "/sdcard/" and "/sdcard" are the same folder
+	if dir == p.fs.Join(p.dir, "") && !p.recent && p.err == nil {
+		return p.entries, nil
+	}
+	if e, ok := s.gotoLists[dir]; ok {
+		return e, nil
+	}
+	entries, err := p.fs.List(dir)
+	if err != nil {
+		return nil, err
+	}
+	if s.gotoLists == nil {
+		s.gotoLists = map[string][]Entry{}
+	}
+	s.gotoLists[dir] = entries
+	return entries, nil
+}
+
+// replaceBeforeCursor replaces the n bytes before the cursor with t.
+func (s *state) replaceBeforeCursor(n int, t string) {
+	s.inputText = s.inputText[:s.inputCursor-n] + t + s.inputText[s.inputCursor:]
+	s.inputCursor += len(t) - n
+}
+
+// sharedPrefix is the longest start all names share, cut at a whole rune.
+func sharedPrefix(names []string) string {
+	common := names[0]
+	for _, n := range names[1:] {
+		j := 0
+		for j < len(common) && j < len(n) && common[j] == n[j] {
+			j++
+		}
+		common = common[:j]
+	}
+	for len(common) > 0 && !utf8.ValidString(common) {
+		common = common[:len(common)-1]
+	}
+	return common
+}
+
 // insertText inserts typed bytes. Keys arrive a byte at a time, so a
 // Hangul syllable typed through an input method arrives as several KeyRune
 // bytes; they are joined as they come.
@@ -1295,18 +1501,7 @@ func (s *state) submitInput(p *pane) {
 	text := s.inputText
 	switch s.inputKind {
 	case inputGoto:
-		dir := expandHome(p.fs, strings.TrimSpace(text))
-		// A relative path is from the folder shown, as in a shell's cd.
-		if p.fs.Side() == PC {
-			if !filepath.IsAbs(dir) {
-				dir = filepath.Join(p.dir, dir)
-			}
-			if abs, err := filepath.Abs(dir); err == nil {
-				dir = abs // paths reach adb whole: never "-x" or relative
-			}
-		} else if !strings.HasPrefix(dir, "/") {
-			dir = p.fs.Join(p.dir, dir)
-		}
+		dir := gotoPath(p, strings.TrimSpace(text))
 		entries, err := p.fs.List(dir) // once: a failure keeps the folder shown
 		if err != nil {
 			s.setMsg(msgError, "Can't open %s: %s", text, errText(err))
