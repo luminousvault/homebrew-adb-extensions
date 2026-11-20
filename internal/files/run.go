@@ -51,26 +51,69 @@ func (s Summary) Print() {
 	}
 }
 
-// summaryItemsShown is how many names a summary line lists; the rest are
-// counted, so deleting 500 files does not bury the other lines.
-const summaryItemsShown = 20
+// summaryItemRows is how many rows the names under a summary line take at
+// most: enough to see what was done, short enough that the ✓ lines stay
+// easy to read; the rest are counted.
+const summaryItemRows = 2
 
-// printItems lists names under a summary line, indented and dim.
+// printItems lists names under a summary line, dim, side by side over at most
+// summaryItemRows rows, joined to it with ├─ and └─:
+//
+//	✓ Copied 9 files to Pixel:/sdcard/Download
+//	  ├─ b1.png  b2.png  b3.png  c.mp4  c.png
+//	  └─ cold2.mp4  dda.png  deck.mp4  dual.png
 func printItems(items []string) {
-	shown := items
-	if len(items) > summaryItemsShown {
-		shown = items[:summaryItemsShown]
+	rows := packItems(items, ui.Width()-len("  ├─ "), summaryItemRows)
+	for i, r := range rows {
+		mark := "├─ "
+		if i == len(rows)-1 {
+			mark = "└─ "
+		}
+		ui.Detail("%s", mark+r)
 	}
-	var b strings.Builder
-	for _, n := range shown {
-		b.WriteString(n + "\n")
+}
+
+// packItems puts names side by side, two spaces apart, in rows of at most w
+// columns and at most max rows. Names that do not fit are counted at the end
+// of the last row ("… and 5 more"); a name is never split (one longer than a
+// row is cut).
+func packItems(items []string, w, maxRows int) []string {
+	const gap = "  "
+	width := func(names []string) int { return ui.TextWidth(strings.Join(names, gap)) }
+	var rows [][]string
+	var row []string
+	i := 0
+	for i < len(items) && len(rows) < maxRows {
+		n := ui.Fit(items[i], max(w, 8))
+		if len(row) > 0 && width(append(row[:len(row):len(row)], n)) > w {
+			rows, row = append(rows, row), nil
+			continue
+		}
+		row = append(row, n)
+		i++
 	}
-	if more := len(items) - len(shown); more > 0 {
-		fmt.Fprintf(&b, "… and %d more\n", more)
+	if len(row) > 0 && len(rows) < maxRows {
+		rows = append(rows, row)
 	}
-	if b.Len() > 0 {
-		ui.Detail("%s", b.String())
+	if i < len(items) && len(rows) > 0 {
+		// Names left: end the last row with how many, dropping its last
+		// names until the count fits.
+		last := rows[len(rows)-1]
+		for {
+			more := fmt.Sprintf("… and %d more", len(items)-i)
+			if len(last) == 0 || width(append(last[:len(last):len(last)], more)) <= w {
+				rows[len(rows)-1] = append(last, more)
+				break
+			}
+			last = last[:len(last)-1]
+			i--
+		}
 	}
+	out := make([]string, len(rows))
+	for k, r := range rows {
+		out[k] = strings.Join(r, gap)
+	}
+	return out
 }
 
 // HasFailures reports whether anything failed (exit code 1).

@@ -782,8 +782,8 @@ func (s *state) progressText(width int) string {
 	p := s.prog
 	t := s.task
 	head := t.label
-	if p.count > 1 || t.route != "" {
-		head += fmt.Sprintf(" %d/%d", max(p.index, 1), max(p.count, 1))
+	if p.count > 1 {
+		head += fmt.Sprintf(" %d/%d", max(p.index, 1), p.count) // one item: no "1/1"
 	}
 	name, rt := p.name, t.route
 	if t.route == "" {
@@ -804,22 +804,33 @@ func (s *state) progressText(width int) string {
 	}
 	done, total := p.done, p.total
 	sizes := fmt.Sprintf(" (%s / %s)", HumanSize(done), HumanSize(total))
-	if total <= 0 {
-		if p.count <= 1 || t.route != "" {
-			// One item of unknown size (a delete, a folder rm -rf): a spinner
-			// and, past a few seconds, how long it has run.
-			spin := string(spinFrames[s.spin%len(spinFrames)]) + " " + join(name, rt, "")
-			if d := s.now().Sub(t.started); !t.started.IsZero() && d >= 3*time.Second {
-				spin += "  " + Dim + d.Truncate(time.Second).String() + NC
-			}
-			return spin
-		}
-		// Many items of unknown size (deleting 100 files): the bar counts items,
-		// so the "14/31" after the label would only repeat it.
+	switch {
+	case p.measuring:
+		return string(spinFrames[s.spin%len(spinFrames)]) + " " + join(name, rt, "")
+	case p.count > 1 && p.all > 0:
+		// Several items of known size: one bar for the whole job by bytes,
+		// closest to the time left and moving during a big file too (a bar
+		// per file barely moves for small files, which finish between two
+		// size checks). The current item's name still shows.
+		head = t.label + fmt.Sprintf(" %d/%d", max(p.index, 1), p.count)
+		done, total = p.before+max(p.done, 0), p.all
+		sizes = fmt.Sprintf(" (%s / %s)", HumanSize(done), HumanSize(total))
+	case p.count > 1:
+		// Several items, some of unknown size (or a delete): the bar counts
+		// items, so the "2/10" after the label would only repeat it.
 		head = t.label
 		done, total = int64(max(p.index-1, 0)), int64(p.count)
 		sizes = fmt.Sprintf(" (%d / %d)", done, total)
+	case total <= 0:
+		// One item of unknown size (a delete, a folder rm -rf): a spinner
+		// and, past a few seconds, how long it has run.
+		spin := string(spinFrames[s.spin%len(spinFrames)]) + " " + join(name, rt, "")
+		if d := s.now().Sub(t.started); !t.started.IsZero() && d >= 3*time.Second {
+			spin += "  " + Dim + d.Truncate(time.Second).String() + NC
+		}
+		return spin
 	}
+	// One item of known size: the bar counts its bytes.
 	pct := fmt.Sprintf(" %d%%", min(done*100/total, 100))
 	const minBar, maxBar = 10, 40
 	// Give the bar 20 columns if cutting the name and the path allows it,

@@ -24,6 +24,11 @@ type progress struct {
 	index, count int    // current item (1-based) and how many
 	name         string // current item
 	done, total  int64  // bytes of the current item; total < 0 when unknown (a spinner only)
+	// The whole job, for a bar over several items: the bytes of the items
+	// before this one and of all of them (0 when some size is unknown: the
+	// bar then counts items).
+	before, all int64
+	measuring   bool // sizing the items before the copy starts: a spinner
 }
 
 // transfer copies src on from to dst on to: adb pull or adb push between
@@ -183,7 +188,7 @@ func (j *copyJob) run(ctx context.Context, report func(progress)) copyResult {
 	// anything.
 	sizes := make([]usage, len(todo))
 	for i, op := range todo {
-		report(progress{index: i + 1, count: len(todo), name: op.src.Name, total: -1})
+		report(progress{index: i + 1, count: len(todo), name: op.src.Name, total: -1, measuring: true})
 		sizes[i] = usage{op.src.Size, 1}
 		if j.cut && j.sameFS() {
 			continue // a rename: nothing to measure, nothing to wait for
@@ -200,12 +205,21 @@ func (j *copyJob) run(ctx context.Context, report func(progress)) copyResult {
 			return res
 		}
 	}
+	var all, before int64 // the job's bytes, when every size is known
+	for _, u := range sizes {
+		if u.bytes < 0 {
+			all = 0
+			break
+		}
+		all += u.bytes
+	}
 	for i, op := range todo {
 		if ctx.Err() != nil {
 			res.canceled = true
 			break
 		}
-		p := progress{index: i + 1, count: len(todo), name: op.src.Name, total: sizes[i].bytes}
+		p := progress{index: i + 1, count: len(todo), name: op.src.Name, total: sizes[i].bytes, before: before, all: all}
+		before += max(sizes[i].bytes, 0)
 		report(p)
 		err := j.one(ctx, op, sizes[i], func(n int64) {
 			q := p

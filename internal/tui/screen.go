@@ -26,6 +26,16 @@ type Screen struct {
 	done        chan struct{} // closed by Close
 }
 
+// wheelAsArrowsOn asks the terminal to send the mouse wheel as ↑ and ↓ on
+// the alternate screen (xterm's alternate scroll mode, 1007), so the wheel
+// moves the list instead of scrolling the shell's history into view. Mouse
+// selection and copy keep working, unlike full mouse reporting; a terminal
+// that does not know the mode ignores it.
+const (
+	wheelAsArrowsOn  = "\033[?1007h"
+	wheelAsArrowsOff = "\033[?1007l"
+)
+
 // escWait is how long a trailing ESC waits for the rest of an escape
 // sequence before it counts as the Esc key: over a slow link (ssh, tmux) the
 // bytes of one arrow key can arrive in two reads, and ESC + "[A" read apart
@@ -57,6 +67,7 @@ func OpenScreen() (*Screen, error) {
 		}
 	})
 	enterAlt(s.out)
+	io.WriteString(s.out, wheelAsArrowsOn)
 	go s.readKeys()
 	return s, nil
 }
@@ -150,6 +161,7 @@ func (s *Screen) Close() {
 	s.stopped.Store(true)
 	close(s.done)
 	s.stopResize()
+	io.WriteString(s.out, wheelAsArrowsOff)
 	leaveAlt(s.out)
 	_ = term.Restore(s.inFd, s.old)
 }

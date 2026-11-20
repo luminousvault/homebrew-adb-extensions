@@ -3,6 +3,7 @@ package files
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -16,14 +17,14 @@ func progressState(t *testing.T, done, total int64) *state {
 	s, _, _ := testState(t)
 	job := &copyJob{from: s.panes[Device].fs, to: s.panes[PC].fs, dstDir: "/home/me/Downloads"}
 	s.task = &task{label: "Pulling", route: route(job, false), cancelable: true}
-	s.prog = progress{index: 2, count: 3, name: "huge.bin", done: done, total: total}
+	s.prog = progress{index: 1, count: 1, name: "huge.bin", done: done, total: total} // one item: bytes
 	return s
 }
 
 func TestProgressBar(t *testing.T) {
 	s := progressState(t, 215*1048576, 430*1048576)
 	got := ui.Plain(s.progressText(200))
-	want := "Pulling 2/3  huge.bin  Test Phone → /home/me/Downloads  " +
+	want := "Pulling  huge.bin  Test Phone → /home/me/Downloads  " +
 		strings.Repeat("█", 20) + strings.Repeat("░", 20) + " 50% (215.0 MB / 430.0 MB)  Esc Cancel"
 	if got != want {
 		t.Errorf("wide:\n got %q\nwant %q", got, want)
@@ -37,7 +38,7 @@ func TestProgressBar(t *testing.T) {
 
 	// Narrow: name and route are cut, then the sizes go; the bar keeps 10
 	// columns and the percentage stays.
-	for _, w := range []int{70, 50, 30} {
+	for _, w := range []int{60, 50, 30} {
 		got = ui.Plain(s.progressText(w))
 		if n := strings.Count(got, "█") + strings.Count(got, "░"); n != 10 {
 			t.Errorf("%d columns: bar %d: %q", w, n, got)
@@ -56,7 +57,7 @@ func TestProgressBar(t *testing.T) {
 	// Unknown size: a spinner, no bar.
 	s = progressState(t, 0, -1)
 	got = ui.Plain(s.progressText(200))
-	if strings.ContainsAny(got, "█░%") || !strings.Contains(got, "Pulling 2/3  huge.bin") {
+	if strings.ContainsAny(got, "█░%") || !strings.Contains(got, "Pulling  huge.bin") {
 		t.Errorf("unknown size: %q", got)
 	}
 }
@@ -67,7 +68,7 @@ func TestPushRoute(t *testing.T) {
 	s.task = &task{label: "Pushing", route: route(job, true), cancelable: true}
 	s.prog = progress{index: 1, count: 1, name: "video.mp4", done: 42, total: 100}
 	got := ui.Plain(s.progressText(300))
-	if !strings.HasPrefix(got, "Pushing 1/1  video.mp4  Test Phone:"+dev+" ← Computer  ") || !strings.HasSuffix(got, " 42% (42 B / 100 B)  Esc Cancel") {
+	if !strings.HasPrefix(got, "Pushing  video.mp4  Test Phone:"+dev+" ← Computer  ") || !strings.HasSuffix(got, " 42% (42 B / 100 B)  Esc Cancel") {
 		t.Errorf("%q", got)
 	}
 }
@@ -133,5 +134,52 @@ func TestDeleteStopsBetweenItems(t *testing.T) {
 	}
 	if len(s.summary.Canceled) != 1 {
 		t.Errorf("summary %+v", s.summary)
+	}
+}
+
+// Several items of known size show one bar for the whole job by bytes (the
+// items done plus the current one); with a size unknown it counts items.
+// The current item's name shows either way.
+func TestProgressSeveralItems(t *testing.T) {
+	s := progressState(t, 10, 1000)
+	s.prog = progress{index: 4, count: 10, name: "c.jpg", done: 100, total: 1000, before: 2900, all: 10000}
+	got := ui.Plain(s.progressText(140))
+	if !strings.Contains(got, "Pulling 4/10") || !strings.Contains(got, "30% (3 KB / 10 KB)") || !strings.Contains(got, "c.jpg") {
+		t.Errorf("by bytes: %q", got)
+	}
+	s.prog = progress{index: 4, count: 10, name: "c.jpg", done: 10, total: -1}
+	got = ui.Plain(s.progressText(140))
+	if !strings.Contains(got, "30% (3 / 10)") || strings.Contains(got, "4/10") {
+		t.Errorf("by items: %q", got)
+	}
+	s.prog = progress{index: 2, count: 10, name: "b.jpg", total: -1, measuring: true}
+	if got := ui.Plain(s.progressText(140)); strings.ContainsAny(got, "█░%") {
+		t.Errorf("measuring shows a bar: %q", got)
+	}
+}
+
+// copyJob.run reports the job's bytes: the sum of all sizes and, for each
+// item, the bytes of those before it.
+func TestCopyJobReportsJobBytes(t *testing.T) {
+	src, dst := t.TempDir(), t.TempDir()
+	write(t, src, "a", "bb")
+	if err := os.WriteFile(filepath.Join(src, "a"), make([]byte, 100), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "bb"), make([]byte, 300), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := localFS{PC, computerLabel}
+	a, _ := f.Stat(filepath.Join(src, "a"))
+	b, _ := f.Stat(filepath.Join(src, "bb"))
+	job := &copyJob{from: f, to: localFS{Device, "Test Phone"}, dstDir: dst, ops: []copyOp{{src: a, name: "a"}, {src: b, name: "bb"}}}
+	var seen []progress
+	job.run(context.Background(), func(p progress) {
+		if !p.measuring {
+			seen = append(seen, p)
+		}
+	})
+	if len(seen) < 2 || seen[0].all != 400 || seen[0].before != 0 || seen[len(seen)-1].before != 100 {
+		t.Errorf("progress %+v", seen)
 	}
 }

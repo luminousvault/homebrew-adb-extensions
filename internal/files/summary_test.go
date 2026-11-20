@@ -171,8 +171,8 @@ func TestNormalizedNameIsNotRenamed(t *testing.T) {
 	}
 }
 
-// A summary line that covers several items lists them under it, dim and
-// indented, up to summaryItemsShown and then a count.
+// A summary line that covers several items lists them under it, dim, side
+// by side over at most two rows joined with ├─ and └─, then a count.
 func TestSummaryListsItems(t *testing.T) {
 	s, dev, _ := testState(t)
 	write(t, dev, "a.txt", "b.txt", "sub/c.txt")
@@ -185,25 +185,42 @@ func TestSummaryListsItems(t *testing.T) {
 		t.Errorf("items %q", got)
 	}
 	got := captureStderr(t, s.summary.Print)
-	if !strings.Contains(got, "Deleted 3 items") || !strings.Contains(got, "  a.txt\n") || !strings.Contains(got, "  sub/\n") {
+	if !strings.Contains(got, "Deleted 3 items") || !strings.Contains(got, "  └─ sub/  a.txt  b.txt\n") {
 		t.Errorf("printed %q", got)
-	}
-
-	var many Summary
-	for i := 0; i < 25; i++ {
-		many.Items = append(many.Items, nil)
-	}
-	names := make([]string, 25)
-	for i := range names {
-		names[i] = fmt.Sprintf("f%02d", i)
-	}
-	many.Done, many.Items = []string{"Deleted 25 files on X"}, [][]string{names}
-	got = captureStderr(t, many.Print)
-	if !strings.Contains(got, "f19") || strings.Contains(got, "f20") || !strings.Contains(got, "… and 5 more") {
-		t.Errorf("long list %q", got)
 	}
 	if itemNames([]Entry{{Name: "a.txt"}}, []string{"a (1).txt"})[0] != "a.txt → a (1).txt" {
 		t.Error("renamed item")
+	}
+}
+
+// packItems fills at most two rows of the given width and counts the rest;
+// names with two spaces in them stay whole.
+func TestPackItems(t *testing.T) {
+	names := make([]string, 30)
+	for i := range names {
+		names[i] = fmt.Sprintf("file%02d.png", i)
+	}
+	rows := packItems(names, 40, 2)
+	if len(rows) != 2 {
+		t.Fatalf("rows %q", rows)
+	}
+	for _, r := range rows {
+		if ui.TextWidth(r) > 40 {
+			t.Errorf("row too wide: %q", r)
+		}
+	}
+	if !strings.HasPrefix(rows[0], "file00.png  file01.png") || !strings.Contains(rows[1], "… and ") {
+		t.Errorf("rows %q", rows)
+	}
+	shown := strings.Count(rows[0]+rows[1], "file")
+	if want := fmt.Sprintf("… and %d more", 30-shown); !strings.HasSuffix(rows[1], want) {
+		t.Errorf("count: %q, want suffix %q", rows[1], want)
+	}
+	if got := packItems([]string{"a b.txt", "  lead.txt"}, 40, 2); len(got) != 1 || got[0] != "a b.txt    lead.txt" {
+		t.Errorf("two spaces in a name: %q", got)
+	}
+	if got := packItems([]string{"x"}, 40, 2); len(got) != 1 || got[0] != "x" {
+		t.Errorf("one: %q", got)
 	}
 }
 
