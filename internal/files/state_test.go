@@ -802,3 +802,48 @@ func TestCapsLockLetters(t *testing.T) {
 		t.Error("Q did not quit")
 	}
 }
+
+// Shift+Delete deletes without the question and says so; plain Delete asks.
+func TestShiftDeleteDoesNotAsk(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "a.txt", "b.txt")
+	s.open(s.panes[Device], dev, "")
+	find(t, s, "a.txt")
+	press(t, s, "\x1b[3~")
+	if s.mode != modeDelete {
+		t.Fatalf("Delete did not ask: mode %v", s.mode)
+	}
+	press(t, s, "n")
+	find(t, s, "a.txt")
+	press(t, s, "\x1b[3;2~")
+	if _, err := os.Stat(filepath.Join(dev, "a.txt")); !os.IsNotExist(err) {
+		t.Fatalf("a.txt is still there: %v", err)
+	}
+	if s.msg == nil || s.msg.text != "Deleted 'a.txt' (Shift+Delete, not asked)" {
+		t.Errorf("message %+v", s.msg)
+	}
+	if last := s.summary.Done[len(s.summary.Done)-1]; !strings.HasSuffix(last, "(Shift+Delete, not asked)") {
+		t.Errorf("summary %q", last)
+	}
+	if _, err := os.Stat(filepath.Join(dev, "b.txt")); err != nil {
+		t.Error("b.txt went too")
+	}
+}
+
+// Korean input sends UTF-8 text: no key runs, and the status line says why.
+func TestKoreanInputSaysWhy(t *testing.T) {
+	s, dev, _ := testState(t)
+	write(t, dev, "a.txt")
+	s.open(s.panes[Device], dev, "")
+	press(t, s, "요") // d then y with a Korean input source
+	if s.mode != modeNormal || s.msg == nil || !strings.Contains(s.msg.text, "English input") {
+		t.Fatalf("mode %v msg %+v", s.mode, s.msg)
+	}
+	if _, err := os.Stat(filepath.Join(dev, "a.txt")); err != nil {
+		t.Error("a.txt was deleted")
+	}
+	press(t, s, "1") // number keys still work
+	if s.msg != nil && strings.Contains(s.msg.text, "English input") {
+		t.Error("the note stayed after a number key")
+	}
+}

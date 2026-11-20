@@ -256,7 +256,8 @@ func helpSections() []helpSection {
 		{"Manage", []helpItem{
 			{"0 Rename", "r", "Rename the item under the cursor (in the recent view too)"},
 			{"7 Mkdir", "n", "New folder"},
-			{"8 Delete", "d", "Delete the selection or the item (Delete key too)"},
+			{"8 Delete", "d", "Delete the selection or the item (Delete key too), after a [y/N] question"},
+			{"Shift+Delete", "", "Delete without the question"},
 		}},
 		{"View", []helpItem{
 			{"Tab", "", "Device ↔ computer (two panes: the other pane)"},

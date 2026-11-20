@@ -425,7 +425,11 @@ func (s *state) handle(k tui.Key) {
 	case tui.KeyEsc:
 		s.escape(p, msg)
 	case tui.KeyDelete:
-		s.askDelete(p)
+		if k.Shift {
+			s.deleteUnasked(p)
+		} else {
+			s.askDelete(p)
+		}
 	case tui.KeyRune:
 		s.handleRune(p, k.Rune)
 	}
@@ -439,6 +443,14 @@ var numberKeys = map[byte]byte{'1': 's', '2': 't', '3': 'c', '4': 'x', '6': 'v',
 func (s *state) handleRune(p *pane, r byte) {
 	if r >= 'A' && r <= 'Z' {
 		r |= 0x20 // Caps Lock on: the same keys
+	}
+	if r >= 0x80 {
+		// UTF-8 text: a Korean (or other) input source is on. Its letters
+		// are not mapped to keys: the input method holds a jamo until the
+		// next key and sends a syllable, and d then y as one syllable must
+		// not delete unasked. Say why nothing happened.
+		s.setMsg(msgWarn, "Letter keys need English input; the number keys work in any input")
+		return
 	}
 	if r == '5' { // copy to the other side: pull on the device, push on the PC
 		r = map[Side]byte{Device: 'g', PC: 'p'}[p.fs.Side()]
@@ -1099,6 +1111,17 @@ func (s *state) askDelete(p *pane) {
 	}
 }
 
+// deleteUnasked deletes the targets without the [y/N] question (Shift+Delete):
+// a key apart from the letters, so Caps Lock can't make d into it.
+func (s *state) deleteUnasked(p *pane) {
+	if s.blocked() {
+		return
+	}
+	if targets := s.targets(p); len(targets) > 0 {
+		s.startDelete(p, targets, true)
+	}
+}
+
 // handleDelete takes y; anything else keeps the files ([y/N]).
 func (s *state) handleDelete(k tui.Key) {
 	s.mode = modeNormal
@@ -1106,8 +1129,12 @@ func (s *state) handleDelete(k tui.Key) {
 		s.setMsg(msgInfo, "Nothing deleted")
 		return
 	}
-	p := s.cur()
-	targets := s.delTargets
+	s.startDelete(s.cur(), s.delTargets, false)
+}
+
+// startDelete deletes targets in p; unasked marks a Shift+Delete in the
+// messages, so a delete nobody confirmed is never silent.
+func (s *state) startDelete(p *pane, targets []Entry, unasked bool) {
 	f := p.fs
 	// Esc stops between items: the item being deleted (one rm -rf) runs to
 	// its end, so nothing is left half deleted by ak.
@@ -1128,11 +1155,11 @@ func (s *state) handleDelete(k tui.Key) {
 			}
 			flushMedia(f)
 			stopped := len(done)+len(failed) < len(targets)
-			return func(s *state) { s.finishDelete(p, done, failed, stopped, len(targets)) }
+			return func(s *state) { s.finishDelete(p, done, failed, stopped, len(targets), unasked) }
 		}}
 }
 
-func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bool, total int) {
+func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bool, total int, unasked bool) {
 	p.recentList = withoutPaths(p.recentList, done)
 	if s.clip != nil && s.clip.side == p.fs.Side() { // deleted items are no longer there to paste
 		if s.clip.items = withoutPaths(s.clip.items, done); len(s.clip.items) == 0 {
@@ -1146,8 +1173,12 @@ func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bo
 		}
 	}
 	where := p.fs.Label()
+	how := ""
+	if unasked {
+		how = " (Shift+Delete, not asked)"
+	}
 	if len(done) > 0 {
-		s.addDone(fmt.Sprintf("Deleted %s on %s", countItems(done), where), itemNames(done, nil))
+		s.addDone(fmt.Sprintf("Deleted %s on %s%s", countItems(done), where, how), itemNames(done, nil))
 	}
 	for _, f := range failed {
 		s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't delete '%s' on %s: %s", f.name, where, f.msg))
@@ -1162,7 +1193,7 @@ func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bo
 	case stopped:
 		s.setMsg(msgInfo, "Canceled: %d of %d deleted", len(done), total)
 	default:
-		s.setMsg(msgSuccess, "Deleted %s", countItems(done))
+		s.setMsg(msgSuccess, "Deleted %s%s", countItems(done), how)
 	}
 }
 
