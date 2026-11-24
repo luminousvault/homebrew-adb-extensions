@@ -144,7 +144,7 @@ Show app version and SDK levels.
 ak info [options] [package]
 ```
 
-Show the version, SDK levels, debuggable flag and installer of a package.
+Show the version, SDK levels, debuggable and system flags, enabled state, installer, install and update times, APK path, UID and PID (when running) of a package.
 
 **Arguments**
 

@@ -144,7 +144,7 @@ ak signature app.apk --json | jq -r '.signers[0].sha256'
 ak info [options] [package]
 ```
 
-패키지의 버전, SDK 레벨, debuggable 여부, 설치 출처를 보여 줍니다.
+패키지의 버전, SDK 레벨, debuggable · 시스템 앱 여부, 사용 상태, 설치 출처, 설치 · 업데이트 시각, APK 경로, UID, 실행 중이면 PID를 보여 줍니다.
 
 **인자**
 

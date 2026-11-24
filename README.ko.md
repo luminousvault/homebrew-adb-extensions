@@ -75,7 +75,7 @@ ak가 adb를 직접 찾습니다(`AK_ADB` → `ANDROID_HOME` → `ANDROID_SDK_RO
 ak devices                 # 연결된 디바이스
 ak install                 # 현재 폴더에서 APK를 고르고, 디바이스를 고름
 ak install app.apk -a      # 연결된 모든 디바이스에 동시에 설치
-ak info                    # 화면의 앱: 버전, SDK 레벨, 설치 출처
+ak info                    # 화면의 앱: 버전, SDK 레벨, 설치 출처, 경로, PID
 ak screenshot -co          # 저장하고 클립보드에 복사하고 열기
 ak logcat                  # 화면의 앱 로그, 재시작해도 따라감
 ak doctor                  # 설정이 제대로 됐는지 점검
@@ -145,7 +145,7 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 | APK | [`install`](docs/commands.ko.md#ak-install) | 한 대 또는 여러 대에 APK 설치, 실패 자동 복구 |
 | | [`extract`](docs/commands.ko.md#ak-extract) | 설치된 앱의 APK 꺼내기 |
 | | [`signature`](docs/commands.ko.md#ak-signature) | 앱 또는 APK 파일의 서명 인증서 해시 |
-| 앱 | [`info`](docs/commands.ko.md#ak-info) · [`permissions`](docs/commands.ko.md#ak-permissions) | 버전 · SDK 레벨 · 설치 출처 / 허용된 권한 |
+| 앱 | [`info`](docs/commands.ko.md#ak-info) · [`permissions`](docs/commands.ko.md#ak-permissions) | 버전 · SDK 레벨 · 설치 출처 · 경로 · PID / 허용된 권한 |
 | | [`launch`](docs/commands.ko.md#ak-launch) · [`kill`](docs/commands.ko.md#ak-kill) · [`restart`](docs/commands.ko.md#ak-restart) | 실행 · 강제 종료 · 재시작하며 실행 시간 측정 |
 | | [`clear`](docs/commands.ko.md#ak-clear) · [`uninstall`](docs/commands.ko.md#ak-uninstall) | 데이터 삭제 · 제거 |
 | | [`activities`](docs/commands.ko.md#ak-activities) · [`logcat`](docs/commands.ko.md#ak-logcat) | 액티비티 스택 · 앱 하나 또는 여러 개의 로그 |

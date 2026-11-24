@@ -75,7 +75,7 @@ ak finds adb itself — `AK_ADB`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `PATH`, th
 ak devices                 # connected devices
 ak install                 # pick APKs in the current folder, then devices
 ak install app.apk -a      # install on every connected device at once
-ak info                    # the app on screen: version, SDK levels, installer
+ak info                    # the app on screen: version, SDK levels, installer, path, PID
 ak screenshot -co          # save, copy to the clipboard and open
 ak logcat                  # logs of the app on screen, following restarts
 ak doctor                  # is everything set up?
@@ -145,7 +145,7 @@ Commands, options, device serials (each with its model and Android version in zs
 | APK | [`install`](docs/commands.md#ak-install) | Install APKs on one or more devices, with automatic recovery |
 | | [`extract`](docs/commands.md#ak-extract) | Save an installed app's APK |
 | | [`signature`](docs/commands.md#ak-signature) | Signing certificate hashes of an app or APK file |
-| App | [`info`](docs/commands.md#ak-info) · [`permissions`](docs/commands.md#ak-permissions) | Version, SDK levels, installer · granted permissions |
+| App | [`info`](docs/commands.md#ak-info) · [`permissions`](docs/commands.md#ak-permissions) | Version, SDK levels, installer, path, PID · granted permissions |
 | | [`launch`](docs/commands.md#ak-launch) · [`kill`](docs/commands.md#ak-kill) · [`restart`](docs/commands.md#ak-restart) | Start · force-stop · restart and time the launch |
 | | [`clear`](docs/commands.md#ak-clear) · [`uninstall`](docs/commands.md#ak-uninstall) | Clear data · uninstall |
 | | [`activities`](docs/commands.md#ak-activities) · [`logcat`](docs/commands.md#ak-logcat) | Activity stack · logs of one or more apps |

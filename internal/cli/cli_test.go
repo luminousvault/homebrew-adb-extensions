@@ -40,8 +40,16 @@ Display #0 (activities from top to bottom):
   Package [com.example.app] (4f2):
     versionCode=1203 minSdk=24 targetSdk=36
     versionName=1.2.3
+    codePath=/data/app/~~abc==/com.example.app-xyz==
     flags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    appId=10234
+    pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_CLEAR_USER_DATA ]
     installerPackageName=com.android.vending
+    splits=[base, config.arm64_v8a, config.xxhdpi]
+    User 0: ceDataInode=1 installed=true hidden=false suspended=false stopped=false notLaunched=false enabled=0 instant=false virtual=false
+    User 0:
+      firstInstallTime=2024-03-01 10:00:00
+      lastUpdateTime=2024-05-02 11:30:00
     install permissions:
       android.permission.INTERNET: granted=true
     runtime permissions:
@@ -81,6 +89,7 @@ func baseFake() *adbtest.Fake {
 		"-s " + serial + " shell dumpsys activity activities":     {Stdout: activitiesOut},
 		"-s " + serial + " shell pm list packages --user 0":       {Stdout: packagesOut},
 		"-s " + serial + " shell dumpsys package com.example.app": {Stdout: dumpsysPkg},
+		"-s " + serial + " shell pidof com.example.app":           {Stdout: "4321\n"},
 	}}
 }
 
@@ -100,13 +109,38 @@ func TestInfoSplitsStdoutAndStderr(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("code %d: %s", r.code, r.err)
 	}
-	if r.err != "==> 'com.example.app' (foreground app on Google Pixel 9 Pro)\n" {
+	if r.err != "==> Foreground app on Google Pixel 9 Pro\n" {
 		t.Errorf("stderr %q", r.err)
 	}
-	want := "  versionName           1.2.3\n  versionCode           1203\n  minSdk                24\n  targetSdk             36\n" +
-		"  debuggable            true\n  installerPackageName  com.android.vending\n"
+	want := "  package     com.example.app\n  version     1.2.3 (1203)\n  minSdk      24 (Android 7.0)\n" +
+		"  targetSdk   36 (Android 16)\n  debuggable  true\n  system      false\n  enabled     yes\n" +
+		"  installer   com.android.vending\n  installed   2024-03-01 10:00:00\n  updated     2024-05-02 11:30:00\n" +
+		"  path        /data/app/~~abc==/com.example.app-xyz== (+2 splits)\n  uid         10234\n  pid         4321\n"
 	if r.out != want {
 		t.Errorf("stdout:\n%s\nwant:\n%s", r.out, want)
+	}
+}
+
+func TestInfoNamedPackageTitle(t *testing.T) {
+	r := ak(t, baseFake(), "info", "com.example.app")
+	if r.code != 0 || r.err != "==> App on Google Pixel 9 Pro\n" {
+		t.Errorf("code %d stderr %q", r.code, r.err)
+	}
+	if !strings.HasPrefix(r.out, "  package     com.example.app\n") {
+		t.Errorf("stdout %q", r.out)
+	}
+}
+
+func TestSdkWithRelease(t *testing.T) {
+	for level, want := range map[string]string{
+		"21": "21 (Android 5.0)", "23": "23 (Android 6)", "28": "28 (Android 9)", "29": "29 (Android 10)",
+		"30": "30 (Android 11)", "31": "31 (Android 12)", "32": "32 (Android 12L)", "33": "33 (Android 13)",
+		"34": "34 (Android 14)", "35": "35 (Android 15)", "36": "36 (Android 16)",
+		"37": "37", "": "",
+	} {
+		if got := sdkWithRelease(level); got != want {
+			t.Errorf("sdkWithRelease(%q) = %q, want %q", level, got, want)
+		}
 	}
 }
 
@@ -119,11 +153,144 @@ func TestInfoJSON(t *testing.T) {
 	if got["package"] != "com.example.app" || got["versionCode"] != float64(1203) || got["debuggable"] != true {
 		t.Errorf("%v", got)
 	}
+	splits, _ := json.Marshal(got["splits"])
+	if got["system"] != false || got["enabled"] != true || got["firstInstallTime"] != "2024-03-01 10:00:00" ||
+		got["lastUpdateTime"] != "2024-05-02 11:30:00" || got["path"] != "/data/app/~~abc==/com.example.app-xyz==" ||
+		string(splits) != `["base","config.arm64_v8a","config.xxhdpi"]` || got["uid"] != float64(10234) || got["pid"] != float64(4321) {
+		t.Errorf("%v", got)
+	}
+}
+
+// A field that dumpsys does not print is "-" (pid is left out) in text and null in JSON.
+func TestInfoMissingFieldsAndNotRunning(t *testing.T) {
+	f := baseFake()
+	f.Responses["-s "+serial+" shell dumpsys package com.example.app"] = adbtest.Response{
+		Stdout: "  Package [com.example.app] (1):\n    versionCode=1 minSdk=21 targetSdk=34\n    versionName=1.0\n"}
+	f.Responses["-s "+serial+" shell pidof com.example.app"] = adbtest.Response{Err: errors.New("exit status 1")}
+	r := ak(t, f, "info")
+	want := "  package     com.example.app\n  version     1.0 (1)\n  minSdk      21 (Android 5.0)\n" +
+		"  targetSdk   34 (Android 14)\n  debuggable  false\n  system      false\n  enabled     -\n" +
+		"  installer   -\n  installed   -\n  updated     -\n  path        -\n  uid         -\n"
+	if r.code != 0 || r.out != want {
+		t.Errorf("code %d stdout:\n%s\nwant:\n%s", r.code, r.out, want)
+	}
+	r = ak(t, f, "info", "--json")
+	var got map[string]any
+	if err := json.Unmarshal([]byte(r.out), &got); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"enabled", "firstInstallTime", "lastUpdateTime", "path", "splits", "uid", "pid"} {
+		if v, ok := got[k]; !ok || v != nil {
+			t.Errorf("%s = %v (present %v), want null", k, v, ok)
+		}
+	}
+	if got["system"] != false {
+		t.Errorf("system = %v", got["system"])
+	}
+}
+
+// An updated system app prints the current package block first and the hidden
+// system one later; every field comes from the first.
+func TestAppInfoTwoBlocksTakesFirst(t *testing.T) {
+	dump := `Packages:
+  Package [com.example.sys] (1):
+    appId=1000
+    codePath=/data/app/~~new==/com.example.sys-1==
+    versionCode=20 minSdk=34 targetSdk=35
+    versionName=2.0
+    splits=[base]
+    pkgFlags=[ SYSTEM HAS_CODE ALLOW_CLEAR_USER_DATA UPDATED_SYSTEM_APP ]
+    User 0: ceDataInode=1 installed=true hidden=false enabled=3 instant=false
+    User 0:
+      firstInstallTime=2022-01-01 09:00:00
+      lastUpdateTime=2025-06-01 12:00:00
+
+Hidden system packages:
+  Package [com.example.sys] (2):
+    appId=1001
+    codePath=/system/priv-app/Sys
+    versionCode=10 minSdk=30 targetSdk=33
+    versionName=1.0
+    splits=[base, config.en]
+    pkgFlags=[ HAS_CODE ]
+    User 0: ceDataInode=0 installed=true hidden=false enabled=0 instant=false
+    User 0:
+      firstInstallTime=2009-01-01 00:00:00
+      lastUpdateTime=2009-01-01 00:00:00
+`
+	a := parseAppInfo(dump)
+	if a.UID != "1000" || a.Path != "/data/app/~~new==/com.example.sys-1==" || a.VersionCode != "20" ||
+		a.VersionName != "2.0" || !a.System || a.Enabled != "3" || a.FirstInstallTime != "2022-01-01 09:00:00" ||
+		a.LastUpdateTime != "2025-06-01 12:00:00" || len(a.Splits) != 1 || a.pathText() != a.Path {
+		t.Errorf("%+v", a)
+	}
+}
+
+func TestAppInfoSystemFlag(t *testing.T) {
+	for line, want := range map[string]bool{
+		"    pkgFlags=[ SYSTEM HAS_CODE ]":  true,
+		"    pkgFlags=[ HAS_CODE ]":         false,
+		"    pkgFlags=[ SYSTEM_EXT ]":       false,
+		"    privateFlags=[ SYSTEM_EXT ]\n": false,
+	} {
+		if got := parseAppInfo(line).System; got != want {
+			t.Errorf("%q: system %v, want %v", line, got, want)
+		}
+	}
+}
+
+func TestAppInfoEnabled(t *testing.T) {
+	for digit, want := range map[string][2]any{
+		"0": {"yes", true}, "1": {"yes", true}, "2": {"no", false},
+		"3": {"no (by user)", false}, "4": {"no (until used)", false},
+	} {
+		a := parseAppInfo("    User 0:\n    User 0: ceDataInode=1 installed=true enabled=" + digit + " instant=false\n")
+		if a.enabledText() != want[0] || a.enabledJSON() != want[1] {
+			t.Errorf("enabled=%s: %q %v", digit, a.enabledText(), a.enabledJSON())
+		}
+	}
+	if a := parseAppInfo("    User 0:\n"); a.enabledText() != "-" || a.enabledJSON() != nil {
+		t.Errorf("missing: %q %v", a.enabledText(), a.enabledJSON())
+	}
+}
+
+func TestAppInfoSplits(t *testing.T) {
+	for line, want := range map[string]string{
+		"    codePath=/p\n    splits=[base]":                      "/p",
+		"    codePath=/p\n    splits=[base, config.en]":           "/p (+1 split)",
+		"    codePath=/p\n    splits=[base, config.en, config.x]": "/p (+2 splits)",
+		"    codePath=/p": "/p",
+	} {
+		if got := parseAppInfo(line).pathText(); got != want {
+			t.Errorf("%q: %q, want %q", line, got, want)
+		}
+	}
+}
+
+func TestAppInfoUID(t *testing.T) {
+	for dumpsys, want := range map[string]string{
+		"    appId=10234\n":                 "10234",
+		"    userId=10123 gids=[3003]\n":    "10123", // Android 9 and older
+		"    appId=1000\n    userId=1001\n": "1000",
+		"    versionName=1\n":               "",
+	} {
+		if got := parseAppInfo(dumpsys).UID; got != want {
+			t.Errorf("%q: uid %q, want %q", dumpsys, got, want)
+		}
+	}
+}
+
+func TestParsePidof(t *testing.T) {
+	for out, want := range map[string]string{"4321\n": "4321", "4321 999\n": "4321", "": "", "\n": "", "error\n": ""} {
+		if got := parsePidof(out); got != want {
+			t.Errorf("parsePidof(%q) = %q, want %q", out, got, want)
+		}
+	}
 }
 
 func TestOptionsAnywhereAndSerial(t *testing.T) {
 	r := ak(t, twoDevices(), "info", "com.example.app", "-s", "SECOND")
-	if r.code != 0 || !strings.Contains(r.err, "'com.example.app' on Google Pixel 9 Pro") {
+	if r.code != 0 || r.err != "==> App on Google Pixel 9 Pro\n" {
 		t.Errorf("code %d: %s", r.code, r.err)
 	}
 	r = ak(t, twoDevices(), "info", "--serial=SECOND")

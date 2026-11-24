@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `info`: more rows from the same `dumpsys package`: `system`, `enabled` (`yes`, `no`, `no (by user)`, `no (until used)`), `installed` and `updated` times, `path` (with `(+N splits)` for split APKs), `uid`, and `pid` while the app is running. For an updated system app the values come from the current package, not the hidden system one. `--json` adds `system`, `enabled`, `firstInstallTime`, `lastUpdateTime`, `path`, `splits`, `uid` and `pid`; existing keys are unchanged
+
+### Changed
+- `info`: the package name is now the first line of the result, so it stays when messages are hidden (`2>/dev/null`), and the title says only whether it is the foreground app and on which device. versionName and versionCode are shown together as `version`, SDK levels get their Android version (`34 (Android 14)`), and `installerPackageName` is now `installer`, as in `--json` (`--json` is unchanged)
+
 ## [2.4.1] - 2026-11-20
 
 ### Added
