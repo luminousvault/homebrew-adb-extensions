@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb/adbtest"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/files"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
@@ -406,5 +407,92 @@ func TestForegroundTaskPrefersResumed(t *testing.T) {
 	}
 	if got := foregroundTask("    * Hist  #0: ActivityRecord{2 u0 com.example.app/.Main t5}\n"); got != "5" {
 		t.Errorf("fallback: %q", got)
+	}
+}
+
+// Output rules (docs/dev/cli-design.md §3, §8): a "==>" title naming the
+// target, stdout that names it in its first row, "-"/yes/no in text, "No …"
+// for an empty result, and the saved path on stdout.
+func TestOutputNamesTheTarget(t *testing.T) {
+	f := baseFake()
+	f.Responses["-s "+serial+" shell cmd package resolve-activity --brief com.example.app"] = adbtest.Response{Stdout: "priority=0\ncom.example.app/.Main\n"}
+	f.Responses["-s "+serial+" shell am force-stop com.example.app"] = adbtest.Response{}
+	f.Responses["-s "+serial+" shell am start -W --user 0 -n com.example.app/.Main"] = adbtest.Response{Stdout: "Status: ok\nLaunchState: COLD\nTotalTime: 400\nWaitTime: 410\n"}
+
+	r := ak(t, f, "restart")
+	if r.code != 0 || !strings.HasPrefix(r.out, "  package      com.example.app\n  activity     com.example.app/.Main\n") ||
+		!strings.Contains(r.err, "✓ Restarted on Google Pixel 9 Pro (foreground app)\n") {
+		t.Errorf("restart: code %d\n%s\n%s", r.code, r.out, r.err)
+	}
+	r = ak(t, f, "restart", "-r", "2")
+	if r.code != 0 || !strings.HasPrefix(r.out, "  package   com.example.app\n  activity  com.example.app/.Main\n\nRUN") {
+		t.Errorf("restart -r: code %d\n%s", r.code, r.out)
+	}
+	for _, cmd := range [][]string{{"restart", "--json"}, {"info", "--json"}, {"permissions", "--json"}} {
+		r = ak(t, f, cmd...)
+		if !strings.Contains(r.out, `"serial": "`+serial+`"`) || !strings.Contains(r.out, `"device": "Google Pixel 9 Pro"`) {
+			t.Errorf("%v: no serial/device in %s", cmd, r.out)
+		}
+	}
+
+	r = ak(t, f, "kill")
+	if r.err != "✓ Stopped 'com.example.app' (foreground app) on Google Pixel 9 Pro\n" {
+		t.Errorf("kill: %q", r.err)
+	}
+	r = ak(t, f, "activities")
+	if !strings.HasPrefix(r.err, "==> Activity stack on Google Pixel 9 Pro\n") {
+		t.Errorf("activities: %q", r.err)
+	}
+
+	f.Responses["-s "+serial+" shell dumpsys package com.example.app"] = adbtest.Response{Stdout: "  Package [com.example.app] (1):\n"}
+	r = ak(t, f, "permissions", "com.example.app")
+	if r.code != 0 || r.out != "" || r.err != "==> Granted permissions of 'com.example.app' on Google Pixel 9 Pro\n  No granted permissions\n" {
+		t.Errorf("no permissions: code %d out %q err %q", r.code, r.out, r.err)
+	}
+}
+
+func TestSignaturePrintsSubjectFirst(t *testing.T) {
+	apkFile, err := filepath.Abs("../apk/testdata/aktest.apk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := ak(t, baseFake(), "signature", apkFile)
+	if want := "  file  " + absPath(apkFile) + "\n\nSigner #1\n"; r.code != 0 || !strings.HasPrefix(r.out, want) {
+		t.Errorf("code %d stdout:\n%s\nwant prefix:\n%s\nstderr %s", r.code, r.out, want, r.err)
+	}
+	if !strings.HasPrefix(r.err, "==> Signature of the APK file\n") { // stdout's file row names it
+		t.Errorf("stderr %q", r.err)
+	}
+	resetDeviceCache()
+	propsCache[serial] = map[string]string{"ro.product.brand": "google", "ro.product.model": "Pixel 9 Pro"}
+	fg := signatureTarget{pkg: "com.example.app", serial: serial, foreground: true}
+	if got := fg.describe(); got != "'com.example.app' (foreground app) on Google Pixel 9 Pro" {
+		t.Errorf("describe %q", got)
+	}
+	if got := fg.subject(); got != "on Google Pixel 9 Pro (foreground app)" {
+		t.Errorf("subject %q", got)
+	}
+}
+
+func TestSavedPathsOnStdout(t *testing.T) {
+	dest := t.TempDir()
+	f := baseFake()
+	f.Responses["-s "+serial+" shell "+files.RecentFilesQuery] = adbtest.Response{
+		Stdout: "Row: 0 _data=/storage/emulated/0/Download/report.pdf, date_modified=2, _size=2048\n"}
+	local := filepath.Join(dest, "report.pdf")
+	f.Responses["-s "+serial+" pull /storage/emulated/0/Download/report.pdf "+local] = adbtest.Response{}
+	r := ak(t, f, "pull", dest, "-l")
+	if r.code != 0 || r.out != local+"\n" || !strings.Contains(r.err, "✓ Pulled '"+local+"' (Google Pixel 9 Pro, 2 KB, ") {
+		t.Errorf("pull: code %d out %q err %q", r.code, r.out, r.err)
+	}
+
+	t.Chdir(t.TempDir())
+	f = baseFake()
+	f.Responses["-s "+serial+" shell pm path com.example.app"] = adbtest.Response{Stdout: "package:/data/app/base.apk\n"}
+	f.Responses["-s "+serial+" pull /data/app/base.apk com.example.app.apk"] = adbtest.Response{}
+	r = ak(t, f, "extract")
+	if r.code != 0 || r.out != "com.example.app.apk\n" ||
+		!strings.Contains(r.err, "==> Extracting 'com.example.app' (foreground app) on Google Pixel 9 Pro\n✓ Saved 'com.example.app.apk' (Google Pixel 9 Pro, ") {
+		t.Errorf("extract: code %d out %q err %q", r.code, r.out, r.err)
 	}
 }

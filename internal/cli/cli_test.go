@@ -110,11 +110,11 @@ func TestInfoSplitsStdoutAndStderr(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("code %d: %s", r.code, r.err)
 	}
-	if r.err != "==> Foreground app on Google Pixel 9 Pro\n" {
+	if r.err != "==> App info on Google Pixel 9 Pro (foreground app)\n" {
 		t.Errorf("stderr %q", r.err)
 	}
 	want := "  package     com.example.app\n  version     1.2.3 (1203)\n  minSdk      24 (Android 7.0)\n" +
-		"  targetSdk   36 (Android 16)\n  debuggable  true\n  system      false\n  enabled     yes\n" +
+		"  targetSdk   36 (Android 16)\n  debuggable  yes\n  system      no\n  enabled     yes\n" +
 		"  installer   com.android.vending\n  installed   2024-03-01 10:00:00\n  updated     2024-05-02 11:30:00\n" +
 		"  path        /data/app/~~abc==/com.example.app-xyz== (+2 splits)\n  uid         10234\n  pid         4321\n"
 	if r.out != want {
@@ -124,7 +124,7 @@ func TestInfoSplitsStdoutAndStderr(t *testing.T) {
 
 func TestInfoNamedPackageTitle(t *testing.T) {
 	r := ak(t, baseFake(), "info", "com.example.app")
-	if r.code != 0 || r.err != "==> App on Google Pixel 9 Pro\n" {
+	if r.code != 0 || r.err != "==> App info on Google Pixel 9 Pro\n" {
 		t.Errorf("code %d stderr %q", r.code, r.err)
 	}
 	if !strings.HasPrefix(r.out, "  package     com.example.app\n") {
@@ -170,7 +170,7 @@ func TestInfoMissingFieldsAndNotRunning(t *testing.T) {
 	f.Responses["-s "+serial+" shell pidof com.example.app"] = adbtest.Response{Err: errors.New("exit status 1")}
 	r := ak(t, f, "info")
 	want := "  package     com.example.app\n  version     1.0 (1)\n  minSdk      21 (Android 5.0)\n" +
-		"  targetSdk   34 (Android 14)\n  debuggable  false\n  system      false\n  enabled     -\n" +
+		"  targetSdk   34 (Android 14)\n  debuggable  no\n  system      no\n  enabled     -\n" +
 		"  installer   -\n  installed   -\n  updated     -\n  path        -\n  uid         -\n"
 	if r.code != 0 || r.out != want {
 		t.Errorf("code %d stdout:\n%s\nwant:\n%s", r.code, r.out, want)
@@ -291,7 +291,7 @@ func TestParsePidof(t *testing.T) {
 
 func TestOptionsAnywhereAndSerial(t *testing.T) {
 	r := ak(t, twoDevices(), "info", "com.example.app", "-s", "SECOND")
-	if r.code != 0 || r.err != "==> App on Google Pixel 9 Pro\n" {
+	if r.code != 0 || r.err != "==> App info on Google Pixel 9 Pro\n" {
 		t.Errorf("code %d: %s", r.code, r.err)
 	}
 	r = ak(t, twoDevices(), "info", "--serial=SECOND")
@@ -390,7 +390,7 @@ func TestKillMultipleExitCode(t *testing.T) {
 	f := baseFake()
 	f.Responses["-s "+serial+" shell am force-stop com.example.app"] = adbtest.Response{}
 	r := ak(t, f, "kill", "com.example.app", "bad", "com.not.installed", "com.example.app")
-	want := "✓ Stopped 'com.example.app'\nError: Invalid package name: 'bad'\n" +
+	want := "✓ Stopped 'com.example.app' on Google Pixel 9 Pro\nError: Invalid package name: 'bad'\n" +
 		"Error: Package not installed on Google Pixel 9 Pro: 'com.not.installed'\nWarning: Skipping duplicate package 'com.example.app'\n"
 	if r.code != 1 || r.err != want {
 		t.Errorf("code %d stderr:\n%s", r.code, r.err)
@@ -482,7 +482,8 @@ func TestActivities(t *testing.T) {
 
 func TestPermissionsJSON(t *testing.T) {
 	r := ak(t, baseFake(), "permissions", "--json")
-	if r.out != "{\n  \"granted\": [\n    \"android.permission.INTERNET\",\n    \"android.permission.CAMERA\"\n  ],\n  \"package\": \"com.example.app\"\n}\n" {
+	if r.out != "{\n  \"device\": \"Google Pixel 9 Pro\",\n  \"granted\": [\n    \"android.permission.INTERNET\",\n    \"android.permission.CAMERA\"\n  ],\n"+
+		"  \"package\": \"com.example.app\",\n  \"serial\": \"TESTSERIAL01\"\n}\n" {
 		t.Errorf("%s", r.out)
 	}
 }
@@ -495,10 +496,9 @@ func TestMacCommand(t *testing.T) {
 	f.Responses["-s "+serial+" shell dumpsys wifi 2>/dev/null | grep -m1 wifi_sta_factory_mac_address"] = adbtest.Response{}
 	f.Responses["-s "+serial+" shell settings get secure bluetooth_address"] = adbtest.Response{Stdout: "A0:B1:C2:D3:E4:F5\n"}
 	r := ak(t, f, "mac")
-	want := "Google Pixel 9 Pro (TESTSERIAL01)\n" +
-		"  Wi-Fi (current)  ae:12:34:56:78:9a (randomized, SSID \"TestNet\")\n" +
-		"  Wi-Fi (factory)  n/a\n  Bluetooth        a0:b1:c2:d3:e4:f5\n"
-	if r.out != want || !strings.HasPrefix(r.err, "Hint: To see the factory MAC") {
+	want := "  Wi-Fi (current)  ae:12:34:56:78:9a (randomized, SSID \"TestNet\")\n" +
+		"  Wi-Fi (factory)  -\n  Bluetooth        a0:b1:c2:d3:e4:f5\n"
+	if r.out != want || !strings.HasPrefix(r.err, "==> Google Pixel 9 Pro (TESTSERIAL01)\nHint: To see the factory MAC") {
 		t.Errorf("stdout:\n%s\nstderr %q", r.out, r.err)
 	}
 }
@@ -1023,7 +1023,8 @@ func TestPushCreatesDefaultDestination(t *testing.T) {
 	f := pushFake(nil, map[string]adbtest.Response{local + " /sdcard/Download/notes.txt": {Stdout: local + ": 1 file pushed.\n"}})
 	r := ak(t, f, "push", local)
 	if r.code != 0 || !strings.Contains(r.err, "==> Created '/sdcard/Download' on Google Pixel 9 Pro\n") ||
-		!strings.Contains(r.err, "✓ Pushed '"+local+"' to Google Pixel 9 Pro:/sdcard/Download/notes.txt (6 B, ") {
+		!strings.Contains(r.err, "✓ Pushed '"+local+"' to '/sdcard/Download/notes.txt' (Google Pixel 9 Pro, 6 B, ") ||
+		r.out != "/sdcard/Download/notes.txt\n" {
 		t.Errorf("code %d\n%s", r.code, r.err)
 	}
 	for _, c := range f.Calls {
@@ -1039,7 +1040,7 @@ func TestPushRenamesInsteadOfOverwriting(t *testing.T) {
 	f := pushFake([]string{"a.txt", "a (1).txt", "other"}, map[string]adbtest.Response{local + " /sdcard/Download/a (2).txt": {}})
 	r := ak(t, f, "push", local)
 	if r.code != 0 || !strings.Contains(r.err, "Warning: '/sdcard/Download/a.txt' already exists on Google Pixel 9 Pro, pushing as 'a (2).txt'\n") ||
-		!strings.Contains(r.err, "to Google Pixel 9 Pro:/sdcard/Download/a (2).txt") {
+		!strings.Contains(r.err, "to '/sdcard/Download/a (2).txt' (Google Pixel 9 Pro, ") || r.out != "/sdcard/Download/a (2).txt\n" {
 		t.Errorf("code %d\n%s", r.code, r.err)
 	}
 }
@@ -1257,18 +1258,27 @@ func sysinfoFake(dev string) *adbtest.Fake {
 	return f
 }
 
-const sysinfoText = "Device\n  model          Pixel 9 Pro\n  manufacturer   Google\n  name           Test Phone\n" +
-	"Software\n  android        16 (API 36)\n  securityPatch  2025-01-05\n  build          BP1A.250105.001\n" +
-	"Identifiers\n  serial         HWSERIAL01\n  imei           " + fakeIMEI + "\n  imei2          " + fakeIMEI2 + "\n" +
-	"  androidId      0123456789abcdef\n" +
-	"Network\n  ip             192.168.0.10\n  wifiMac        ae:12:34:56:78:9a (randomized, SSID \"TestNet\")\n" +
-	"  wifiFactory    n/a\n  bluetooth      a0:b1:c2:d3:e4:f5\n" +
-	"Hardware\n  abi            arm64-v8a\n  screen         1440x3120, 560 dpi (in use: 1080x2340)\n"
+// sysinfoText is the text output of sysinfoFake for the device with adb serial dev.
+func sysinfoText(dev string) string {
+	return "Device\n" + sysRow("serial", dev) + sysRow("model", "Pixel 9 Pro") + sysRow("manufacturer", "Google") +
+		sysRow("name", "Test Phone") + "\n" +
+		"Software\n" + sysRow("android", "16 (API 36)") + sysRow("securityPatch", "2025-01-05") +
+		sysRow("build", "BP1A.250105.001") + "\n" +
+		"Identifiers\n" + sysRow("hardwareSerial", "HWSERIAL01") + sysRow("imei", fakeIMEI) + sysRow("imei2", fakeIMEI2) +
+		sysRow("androidId", "0123456789abcdef") + "\n" +
+		"Network\n" + sysRow("ip", "192.168.0.10") + sysRow("wifiMac", `ae:12:34:56:78:9a (randomized, SSID "TestNet")`) +
+		sysRow("wifiFactory", "-") + sysRow("bluetooth", "a0:b1:c2:d3:e4:f5") + "\n" +
+		"Hardware\n" + sysRow("abi", "arm64-v8a") + sysRow("screen", "1440x3120, 560 dpi (in use: 1080x2340)")
+}
+
+// sysRow is one sysinfo row: every section shares the key column of the
+// longest key, hardwareSerial (14).
+func sysRow(k, v string) string { return fmt.Sprintf("  %-14s  %s\n", k, v) }
 
 func TestSysinfoText(t *testing.T) {
 	r := ak(t, sysinfoFake(serial), "sysinfo")
-	if r.code != 0 || r.out != sysinfoText || r.err != "==> Google Pixel 9 Pro (TESTSERIAL01)\n" {
-		t.Errorf("code %d\nstdout:\n%s\nwant:\n%s\nstderr %q", r.code, r.out, sysinfoText, r.err)
+	if want := sysinfoText(serial); r.code != 0 || r.out != want || r.err != "==> Google Pixel 9 Pro\n" {
+		t.Errorf("code %d\nstdout:\n%s\nwant:\n%s\nstderr %q", r.code, r.out, want, r.err)
 	}
 	if r := ak(t, sysinfoFake(serial), "sysinfo", "extra"); r.code != 2 {
 		t.Errorf("extra argument: code %d", r.code)
@@ -1279,9 +1289,9 @@ func TestSysinfoMissingValues(t *testing.T) {
 	f := baseFake() // getprop only: no telephony, no Wi-Fi, no settings
 	r := ak(t, f, "sysinfo")
 	for _, want := range []string{
-		"  name           n/a\n", "  android        16 (API 36)\n", "  securityPatch  n/a\n",
-		"  serial         TESTSERIAL01\n", "  imei           n/a\n  androidId      n/a\n",
-		"  wifiMac        n/a (Wi-Fi is off or not connected)\n", "  screen         n/a\n",
+		sysRow("serial", "TESTSERIAL01"), sysRow("name", "-"), sysRow("android", "16 (API 36)"), sysRow("securityPatch", "-"),
+		sysRow("hardwareSerial", "-"), sysRow("imei", "-") + sysRow("androidId", "-"),
+		sysRow("wifiMac", "- (Wi-Fi is off or not connected)"), sysRow("screen", "-"),
 	} {
 		if !strings.Contains(r.out, want) {
 			t.Errorf("missing %q in:\n%s", want, r.out)
@@ -1290,7 +1300,7 @@ func TestSysinfoMissingValues(t *testing.T) {
 	if strings.Contains(r.out, "imei2") {
 		t.Error("imei2 row shown without a second IMEI")
 	}
-	if r.code != 0 || r.err != "==> Google Pixel 9 Pro (TESTSERIAL01)\nHint: "+hintIMEI+"\n" {
+	if r.code != 0 || r.err != "==> Google Pixel 9 Pro\nHint: "+hintIMEI+"\n" {
 		t.Errorf("code %d stderr %q", r.code, r.err)
 	}
 }
@@ -1303,7 +1313,7 @@ func TestSysinfoIMEIFallbacks(t *testing.T) {
 	f.Responses[p+"4 i32 0 s16 com.android.shell"] = adbtest.Response{Stdout: parcelDump(fakeIMEI)}
 	f.Responses[p+"4 i32 1 s16 com.android.shell"] = adbtest.Response{Stdout: parcelDump(fakeIMEI)}
 	r := ak(t, f, "sysinfo")
-	if !strings.Contains(r.out, "  imei           "+fakeIMEI+"\n  androidId") {
+	if !strings.Contains(r.out, sysRow("imei", fakeIMEI)+"  androidId") {
 		t.Errorf("stdout:\n%s", r.out)
 	}
 }
@@ -1333,8 +1343,8 @@ func TestSysinfoJSON(t *testing.T) {
 
 func TestSysinfoAllDevices(t *testing.T) {
 	r := ak(t, sysinfoFake("SECOND"), "sysinfo", "--all")
-	if r.code != 0 || r.out != sysinfoText+"\n"+sysinfoText ||
-		!strings.Contains(r.err, "==> Google Pixel 9 Pro (TESTSERIAL01)\n") || !strings.Contains(r.err, "==> Google Pixel 9 Pro (SECOND)\n") {
+	if r.code != 0 || r.out != sysinfoText(serial)+"\n"+sysinfoText("SECOND") ||
+		strings.Count(r.err, "==> Google Pixel 9 Pro\n") != 2 { // the serial row tells them apart
 		t.Errorf("code %d stdout:\n%s\nstderr:\n%s", r.code, r.out, r.err)
 	}
 	r = ak(t, sysinfoFake("SECOND"), "sysinfo", "--all", "--json")

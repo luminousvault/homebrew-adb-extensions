@@ -92,12 +92,26 @@ type target struct {
 	foreground bool
 }
 
-// describe returns "pkg (foreground app on Device)" or "pkg on Device".
+// describe names an app on a device the same way in every message:
+// "'pkg' on Device", or "'pkg' (foreground app) on Device" when it was detected.
 func (t target) describe(serial string) string {
+	return appOn(t.pkg, t.foreground, deviceName(serial))
+}
+
+// onDevice says where, for titles whose result already has a package row:
+// "on Device", or "on Device (foreground app)" when it was detected.
+func (t target) onDevice(serial string) string {
 	if t.foreground {
-		return q(t.pkg) + " (foreground app on " + deviceName(serial) + ")"
+		return "on " + deviceName(serial) + " (foreground app)"
 	}
-	return q(t.pkg) + " on " + deviceName(serial)
+	return "on " + deviceName(serial)
+}
+
+func appOn(pkg string, foreground bool, device string) string {
+	if foreground {
+		return q(pkg) + " (foreground app) on " + device
+	}
+	return q(pkg) + " on " + device
 }
 
 // resolvePackage uses the given package or the foreground app, and checks it.

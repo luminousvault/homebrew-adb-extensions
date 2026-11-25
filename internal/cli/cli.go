@@ -43,18 +43,19 @@ func (f Flag) key() string {
 // Command is one `ak <name>` subcommand. Parsing, help and the zsh completion
 // check are all driven by this definition.
 type Command struct {
-	Name     string
-	Summary  string      // one line for the global help and zsh completion
-	Args     string      // usage arguments, e.g. "[package]"
-	Long     string      // help description (defaults to Summary)
-	ArgHelp  [][2]string // argument name, description
-	Flags    []Flag
-	Examples []string
-	Device   deviceMode
-	JSON     bool // adds --json
-	NoADB    bool
-	Hidden   bool // left out of the global help and the zsh completion
-	Run      func(c *Ctx) error
+	Name      string
+	Summary   string      // one line for the global help and zsh completion
+	Args      string      // usage arguments, e.g. "[package]"
+	Long      string      // help description (defaults to Summary)
+	ArgHelp   [][2]string // argument name, description
+	Flags     []Flag
+	Examples  []string
+	Device    deviceMode
+	JSON      bool // adds --json
+	NoADB     bool
+	Hidden    bool // left out of the global help and the zsh completion
+	TabHidden bool // left out of `ak <Tab>` only: still in help, its own arguments still complete
+	Run       func(c *Ctx) error
 }
 
 var (

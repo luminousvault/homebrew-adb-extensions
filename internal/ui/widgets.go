@@ -189,10 +189,21 @@ func Table(headers []string, rows [][]Cell) {
 
 // KeyValues prints "  key  value" pairs aligned (stdout).
 func KeyValues(pairs [][2]string) {
+	KeyValuesWidth(pairs, KeyWidth(pairs))
+}
+
+// KeyWidth is the width KeyValues aligns pairs to: the longest key.
+func KeyWidth(pairs [][2]string) int {
 	w := 0
 	for _, p := range pairs {
 		w = max(w, len(p[0]))
 	}
+	return w
+}
+
+// KeyValuesWidth is KeyValues with the key column w wide, so several blocks
+// (sections of one result) line up.
+func KeyValuesWidth(pairs [][2]string, w int) {
 	for _, p := range pairs {
 		Out.Printf("  %-*s  %s\n", w, p[0], p[1])
 	}

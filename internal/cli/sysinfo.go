@@ -12,12 +12,12 @@ import (
 var cmdSysinfo = &Command{
 	Name: "sysinfo", Summary: "Show device details and identifiers (IMEI, MAC, Android ID)",
 	Long: "Show a device's \"About phone\" details in one place:\n" +
-		"  Device       Model, manufacturer and the name set on the device\n" +
+		"  Device       adb serial, model, manufacturer and the name set on the device\n" +
 		"  Software     Android version, security patch and build\n" +
-		"  Identifiers  Serial number, IMEI (and the second IMEI on dual-SIM devices), Android ID\n" +
+		"  Identifiers  Hardware serial number, IMEI (and the second IMEI on dual-SIM devices), Android ID\n" +
 		"  Network      Wi-Fi IP address and MAC addresses\n" +
 		"  Hardware     CPU ABI and screen size\n" +
-		"Values the device doesn't expose are shown as n/a (null in JSON).",
+		"Values the device doesn't expose are shown as - (null in JSON).",
 	Examples: []string{"ak sysinfo", "ak sysinfo --all", "ak sysinfo --json | jq '.[].imei'"},
 	Device:   manyDevices, JSON: true, Run: runSysinfo,
 }
@@ -218,31 +218,31 @@ func collectSysinfo(serial string) sysInfo {
 
 func printSysinfo(s sysInfo) {
 	o := ui.Out
-	na := func(v any) string { return orDefault(str(v), "n/a") }
-	ui.Step("%s %s", s.Device, ui.Err.Dim("("+s.Serial+")"))
-	section := func(title string, rows ...[2]string) {
-		o.Println(o.Bold(title))
-		for _, r := range rows {
-			o.Printf("  %-14s %s\n", r[0], r[1])
-		}
+	dash := func(v any) string { return orDefault(str(v), "-") }
+	ui.Step("%s", s.Device)
+	type block struct {
+		title string
+		rows  [][2]string
 	}
-	section("Device", [2]string{"model", na(s.Model)}, [2]string{"manufacturer", na(s.Manufacturer)},
-		[2]string{"name", na(s.Name)})
+	var blocks []block
+	section := func(title string, rows ...[2]string) { blocks = append(blocks, block{title, rows}) }
+	section("Device", [2]string{"serial", s.Serial}, [2]string{"model", dash(s.Model)},
+		[2]string{"manufacturer", dash(s.Manufacturer)}, [2]string{"name", dash(s.Name)})
 
-	android := na(s.Android)
+	android := dash(s.Android)
 	if s.API != nil {
 		android += " (API " + strconv.FormatInt(s.API.(int64), 10) + ")"
 	}
-	section("Software", [2]string{"android", android}, [2]string{"securityPatch", na(s.SecurityPatch)},
-		[2]string{"build", na(s.Build)})
+	section("Software", [2]string{"android", android}, [2]string{"securityPatch", dash(s.SecurityPatch)},
+		[2]string{"build", dash(s.Build)})
 
-	ids := [][2]string{{"serial", orDefault(str(s.HardwareSerial), s.Serial)}, {"imei", na(s.IMEI)}}
+	ids := [][2]string{{"hardwareSerial", dash(s.HardwareSerial)}, {"imei", dash(s.IMEI)}}
 	if s.IMEI2 != nil {
 		ids = append(ids, [2]string{"imei2", str(s.IMEI2)})
 	}
-	section("Identifiers", append(ids, [2]string{"androidId", na(s.AndroidID)})...)
+	section("Identifiers", append(ids, [2]string{"androidId", dash(s.AndroidID)})...)
 
-	wifi := na(s.WifiMAC)
+	wifi := dash(s.WifiMAC)
 	var notes []string
 	if s.WifiMAC == nil {
 		notes = append(notes, "Wi-Fi is off or not connected")
@@ -256,10 +256,10 @@ func printSysinfo(s sysInfo) {
 	if len(notes) > 0 {
 		wifi += " " + o.Dim("("+strings.Join(notes, ", ")+")")
 	}
-	section("Network", [2]string{"ip", na(s.IP)}, [2]string{"wifiMac", wifi},
-		[2]string{"wifiFactory", na(s.WifiFactory)}, [2]string{"bluetooth", na(s.Bluetooth)})
+	section("Network", [2]string{"ip", dash(s.IP)}, [2]string{"wifiMac", wifi},
+		[2]string{"wifiFactory", dash(s.WifiFactory)}, [2]string{"bluetooth", dash(s.Bluetooth)})
 
-	screen := "n/a"
+	screen := "-"
 	if sc := s.Screen; sc != nil {
 		screen = strconv.Itoa(sc.Width) + "x" + strconv.Itoa(sc.Height)
 		if sc.Density > 0 {
@@ -269,7 +269,20 @@ func printSysinfo(s sysInfo) {
 			screen += " " + o.Dim("("+s.screenNote+")")
 		}
 	}
-	section("Hardware", [2]string{"abi", na(s.ABI)}, [2]string{"screen", screen})
+	section("Hardware", [2]string{"abi", dash(s.ABI)}, [2]string{"screen", screen})
+
+	// One key column for all sections, so values line up down the whole result.
+	w := 0
+	for _, b := range blocks {
+		w = max(w, ui.KeyWidth(b.rows))
+	}
+	for i, b := range blocks {
+		if i > 0 {
+			o.Println("")
+		}
+		o.Println(o.Bold(b.title))
+		ui.KeyValuesWidth(b.rows, w)
+	}
 }
 
 func runSysinfo(c *Ctx) error {

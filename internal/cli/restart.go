@@ -85,7 +85,7 @@ func runRestart(c *Ctx) error {
 
 	var runs []launchResult
 	for i := 0; i < repeat; i++ {
-		sp := ui.Spin("Restarting %s (%d/%d)", t.describe(serial), i+1, repeat)
+		sp := ui.Spin("Restarting on %s (%d/%d)", deviceName(serial), i+1, repeat)
 		_, _ = adb.Combined("-s", serial, "shell", "am", "force-stop", t.pkg)
 		time.Sleep(300 * time.Millisecond)
 		out, _ := adb.Combined("-s", serial, "shell", "am", "start", "-W", "--user", "0", "-n", component)
@@ -108,12 +108,13 @@ func runRestart(c *Ctx) error {
 	}
 	avg := sum / len(runs)
 	if c.JSON() {
-		return ui.JSON(map[string]any{"package": t.pkg, "activity": component, "runs": runs,
+		return ui.JSON(map[string]any{"package": t.pkg, "serial": serial, "device": deviceName(serial), "activity": component, "runs": runs,
 			"minMs": lo, "avgMs": avg, "maxMs": hi})
 	}
-	ui.Success("Restarted %s", t.describe(serial))
+	ui.Success("Restarted %s", t.onDevice(serial))
 	if repeat == 1 {
 		ui.KeyValues([][2]string{
+			{"package", t.pkg},
 			{"activity", component},
 			{"launchState", orDefault(runs[0].LaunchState, "-")},
 			{"totalTime", fmt.Sprintf("%d ms", runs[0].TotalTime)},
@@ -121,6 +122,8 @@ func runRestart(c *Ctx) error {
 		})
 		return nil
 	}
+	ui.KeyValues([][2]string{{"package", t.pkg}, {"activity", component}})
+	ui.Out.Println("")
 	var rows [][]ui.Cell
 	for i, r := range runs {
 		rows = append(rows, []ui.Cell{{Text: strconv.Itoa(i + 1)}, {Text: orDefault(r.LaunchState, "-")},

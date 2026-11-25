@@ -193,7 +193,7 @@ wait:
 		ui.Detail("%s", pullOut)
 		return errReported
 	}
-	ui.Success("Saved %s %s", q(local), ui.Err.Dim(fmt.Sprintf("(%s, %ds, %s)", deviceName(serial), int(duration.Seconds()), files.HumanSize(n))))
+	ui.Success("Saved %s %s", q(local), ui.Err.Dim(fmt.Sprintf("(%s, %s, %ds)", deviceName(serial), files.HumanSize(n), int(duration.Seconds()))))
 	ui.Out.Println(local)
 	openSaved(c, local)
 	return nil

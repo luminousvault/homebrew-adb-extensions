@@ -170,7 +170,8 @@ func runPull(c *Ctx) error {
 			continue
 		}
 		ok++
-		ui.Success("Pulled %s %s", q(local), ui.Err.Dim("("+fileMeta(remote, recent[i].Size)+", "+elapsed(start)+")"))
+		ui.Success("Pulled %s %s", q(local), ui.Err.Dim("("+deviceName(serial)+", "+files.HumanSize(recent[i].Size)+", "+elapsed(start)+")"))
+		ui.Out.Println(local)
 	}
 	if failed > 0 {
 		ui.Errorf("%d of %d files failed", failed, ok+failed)

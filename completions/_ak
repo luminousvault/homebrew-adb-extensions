@@ -21,7 +21,6 @@ _ak() {
   commands=(
     'activities:Show activity stack'
     'clear:Clear app data and cache'
-    'completion:Print a shell completion script'
     'devices:Show connected devices'
     'doctor:Check adb, devices and shell setup'
     'extract:Save the APK of an installed app'

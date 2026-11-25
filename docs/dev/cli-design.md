@@ -18,7 +18,7 @@ ak의 출력·옵션·대화형 UI가 따르는 규칙입니다. 새 커맨드�
 
 | 내용 | 스트림 |
 |---|---|
-| 결과 데이터: 표, `info` 항목, 권한 목록, 서명, MAC, 저장한 경로, `--json`, 도움말, 버전, `doctor` 보고서 | stdout (`ui.Out`) |
+| 결과 데이터: 표, `info` 항목, 권한 목록, 서명, MAC, 저장·복사한 경로, `--json`, 도움말, 버전, `doctor` 보고서 | stdout (`ui.Out`) |
 | 단계·성공·경고·오류·힌트, 확인 질문, 스피너, 상태판, 선택 UI | stderr (`ui.Err`) |
 | adb 원본 출력 (`Performing Streamed Install` 등) | 성공하면 숨김, 실패하면 stderr에 흐리게 (`ui.Detail`) |
 
@@ -43,6 +43,21 @@ ak의 출력·옵션·대화형 UI가 따르는 규칙입니다. 새 커맨드�
 - **이름은 작은따옴표로**: 패키지·파일·경로는 `q()`로 감쌉니다(`Installed 'app.apk' on Google Pixel 9 Pro`). 문장과 이름의 경계를 보이게 하려는 것입니다.
   - 디바이스 이름은 사람이 읽는 이름이라 감싸지 않습니다.
   - stdout 결과(저장한 경로 등)는 스크립트가 읽으므로 감싸지 않습니다.
+- **제목은 대상마다 `==>` 한 줄**: 결과를 보여 주는 커맨드는 대상(앱·디바이스)마다 stderr에 `ui.Step` 제목을 하나 둡니다. stdout만 보면 누구의 결과인지 모르기 때문입니다.
+  - **대상은 한 번만 부릅니다**: stdout 결과에 대상 행(`package`·`file`·`serial`, §8)이 있으면 제목은 대상을 다시 부르지 않고 무엇과 어디만 말합니다. 대상 행이 없는 결과(한 줄에 하나인 목록, `✓ Stopped`·`✓ Saved` 같은 동작 메시지, 결과 데이터가 없는 커맨드의 스피너)는 제목이 대상을 부릅니다.
+    ```
+    ==> App info on Google Pixel 9 Pro (foreground app)        ← stdout 첫 행이 package
+      package     com.example.app
+
+    ==> Granted permissions of 'com.example.app' on Google Pixel 9 Pro   ← stdout은 권한 이름만
+    android.permission.INTERNET
+    ```
+  - 대상 행이 있는 곳: `info`(`==> App info on <디바이스>`), `signature`(`==> Signature on <디바이스>`, 스피너 `Pulling the APK on <디바이스>`, 로컬 APK는 `==> Signature of the APK file`), `restart`(`✓ Restarted on <디바이스>`, 스피너 `Restarting on <디바이스> (1/3)`), `sysinfo`(`==> <디바이스>`).
+  - 어디는 `on <디바이스>`, 포그라운드 앱을 쓴 경우는 `on <디바이스> (foreground app)`입니다(`target.onDevice`).
+  - 앱을 부를 때는 `'pkg' on <디바이스>`, 포그라운드 앱이면 `'pkg' (foreground app) on <디바이스>` 하나만 씁니다(`target.describe`): 스피너(`Extracting …`), `✓ Stopped …`·`✓ Uninstalled …`, `permissions`·`logcat` 제목, 오류 메시지.
+  - 디바이스: `sysinfo`는 `Device` 섹션 첫 행이 `serial`이라 `==> <디바이스>`만. 숨긴 `mac`은 `serial` 행이 없어 `==> <디바이스> (serial)`, 시리얼은 흐리게. 디바이스 전체를 보는 결과는 `==> <무엇> on <디바이스>`(`==> Activity stack on Google Pixel 9 Pro`).
+- **`✓` 뒤 괄호는 `(<디바이스>, 크기, 시간)` 순서**이고, 커맨드가 가진 것만 넣습니다: `✓ Saved 'shot.png' (Google Pixel 9 Pro, 1.2 MB)`, `✓ Pulled 'a.pdf' (Google Pixel 9 Pro, 2 KB, 0.4s)`, 문장이 이미 디바이스를 부르면(`✓ Installed 'app.apk' on Google Pixel 9 Pro (3.2s)`) 괄호에 디바이스를 다시 넣지 않습니다. 여러 대 설치에서 이 문장이 `[디바이스]` 접두사 뒤에도 쓰이기 때문입니다. `record`의 시간은 녹화 길이입니다(`(…, 4.1 MB, 12s)`).
+- **빈 결과는 `ui.Info`로 `No …` 문장**(stderr)을 씁니다: `No granted permissions`, `No devices connected`, `No devices connected over Wi-Fi`. stdout은 비워 둡니다. `(none)` 같은 표시는 쓰지 않습니다.
 - **빈 줄**: 커맨드 시작과 끝에는 넣지 않습니다. 블록(디바이스 하나, 표 하나, `==>` 제목과 그 아래 목록) 사이에 한 줄을 둡니다. 한 줄짜리 `==>` 단계끼리는 붙입니다.
 - **블록 안에서는 짧은 문장**: 머리글에 이미 디바이스·APK 이름이 있으면 각 줄에서 이름을 반복하지 않습니다(§10의 `say`).
 - 한 줄로 된 메시지를 미리 만들어야 하면(상태판·접두사 출력) `ui.Line(kind, text)`를 씁니다.
@@ -93,7 +108,7 @@ Examples:                                      ← Examples (없으면 생략)
 - 섹션 제목은 굵게. 짧은 이름이 없는 옵션은 4칸 들여 긴 이름을 맞춥니다.
 - 공통 옵션은 `Device`·`JSON` 설정으로 붙습니다: `oneDevice` → `-s`, `manyDevices` → `-s`(반복 가능)·`-a`, `JSON` → `--json`, 항상 `-h`.
 - `-y`는 자동으로 붙지 않습니다. 확인 질문이 있는 커맨드만 `flagYes`를 `Flags`에 넣습니다(`install`, `pull`).
-- `Hidden` 커맨드는 전체 도움말과 자동완성에서 빠집니다.
+- `Hidden` 커맨드는 전체 도움말과 자동완성에서 빠집니다. `TabHidden`은 `ak <Tab>` 후보에서만 빠지고 도움말에는 남습니다(§13).
 
 ## 6. 옵션 이름 규칙
 
@@ -153,9 +168,15 @@ Examples:                                      ← Examples (없으면 생략)
 - 값에는 색을 쓰지 않습니다. 예외는 상태 열(`connected` 초록, `unauthorized` 빨강, `(64only)` 노랑 등)입니다. 색은 정렬 뒤에 칠합니다(`ui.Cell.Color`).
 - 여러 단어인 머리글은 밑줄로 잇습니다(`PLAY_PROTECT_SCAN`). 띄어 쓰면 열이 나뉜 것처럼 보입니다.
 - 폭 계산은 `ui.TextWidth`, 맞춤은 `ui.Pad`를 씁니다. 한글·CJK·이모지는 2칸이라 `len`이나 `%-*s`로는 열이 어긋납니다.
-- 키-값 목록은 `ui.KeyValues`(`  key  value`).
+- 키-값 목록은 항상 `ui.KeyValues`(`  key  value`: 2칸 들여쓰기, 폭은 가장 긴 키에 맞춤)로 출력합니다. `Printf`로 열을 직접 맞추지 않습니다. 폭은 키로만 계산하므로 값 뒤에 흐린 부가 설명(`(randomized, SSID "…")`)을 붙여도 됩니다.
+- 여러 묶음이면 섹션 제목을 0열에 굵게 두고 그 아래 `ui.KeyValues`를 둡니다(`sysinfo`의 `Device`, `signature`의 `Signer #1`, `activities`의 `Task #12`). 한 결과 안의 섹션들은 `ui.KeyWidth`로 구한 가장 긴 키 폭을 `ui.KeyValuesWidth`에 넘겨 값 열을 함께 맞춥니다(`sysinfo`). 블록(섹션, 디바이스, 표) 사이에는 stdout 빈 줄 하나를 둡니다.
+- **stdout이 스스로 대상을 밝힙니다.** 키-값·섹션 결과는 첫 행에 대상을 둡니다: `info`·`restart`는 `package`, `signature`는 `package`(로컬 APK는 `file`) 행 뒤 빈 줄, `sysinfo`는 `Device` 섹션 첫 행 `serial`(adb 시리얼. 기기 자체 일련번호는 `Identifiers`의 `hardwareSerial`). 파일로 저장하거나 파이프로 넘겨도 누구의 결과인지 남게 하려는 것입니다. 예외: 한 줄에 하나인 목록(`permissions`)은 grep하기 좋게 이름만 출력합니다.
+- **값이 없으면 `-`**(JSON은 `null`)입니다. `n/a` 등 다른 표시는 쓰지 않습니다(`doctor`는 자체 형식). 있을 때만 뜻이 있는 행(`info`의 `pid`, `sysinfo`의 `imei2`)은 없으면 행을 뺍니다.
+- **불리언은 텍스트에서 `yes`/`no`**, JSON에서는 `true`/`false`입니다.
+- **SDK 표기**: 앱의 SDK는 `34 (Android 14)`, 디바이스의 Android 버전은 `14 (API 34)`. 모르는 API 레벨은 숫자만 씁니다.
 - `--json`: `devices`, `info`, `permissions`, `signature`, `sysinfo`, `mac`, `activities`, `restart`, `doctor`. stdout에는 JSON만 나갑니다(`ui.JSON`, 2칸 들여쓰기, HTML 이스케이프 없음).
-- JSON 키는 camelCase이고, 버전 사이에 이름과 구조를 유지합니다. `--json`이어도 종료 코드는 텍스트 출력과 같습니다.
+- JSON 키는 camelCase이고, 버전 사이에 이름과 구조를 유지합니다. 기존 키의 이름을 바꾸거나 지우지 않고 추가만 합니다. `--json`이어도 종료 코드는 텍스트 출력과 같습니다.
+- `manyDevices` 커맨드(`sysinfo`, `mac`)의 JSON은 대상이 1대여도 항상 배열입니다. `oneDevice` 앱 커맨드(`info`, `permissions`, `restart`, `signature`)의 JSON 객체에는 `serial`(adb 시리얼)과 `device`(디바이스 이름)가 들어 있습니다. `activities`는 태스크 배열 그대로입니다.
 
 ## 9. 진행 표시
 
@@ -278,6 +299,7 @@ Error: 1 of 2 devices failed
 
 - `ak completion zsh|bash|fish|powershell`이 커맨드 정의에서 스크립트를 생성합니다. 셸마다 같은 커맨드·옵션·인자 종류를 완성합니다.
 - 위치 인자의 종류는 `completion.go`의 `compArgs`에 둡니다(패키지명: 제안 없음, APK 파일·디렉터리, 디렉터리만, 고정 단어, 셸). 옵션 값은 `compValues`(`--serial`, `--level` 등).
+- `TabHidden` 커맨드는 `ak <Tab>`의 커맨드 후보에서만 빠집니다. 도움말에는 남고 자기 옵션·인자는 그대로 완성됩니다. `completion`이 그렇습니다: Tab이 된다면 이미 설치한 것이라 후보에 둘 이유가 없습니다(`ak completion <Tab>`은 여전히 셸 이름을 제안).
 - `-s` 값은 숨은 커맨드 `ak __serials`로 채웁니다. ak의 adb 탐색을 쓰므로 adb가 PATH에 없어도 됩니다.
 - `completions/_ak`는 아카이브와 `make install`용으로 체크인한 zsh 출력입니다. 직접 고치지 않고 생성합니다.
 - 테스트가 지킵니다: `TestCompletionFileIsGenerated`(`_ak` = `ak completion zsh`), `TestCompletionMatchesCommands`, `TestCompletionKnowsEveryArgument`(`Args`가 있으면 `compArgs` 항목 필요).
@@ -291,7 +313,7 @@ Error: 1 of 2 devices failed
   - macOS: PNG + LZW TIFF를 한 항목으로 씁니다. 클립보드 기록 앱이 TIFF가 있어야 이미지를 기록하기 때문입니다.
   - Linux: Wayland(`WAYLAND_DISPLAY`)면 `wl-copy`, 아니면 `xclip`. 둘 다 없으면 오류. Windows: PowerShell.
 - `-o, --open`(`screenshot`, `record`): 저장한 파일을 기본 앱으로 엽니다(`open` / `xdg-open` / `rundll32`). 파일은 이미 저장됐으므로 열기 실패는 `Warning:`입니다.
-- 저장한 경로는 stdout에 따옴표 없이 한 줄씩 출력합니다(`✓ Saved …` 메시지는 stderr).
+- 파일을 만드는 커맨드는 저장한 경로를 stdout에 따옴표 없이 한 줄씩 출력합니다(`✓ Saved …` 메시지는 stderr): `screenshot`, `record`, `extract`(로컬 APK), `pull`(받은 파일마다). `push`는 기기 쪽 경로(`/sdcard/Download/x.png`)를 출력합니다. `wifi`는 연결한 주소를 출력합니다.
 
 ## 15. `ak files`
 

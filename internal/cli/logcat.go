@@ -427,6 +427,7 @@ func runLogcat(c *Ctx) error {
 		return err
 	}
 	var pkgs []string
+	foreground := false
 	for _, p := range c.Args {
 		if !validPackageName(p) {
 			return failErr("", "Invalid package name: %s", q(p))
@@ -440,17 +441,18 @@ func runLogcat(c *Ctx) error {
 		if err := requirePackage(serial, pkg); err != nil {
 			return err
 		}
-		pkgs = []string{pkg}
+		pkgs, foreground = []string{pkg}, true
 	}
 	if c.Bool("--clear") {
 		_, _ = adb.Combined("-s", serial, "logcat", "-c")
 	}
 	t := &tracker{pkgs: pkgs, pids: appPIDs(serial, pkgs)}
 	if len(pkgs) == 1 {
+		app := target{pkg: pkgs[0], foreground: foreground}.describe(serial)
 		if pids := pidList(t.pids, pkgs[0]); pids == "" {
-			ui.Step("Waiting for %s to start on %s (Ctrl+C to stop)", q(pkgs[0]), deviceName(serial))
+			ui.Step("Waiting for %s to start (Ctrl+C to stop)", app)
 		} else {
-			ui.Step("Logs of %s (pid %s) on %s (Ctrl+C to stop)", q(pkgs[0]), pids, deviceName(serial))
+			ui.Step("Logs of %s, pid %s (Ctrl+C to stop)", app, pids)
 		}
 	} else {
 		ui.Step("Logs of %d apps on %s (Ctrl+C to stop)", len(pkgs), deviceName(serial))

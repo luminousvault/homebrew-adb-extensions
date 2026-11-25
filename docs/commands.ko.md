@@ -657,12 +657,12 @@ ak sysinfo [options]
 ```
 
 디바이스의 "휴대전화 정보"를 한곳에 모아 보여 줍니다.
-  Device       모델, 제조사, 디바이스에 설정한 이름
+  Device       adb 시리얼, 모델, 제조사, 디바이스에 설정한 이름
   Software     Android 버전, 보안 패치, 빌드
-  Identifiers  일련번호, IMEI (듀얼 SIM 디바이스는 두 번째 IMEI도), Android ID
+  Identifiers  하드웨어 일련번호, IMEI (듀얼 SIM 디바이스는 두 번째 IMEI도), Android ID
   Network      Wi-Fi IP 주소와 MAC 주소
   Hardware     CPU ABI와 화면 크기
-디바이스가 알려 주지 않는 값은 n/a(JSON에서는 null)로 표시합니다.
+디바이스가 알려 주지 않는 값은 -(JSON에서는 null)로 표시합니다.
 
 **옵션**
 

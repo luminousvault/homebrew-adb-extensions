@@ -658,12 +658,12 @@ ak sysinfo [options]
 ```
 
 Show a device's "About phone" details in one place:
-  Device       Model, manufacturer and the name set on the device
+  Device       adb serial, model, manufacturer and the name set on the device
   Software     Android version, security patch and build
-  Identifiers  Serial number, IMEI (and the second IMEI on dual-SIM devices), Android ID
+  Identifiers  Hardware serial number, IMEI (and the second IMEI on dual-SIM devices), Android ID
   Network      Wi-Fi IP address and MAC addresses
   Hardware     CPU ABI and screen size
-Values the device doesn't expose are shown as n/a (null in JSON).
+Values the device doesn't expose are shown as - (null in JSON).
 
 **Options**
 

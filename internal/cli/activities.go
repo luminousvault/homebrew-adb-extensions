@@ -158,6 +158,7 @@ func runActivities(c *Ctx) error {
 	if c.JSON() {
 		return ui.JSON(result)
 	}
+	ui.Step("Activity stack on %s", deviceName(serial))
 	for i, t := range result {
 		if i > 0 {
 			ui.Out.Println("")

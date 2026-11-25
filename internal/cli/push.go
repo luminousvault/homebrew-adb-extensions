@@ -213,11 +213,12 @@ func pushTo(s string, list []localFile, dest string) int {
 			scan := adb.Shell(s, "am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "+files.ShellQuote(uri))
 			debuglog.Logf("media scan %s: %s", uri, strings.TrimSpace(scan))
 		}
-		ui.Success("Pushed %s to %s:%s %s", q(f.path), name, remote,
-			ui.Err.Dim("("+files.HumanSize(f.size)+", "+elapsed(start)+")"))
+		ui.Success("Pushed %s to %s %s", q(f.path), q(remote),
+			ui.Err.Dim("("+name+", "+files.HumanSize(f.size)+", "+elapsed(start)+")"))
+		ui.Out.Println(remote)
 	}
 	if ok > 1 {
-		ui.Success("Pushed %d files to %s:%s", ok, name, dest)
+		ui.Success("Pushed %d files to %s on %s", ok, q(dest), name)
 	}
 	return failed
 }

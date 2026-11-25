@@ -27,14 +27,35 @@ var cmdSignature = &Command{
 
 type signatureTarget struct {
 	pkg, serial string
+	foreground  bool // pkg was the foreground app, not given by name
 	apkPath     string
 }
 
 func (t signatureTarget) describe() string {
 	if t.pkg != "" {
-		return q(t.pkg) + " on " + deviceName(t.serial)
+		return target{pkg: t.pkg, foreground: t.foreground}.describe(t.serial)
 	}
 	return q(filepath.Base(t.apkPath))
+}
+
+// subject finishes a title whose first stdout row already names the app or
+// file: "on Device[ (foreground app)]", or "of the APK file".
+func (t signatureTarget) subject() string {
+	if t.pkg != "" {
+		return target{pkg: t.pkg, foreground: t.foreground}.onDevice(t.serial)
+	}
+	return "of the APK file"
+}
+
+// printSubject puts what was read on the first stdout row, so saved or
+// piped output still says whose signature it is.
+func (t signatureTarget) printSubject() {
+	if t.pkg != "" {
+		ui.KeyValues([][2]string{{"package", t.pkg}})
+	} else {
+		ui.KeyValues([][2]string{{"file", t.apkPath}})
+	}
+	ui.Out.Println("")
 }
 
 // pickSignatureTarget lists foreground apps of devices and local APKs.
@@ -52,7 +73,7 @@ func pickSignatureTarget(c *Ctx) (signatureTarget, error) {
 	for _, serial := range serials {
 		if pkg := foregroundPackage(serial); pkg != "" && pkg != "null" {
 			items = append(items, fmt.Sprintf("%s\t(foreground app on %s)", pkg, deviceName(serial)))
-			targets = append(targets, signatureTarget{pkg: pkg, serial: serial})
+			targets = append(targets, signatureTarget{pkg: pkg, serial: serial, foreground: true})
 		}
 	}
 	for _, f := range listAPKs(".", sortByName) {
@@ -134,7 +155,7 @@ func runSignature(c *Ctx) error {
 		}
 		_ = tmp.Close()
 		defer func() { _ = os.Remove(tmp.Name()) }()
-		sp := ui.Spin("Pulling the APK of %s", t.describe())
+		sp := ui.Spin("Pulling the APK on %s", deviceName(t.serial))
 		out, err := adb.Combined("-s", t.serial, "pull", remote, tmp.Name())
 		sp.Stop()
 		if err != nil {
@@ -151,7 +172,7 @@ func runSignature(c *Ctx) error {
 		if c.JSON() {
 			return failErr("", "Could not read the signature of %s: %v", t.describe(), err)
 		}
-		return signatureWithAPKSigner(apkPath, t.describe(), err)
+		return signatureWithAPKSigner(apkPath, t, err)
 	}
 	stamp := apk.HasSourceStamp(apkPath)
 	if c.JSON() {
@@ -161,13 +182,14 @@ func runSignature(c *Ctx) error {
 		}
 		src := map[string]any{"signers": list, "sourceStamp": stamp}
 		if t.pkg != "" {
-			src["package"], src["serial"] = t.pkg, t.serial
+			src["package"], src["serial"], src["device"] = t.pkg, t.serial, deviceName(t.serial)
 		} else {
 			src["file"] = t.apkPath
 		}
 		return ui.JSON(src)
 	}
-	ui.Step("Signature of %s", t.describe())
+	ui.Step("Signature %s", t.subject())
+	t.printSubject()
 	for i, s := range signers {
 		if i > 0 {
 			ui.Out.Println("")
@@ -182,7 +204,8 @@ func runSignature(c *Ctx) error {
 }
 
 // signatureWithAPKSigner falls back to the SDK's apksigner when the Go parser fails.
-func signatureWithAPKSigner(apkPath, label string, parseErr error) error {
+func signatureWithAPKSigner(apkPath string, t signatureTarget, parseErr error) error {
+	label := t.describe()
 	tool := adb.FindBuildTool("apksigner")
 	if tool == "" {
 		return failErr("Install Android SDK build-tools to use apksigner as a fallback",
@@ -202,7 +225,8 @@ func signatureWithAPKSigner(apkPath, label string, parseErr error) error {
 		ui.Detail("%s", out)
 		return errReported
 	}
-	ui.Step("Signature of %s (apksigner)", label)
+	ui.Step("Signature %s (apksigner)", t.subject())
+	t.printSubject()
 	for _, line := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
 		if !strings.HasPrefix(line, "WARNING:") {
 			ui.Out.Println(line)

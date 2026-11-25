@@ -229,7 +229,7 @@ func runInfo(c *Ctx) error {
 			splits = a.Splits
 		}
 		return ui.JSON(map[string]any{
-			"package": t.pkg, "versionName": a.VersionName, "versionCode": intOrNil(a.VersionCode),
+			"package": t.pkg, "serial": serial, "device": deviceName(serial), "versionName": a.VersionName, "versionCode": intOrNil(a.VersionCode),
 			"minSdk": intOrNil(a.MinSdk), "targetSdk": intOrNil(a.TargetSdk),
 			"debuggable": a.Debuggable, "installer": strOrNil(a.Installer),
 			"system": a.System, "enabled": a.enabledJSON(),
@@ -237,18 +237,14 @@ func runInfo(c *Ctx) error {
 			"path": strOrNil(a.Path), "splits": splits, "uid": intOrNil(a.UID), "pid": intOrNil(pid),
 		})
 	}
-	title := "App on "
-	if t.foreground {
-		title = "Foreground app on "
-	}
-	ui.Step("%s%s", title, deviceName(serial))
+	ui.Step("App info %s", t.onDevice(serial))
 	rows := [][2]string{
 		{"package", t.pkg},
 		{"version", a.VersionName + " (" + a.VersionCode + ")"},
 		{"minSdk", sdkWithRelease(a.MinSdk)},
 		{"targetSdk", sdkWithRelease(a.TargetSdk)},
-		{"debuggable", strconv.FormatBool(a.Debuggable)},
-		{"system", strconv.FormatBool(a.System)},
+		{"debuggable", yesNo(a.Debuggable)},
+		{"system", yesNo(a.System)},
 		{"enabled", a.enabledText()},
 		{"installer", orDefault(a.Installer, "-")},
 		{"installed", orDefault(a.FirstInstallTime, "-")},
@@ -261,6 +257,14 @@ func runInfo(c *Ctx) error {
 	}
 	ui.KeyValues(rows)
 	return nil
+}
+
+// yesNo is how a boolean reads in text output; JSON keeps true/false.
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
 }
 
 // androidReleases maps an API level to the Android version it shipped with.
@@ -325,11 +329,11 @@ func runPermissions(c *Ctx) error {
 	}
 	perms := parseGrantedPermissions(adb.Out("-s", serial, "shell", "dumpsys", "package", t.pkg))
 	if c.JSON() {
-		return ui.JSON(map[string]any{"package": t.pkg, "granted": perms})
+		return ui.JSON(map[string]any{"package": t.pkg, "serial": serial, "device": deviceName(serial), "granted": perms})
 	}
 	ui.Step("Granted permissions of %s", t.describe(serial))
 	if len(perms) == 0 {
-		ui.Info("(none)")
+		ui.Info("No granted permissions")
 	}
 	for _, p := range perms {
 		ui.Out.Println(p)
@@ -413,7 +417,7 @@ func forEachPackage(c *Ctx, action func(serial, pkg, label string) bool) error {
 		if err != nil {
 			return err
 		}
-		if !action(serial, t.pkg, q(t.pkg)+" (foreground app)") {
+		if !action(serial, t.pkg, t.describe(serial)) {
 			return errReported
 		}
 		return nil
@@ -431,7 +435,7 @@ func forEachPackage(c *Ctx, action func(serial, pkg, label string) bool) error {
 			ui.Errorf("Package not installed on %s: %s", deviceName(serial), q(pkg))
 			failed = true
 		default:
-			if !action(serial, pkg, q(pkg)) {
+			if !action(serial, pkg, target{pkg: pkg}.describe(serial)) {
 				failed = true
 			}
 		}
@@ -568,7 +572,8 @@ func runExtract(c *Ctx) error {
 	if st, err := os.Stat(file); err == nil {
 		size = files.HumanSize(st.Size()) + ", "
 	}
-	ui.Success("Saved %s %s", q(file), ui.Err.Dim("("+size+elapsed(start)+")"))
+	ui.Success("Saved %s %s", q(file), ui.Err.Dim("("+deviceName(serial)+", "+size+elapsed(start)+")"))
+	ui.Out.Println(file)
 	if splits > 0 {
 		ui.Warn("%s also has %d split APKs; the base APK alone may not install", q(t.pkg), splits)
 		ui.Hint("List them with 'adb -s %s shell pm path %s', pull each, and install them together with 'adb install-multiple'", serial, t.pkg)

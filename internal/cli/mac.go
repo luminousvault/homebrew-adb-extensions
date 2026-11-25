@@ -168,11 +168,10 @@ func str(v any) string {
 
 func printMAC(m macInfo) {
 	o := ui.Out
-	o.Println(o.Bold(m.Device) + " " + o.Dim("("+m.Serial+")"))
-	wifi := str(m.Wifi)
-	if wifi == "" {
-		o.Printf("  %-16s n/a %s\n", "Wi-Fi (current)", o.Dim("(Wi-Fi is off or not connected)"))
-	} else {
+	ui.Step("%s %s", m.Device, ui.Err.Dim("("+m.Serial+")"))
+	wifi := "- " + o.Dim("(Wi-Fi is off or not connected)")
+	if w := str(m.Wifi); w != "" {
+		wifi = w
 		var notes []string
 		if m.Randomized {
 			notes = append(notes, "randomized")
@@ -180,14 +179,15 @@ func printMAC(m macInfo) {
 		if ssid := str(m.WifiSSID); ssid != "" {
 			notes = append(notes, `SSID "`+ssid+`"`)
 		}
-		note := ""
 		if len(notes) > 0 {
-			note = " " + o.Dim("("+strings.Join(notes, ", ")+")")
+			wifi += " " + o.Dim("("+strings.Join(notes, ", ")+")")
 		}
-		o.Printf("  %-16s %s%s\n", "Wi-Fi (current)", wifi, note)
 	}
-	o.Printf("  %-16s %s\n", "Wi-Fi (factory)", orDefault(str(m.WifiFactory), "n/a"))
-	o.Printf("  %-16s %s\n", "Bluetooth", orDefault(str(m.Bluetooth), "n/a"))
+	ui.KeyValues([][2]string{
+		{"Wi-Fi (current)", wifi},
+		{"Wi-Fi (factory)", orDefault(str(m.WifiFactory), "-")},
+		{"Bluetooth", orDefault(str(m.Bluetooth), "-")},
+	})
 	if str(m.WifiFactory) == "" && m.Randomized {
 		ui.Hint("To see the factory MAC of %s, set Wi-Fi privacy to 'Use device MAC' and run again", m.Device)
 	}
