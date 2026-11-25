@@ -77,6 +77,7 @@ type completionCase struct {
 
 var completionCases = []completionCase{
 	{"ak scr", []string{"screenshot"}},
+	{"ak c", []string{"clear"}},                               // not completion: it is TabHidden
 	{"ak screenshot ", []string{"sub"}},                       // directories only
 	{"ak install ", []string{"app.apk", "sub"}},               // APKs and directories
 	{"ak signature ", []string{"app.apk", "sub"}},             // any path, not only ./*.apk

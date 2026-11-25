@@ -75,7 +75,7 @@ ak finds adb itself — `AK_ADB`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `PATH`, th
 ak devices                 # connected devices
 ak install                 # pick APKs in the current folder, then devices
 ak install app.apk -a      # install on every connected device at once
-ak info                    # the app on screen: version, SDK levels, installer
+ak info                    # the app on screen: version, SDK levels, installer, path, PID
 ak screenshot -co          # save, copy to the clipboard and open
 ak logcat                  # logs of the app on screen, following restarts
 ak doctor                  # is everything set up?
@@ -145,13 +145,13 @@ Commands, options, device serials (each with its model and Android version in zs
 | APK | [`install`](docs/commands.md#ak-install) | Install APKs on one or more devices, with automatic recovery |
 | | [`extract`](docs/commands.md#ak-extract) | Save an installed app's APK |
 | | [`signature`](docs/commands.md#ak-signature) | Signing certificate hashes of an app or APK file |
-| App | [`info`](docs/commands.md#ak-info) · [`permissions`](docs/commands.md#ak-permissions) | Version, SDK levels, installer · granted permissions |
+| App | [`info`](docs/commands.md#ak-info) · [`permissions`](docs/commands.md#ak-permissions) | Version, SDK levels, installer, path, PID · granted permissions |
 | | [`launch`](docs/commands.md#ak-launch) · [`kill`](docs/commands.md#ak-kill) · [`restart`](docs/commands.md#ak-restart) | Start · force-stop · restart and time the launch |
 | | [`clear`](docs/commands.md#ak-clear) · [`uninstall`](docs/commands.md#ak-uninstall) | Clear data · uninstall |
 | | [`activities`](docs/commands.md#ak-activities) · [`logcat`](docs/commands.md#ak-logcat) | Activity stack · logs of one or more apps |
 | Screen | [`screenshot`](docs/commands.md#ak-screenshot) · [`record`](docs/commands.md#ak-record) | PNG to a file or the clipboard · MP4 recording |
 | Files | [`pull`](docs/commands.md#ak-pull) · [`push`](docs/commands.md#ak-push) · [`files`](docs/commands.md#ak-files) | Pick recent files on the device and copy them here · copy files to the device · browse both and push, pull or delete |
-| Device | [`devices`](docs/commands.md#ak-devices) · [`mac`](docs/commands.md#ak-mac) · [`wifi`](docs/commands.md#ak-wifi) | Device list · MAC addresses · Wi-Fi debugging |
+| Device | [`devices`](docs/commands.md#ak-devices) · [`sysinfo`](docs/commands.md#ak-sysinfo) · [`wifi`](docs/commands.md#ak-wifi) | Device list · Device details and identifiers (IMEI, MAC, Android ID) · Wi-Fi debugging |
 | Setup | [`doctor`](docs/commands.md#ak-doctor) · [`completion`](docs/commands.md#ak-completion) | Check the setup · shell completion script |
 
 Every option and example is in **[docs/commands.md](docs/commands.md)**; `ak <command> --help` shows the same.
@@ -160,7 +160,7 @@ Every option and example is in **[docs/commands.md](docs/commands.md)**; `ak <co
 
 - Name the package. Without one, `info`, `kill`, `clear`, `uninstall` and the other app commands use the app on screen, and `clear` and `uninstall` do not ask first
 - Choose devices with `-s <serial>`, `ANDROID_SERIAL`, or `-a` (all). Without a terminal ak never opens a picker; it asks for `-s` instead. Files and APKs are chosen with arguments or options instead of the picker: `install -l`, `pull -l`, `pull -f <words>`
-- Results go to stdout, messages to stderr; `--json` on `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `restart` and `doctor`
+- Results go to stdout, messages to stderr; `--json` on `devices`, `info`, `permissions`, `signature`, `sysinfo`, `activities`, `restart` and `doctor`
 - Exit codes: `0` success, `1` failure (also partial), `2` usage error, `130` interrupted
 - Short options combine (`-ea` is `-e -a`) and may come before or after arguments; colors only on terminals (`NO_COLOR`, `--no-color`)
 

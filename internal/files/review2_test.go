@@ -75,7 +75,7 @@ func TestGotoListsOnce(t *testing.T) {
 		t.Errorf("lists %d, dir %s", counter.lists, s.panes[PC].dir)
 	}
 	press(t, s, ":"+strings.Repeat(back, 300)+"/no/such/place"+enter)
-	if s.panes[PC].dir != filepath.Join(pc, "sub") || s.msg == nil || !strings.HasPrefix(s.msg.text, "Can't open") {
+	if s.panes[PC].dir != filepath.Join(pc, "sub") || s.msg == nil || s.msg.text != "Couldn't go to '/no/such/place': no such folder" {
 		t.Errorf("failed go to: dir %s msg %+v", s.panes[PC].dir, s.msg)
 	}
 	if len(s.panes[PC].rows) == 0 || s.panes[PC].err != nil {

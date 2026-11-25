@@ -449,7 +449,7 @@ func (s *state) helpPage(w, rows int) []string {
 	return out
 }
 
-// failureLines is what Enter shows after "3 of 5 pulled, 2 failed" in h
+// failureLines is what Enter shows after "Couldn't pull 2 of 5 files" in h
 // rows: the failures, then the items that went through side by side in at
 // most two rows, so a partly failed job does not look failed as a whole.
 // Failures come first: the done names give way to a count when they would
@@ -519,7 +519,7 @@ func (s *state) paneLines(p *pane, w int, active bool, h int, compact bool) []st
 			cells = append(cells, s.row(p, i, lw, active, compact, cols == 2))
 		}
 		if p.err != nil {
-			cells = append(cells, "      "+Yellow+errText(p.err)+NC)
+			cells = append(cells, "      "+Yellow+upperFirst(errText(p.err))+NC)
 		} else if len(p.rows) == 0 || (len(p.rows) == 1 && s.isUp(p, 0)) {
 			note := "(empty)"
 			if p.filter != "" {
@@ -704,11 +704,11 @@ func (s *state) statusText() string {
 	key := func(k, desc string) string { return "  " + Cyan + k + NC + " " + desc }
 	switch s.mode {
 	case modeDelete:
-		return fmt.Sprintf("%sDelete %s from %s? This cannot be undone.%s [y/N]",
+		return fmt.Sprintf("%sDelete %s from %s for good?%s [y/N]",
 			Yellow, countItems(s.delTargets), s.cur().fs.Label(), NC)
 	case modeConflict:
 		op := s.plan.ops[s.ci]
-		return fmt.Sprintf("%s'%s' already exists.%s", Yellow, op.name, NC) +
+		return Yellow + ui.Quote(shown(op.name)) + " already exists" + NC +
 			key("o", "Overwrite") + key("s", "Skip") + key("r", "Rename (N)") + toAll(s.toAll)
 	case modeFilter:
 		return "Filter: " + s.inputLine()
@@ -790,7 +790,7 @@ func (s *state) infoLine(w int) string {
 				bytes += max(e.Size, 0)
 			}
 		}
-		parts = append(parts, plural(dirs, "folder"), plural(files, "file"), HumanSize(bytes)+free)
+		parts = append(parts, ui.Plural(dirs, "folder"), ui.Plural(files, "file"), HumanSize(bytes)+free)
 	}
 	var sel int
 	var selBytes int64
@@ -809,14 +809,7 @@ func (s *state) infoLine(w int) string {
 	return strings.Join(parts, "  ") // each pane's sort order is in its header
 }
 
-func plural(n int, word string) string {
-	if n == 1 {
-		return "1 " + word
-	}
-	return fmt.Sprintf("%d %ss", n, word)
-}
-
-// progressText is "Pulling 2/3  huge.bin  Pixel → ~/Downloads  ████░░░░ 42%
+// progressText is "Pulling (2/3)  huge.bin  Pixel → ~/Downloads  ████░░░░ 42%
 // (180 / 430 MB)  Esc Cancel" in at most width columns. When it is too
 // wide, the name and route are cut first, then the sizes go, then the bar
 // shrinks to its 10 columns; the percentage always stays. Without a total
@@ -826,11 +819,11 @@ func (s *state) progressText(width int) string {
 	t := s.task
 	head := t.label
 	if p.count > 1 {
-		head += fmt.Sprintf(" %d/%d", max(p.index, 1), p.count) // one item: no "1/1"
+		head += fmt.Sprintf(" (%d/%d)", max(p.index, 1), p.count) // one item: no "(1/1)"
 	}
 	name, rt := p.name, t.route
 	if t.route == "" {
-		name = "" // "Opening x" and "Deleting 3 items" name it in the label
+		name = "" // "Opening 'x'" and "Deleting 3 items from Pixel" name it in the label
 	}
 	tail := ""
 	if t.cancelable {
@@ -855,12 +848,12 @@ func (s *state) progressText(width int) string {
 		// closest to the time left and moving during a big file too (a bar
 		// per file barely moves for small files, which finish between two
 		// size checks). The current item's name still shows.
-		head = t.label + fmt.Sprintf(" %d/%d", max(p.index, 1), p.count)
+		head = t.label + fmt.Sprintf(" (%d/%d)", max(p.index, 1), p.count)
 		done, total = p.before+max(p.done, 0), p.all
 		sizes = fmt.Sprintf(" (%s / %s)", HumanSize(done), HumanSize(total))
 	case p.count > 1:
 		// Several items, some of unknown size (or a delete): the bar counts
-		// items, so the "2/10" after the label would only repeat it.
+		// items, so the "(2/10)" after the label would only repeat it.
 		head = t.label
 		done, total = int64(max(p.index-1, 0)), int64(p.count)
 		sizes = fmt.Sprintf(" (%d / %d)", done, total)
@@ -869,7 +862,7 @@ func (s *state) progressText(width int) string {
 		// and, past a few seconds, how long it has run.
 		spin := string(spinFrames[s.spin%len(spinFrames)]) + " " + join(name, rt, "")
 		if d := s.now().Sub(t.started); !t.started.IsZero() && d >= 3*time.Second {
-			spin += "  " + Dim + d.Truncate(time.Second).String() + NC
+			spin += "  " + Dim + ui.Duration(d) + NC
 		}
 		return spin
 	}
@@ -994,7 +987,7 @@ func (s *state) menuPanel(w, listRows int) []string {
 		}
 	}
 	s.menuTop = max(min(s.menuTop, rows-vis), 0)
-	title := plural(n, "folder")
+	title := ui.Plural(n, "folder")
 	out := []string{Dim + "── " + NC + title + " " + Dim + strings.Repeat("─", max(w-4-ui.TextWidth(title), 0)) + NC}
 	for r := s.menuTop; r < s.menuTop+vis; r++ {
 		line := " "

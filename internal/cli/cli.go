@@ -43,18 +43,19 @@ func (f Flag) key() string {
 // Command is one `ak <name>` subcommand. Parsing, help and the zsh completion
 // check are all driven by this definition.
 type Command struct {
-	Name     string
-	Summary  string      // one line for the global help and zsh completion
-	Args     string      // usage arguments, e.g. "[package]"
-	Long     string      // help description (defaults to Summary)
-	ArgHelp  [][2]string // argument name, description
-	Flags    []Flag
-	Examples []string
-	Device   deviceMode
-	JSON     bool // adds --json
-	NoADB    bool
-	Hidden   bool // left out of the global help and the zsh completion
-	Run      func(c *Ctx) error
+	Name      string
+	Summary   string      // one line for the global help and zsh completion
+	Args      string      // usage arguments, e.g. "[package]"
+	Long      string      // help description (defaults to Summary)
+	ArgHelp   [][2]string // argument name, description
+	Flags     []Flag
+	Examples  []string
+	Device    deviceMode
+	JSON      bool // adds --json
+	NoADB     bool
+	Hidden    bool // left out of the global help and the zsh completion
+	TabHidden bool // left out of `ak <Tab>` only: still in help, its own arguments still complete
+	Run       func(c *Ctx) error
 }
 
 var (
@@ -84,7 +85,7 @@ func (cmd *Command) AllFlags() []Flag {
 var Commands = []*Command{
 	cmdInstall, cmdPull, cmdPush, cmdFiles, cmdExtract, cmdInfo, cmdPermissions, cmdUninstall, cmdClear,
 	cmdKill, cmdLaunch, cmdRestart, cmdSignature, cmdActivities, cmdLogcat, cmdScreenshot, cmdRecord,
-	cmdDevices, cmdMac, cmdWifi, cmdDoctor, cmdCompletion, cmdVerifier, cmdSerials,
+	cmdDevices, cmdSysinfo, cmdMac, cmdWifi, cmdDoctor, cmdCompletion, cmdVerifier, cmdSerials,
 }
 
 func find(name string) *Command {
@@ -102,7 +103,7 @@ func find(name string) *Command {
 type cliError struct {
 	code      int
 	msg, hint string
-	usageOf   string // command name for "Run 'ak <cmd> --help'"
+	usageOf   string // command name for "Hint: Run 'ak <cmd> --help' to see the options"
 }
 
 func (e *cliError) Error() string { return e.msg }
@@ -153,7 +154,7 @@ func run(args []string) int {
 	}
 	cmd := find(args[0])
 	if cmd == nil {
-		return report(&cliError{code: 2, msg: "Unknown command: " + args[0], hint: "Run 'ak --help' to see all commands"})
+		return report(&cliError{code: 2, msg: "Unknown command " + q(args[0]), hint: "Run 'ak --help' to see all commands"})
 	}
 	c, help, err := parse(cmd, args[1:])
 	if err != nil {
@@ -191,7 +192,7 @@ func report(err error) int {
 		ui.Hint("%s", ce.hint)
 	}
 	if ce.usageOf != "" {
-		ui.Err.Println("Run 'ak " + ce.usageOf + " --help' for usage.")
+		ui.Hint("Run 'ak %s --help' to see the options", ce.usageOf)
 	}
 	return ce.code
 }
@@ -290,17 +291,17 @@ func parse(cmd *Command, args []string) (*Ctx, bool, error) {
 		name, value, hasValue := strings.Cut(a, "=")
 		f, ok := lookup(name)
 		if !ok {
-			return nil, false, usageErr(cmd, "Unknown option: %s", name)
+			return nil, false, usageErr(cmd, "Unknown option %s", q(name))
 		}
 		if f == flagHelp {
 			return c, true, nil
 		}
 		switch {
 		case f.Value == "" && hasValue:
-			return nil, false, usageErr(cmd, "Option %s does not take a value", name)
+			return nil, false, usageErr(cmd, "%s does not take a value", name)
 		case f.Value != "" && !hasValue:
 			if i+1 >= len(args) {
-				return nil, false, usageErr(cmd, "Option %s requires a value (%s)", name, f.Value)
+				return nil, false, usageErr(cmd, "%s requires a value (%s)", name, f.Value)
 			}
 			i++
 			value = args[i]
@@ -324,9 +325,9 @@ func splitShort(cmd *Command, a string, lookup func(string) (Flag, bool)) ([]str
 		f, ok := lookup(name)
 		if !ok {
 			if j == 0 {
-				return nil, usageErr(cmd, "Unknown option: %s", a)
+				return nil, usageErr(cmd, "Unknown option %s", q(a))
 			}
-			return nil, usageErr(cmd, "Unknown option: %s (in %s)", name, a)
+			return nil, usageErr(cmd, "Unknown option %s (in %s)", q(name), q(a))
 		}
 		if f.Value != "" {
 			if rest := string(rs[j+1:]); rest != "" {
@@ -466,6 +467,5 @@ func showVersion() {
 	}
 }
 
-// q quotes a package name, file name or path inside a message so it stands
-// apart from the words around it: Installed 'app.apk' on Pixel 7.
-func q(s string) string { return "'" + s + "'" }
+// q quotes a name inside a message (ui.Quote): Installed 'app.apk' on Pixel 7.
+func q(s string) string { return ui.Quote(s) }

@@ -251,7 +251,7 @@ func TestPushAndPull(t *testing.T) {
 			t.Errorf("not pulled: %s", n)
 		}
 	}
-	want := "Pulled 3 items from Test Phone → " + displayPath(s.panes[PC].fs, pc)
+	want := "Pulled 3 items from Test Phone to '" + displayPath(s.panes[PC].fs, pc) + "'"
 	if len(s.summary.Done) != 1 || s.summary.Done[0] != want {
 		t.Errorf("summary %q, want %q", s.summary.Done, want)
 	}
@@ -275,7 +275,7 @@ func TestPushAndPull(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(pc, "a.txt")); err != nil {
 		t.Error("a push keeps the original")
 	}
-	if got, want := s.summary.Done[1], "Pushed 'a.txt' to Test Phone:"+filepath.Join(dev, "folder")+" ← Computer"; got != want {
+	if got, want := s.summary.Done[1], "Pushed 'a.txt' to '"+filepath.Join(dev, "folder")+"' on Test Phone"; got != want {
 		t.Errorf("summary %q, want %q", got, want)
 	}
 }
@@ -290,7 +290,7 @@ func TestPushPullConflicts(t *testing.T) {
 	}
 	s.open(s.panes[Device], dev, "")
 	press(t, s, "ag")
-	if s.mode != modeConflict || !strings.Contains(ui.Plain(s.statusText()), "'1.txt' already exists.") {
+	if s.mode != modeConflict || !strings.Contains(ui.Plain(s.statusText()), "'1.txt' already exists  o Overwrite") {
 		t.Fatalf("no question: %q", s.statusText())
 	}
 	press(t, s, "o")   // 1: overwrite
@@ -312,7 +312,7 @@ func TestPushPullConflicts(t *testing.T) {
 		t.Errorf("S: %+v", s.msg)
 	}
 	press(t, s, "g"+esc) // nothing was copied: the selection is still there
-	if s.mode != modeNormal || s.msg == nil || s.msg.text != "Pull canceled" {
+	if s.mode != modeNormal || s.msg == nil || s.msg.text != "Canceled pulling" {
 		t.Errorf("Esc: %+v", s.msg)
 	}
 }
@@ -338,7 +338,7 @@ func TestDelete(t *testing.T) {
 	write(t, dev, "a.txt", "d/inner.txt")
 	s.open(s.cur(), dev, "")
 	press(t, s, "ad")
-	if s.mode != modeDelete || !strings.Contains(ui.Plain(s.statusText()), "Delete 2 items from Test Phone? This cannot be undone. [y/N]") {
+	if s.mode != modeDelete || !strings.Contains(ui.Plain(s.statusText()), "Delete 2 items from Test Phone for good? [y/N]") {
 		t.Fatalf("question %q", ui.Plain(s.statusText()))
 	}
 	press(t, s, enter) // the default is No
@@ -349,7 +349,7 @@ func TestDelete(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dev, "d")); !os.IsNotExist(err) {
 		t.Fatal("not deleted")
 	}
-	if len(s.summary.Done) != 1 || s.summary.Done[0] != "Deleted 2 items on Test Phone" {
+	if len(s.summary.Done) != 1 || s.summary.Done[0] != "Deleted 2 items from Test Phone" {
 		t.Errorf("summary %q", s.summary.Done)
 	}
 }
@@ -375,7 +375,7 @@ func TestRenameAndMkdir(t *testing.T) {
 		t.Errorf("cursor should follow the renamed file: %q", names(p))
 	}
 	press(t, s, "n"+enter)
-	if s.msg == nil || s.msg.text != "name is empty" {
+	if s.msg == nil || s.msg.text != "The name is empty" {
 		t.Errorf("empty folder name: %+v", s.msg)
 	}
 	press(t, s, "nnew"+enter)

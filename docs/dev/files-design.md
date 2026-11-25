@@ -30,7 +30,7 @@ ak files [path]
 
 - `Device: oneDevice`. 디바이스가 여러 대면 기존 선택 UI로 먼저 고릅니다.
 - **터미널이 아니면** 바로 실패합니다.
-  `Error: ak files needs a terminal` + `Hint: Use ak pull or ak push`
+  `Error: ak files needs a terminal` + `Hint: Run 'ak pull' or 'ak push' instead`
 - `--json` 없음. 끝날 때 한 일을 stderr에 남깁니다(§8).
 - 자동완성: `path`는 디바이스 경로라 제안하지 않습니다(`compArgs`에 "제안 없음").
 - 에이전트용 SKILL.md에는 넣지 않습니다(대화형이라 에이전트가 쓸 수 없음). 대신 `pull` · `push`를 안내합니다.
@@ -123,7 +123,7 @@ mc의 F키 배치를 숫자로 씁니다. macOS 터미널에서는 F키가 밝�
 
 - 각 쪽(디바이스 · PC)은 보던 폴더, 커서, 선택을 따로 기억합니다. 모드를 바꾸거나 Tab을 눌러도 그대로입니다.
 - `3` · `4` · `5` · `8`의 대상: 지금 보이는 행 가운데 선택한 항목이 있으면 그것, 없으면 커서 위 항목. 필터나 숨김에 가려진 선택은 무시합니다(해제하지는 않음).
-- `5`의 라벨은 처음 보는 사람도 알 수 있게 말로 씁니다: 디바이스 쪽이면 `To computer`, PC 쪽이면 `To device`. 진행 줄 · 요약 · 두 창 구분선은 기기를 왼쪽에 둔 화살표(`→` · `←`, `▶` · `◀`)로 방향을 보입니다.
+- `5`의 라벨은 처음 보는 사람도 알 수 있게 말로 씁니다: 디바이스 쪽이면 `To computer`, PC 쪽이면 `To device`. 진행 줄 · 두 창 구분선은 기기를 왼쪽에 둔 화살표(`→` · `←`, `▶` · `◀`)로 방향을 보입니다. 메시지(상태 줄의 결과 · 끝날 때 요약 · 오류)는 화살표 대신 말로 씁니다(`from Galaxy S24 Ultra to '~/Downloads'`, `to '/sdcard/Download' on Galaxy S24 Ultra`). `ak pull` · `ak push`의 `✓` 줄과 같은 말이 되게 하려는 것입니다(§8).
 
 ### 도움말 (`?`)
 
@@ -172,7 +172,7 @@ mc의 F키 배치를 숫자로 씁니다. macOS 터미널에서는 F키가 밝�
 상태 줄에 묻습니다.
 
 ```
- 'IMG_0001.jpg' already exists.  o Overwrite  s Skip  r Rename (N)  a All the rest
+ 'IMG_0001.jpg' already exists  o Overwrite  s Skip  r Rename (N)  a All the rest
 ```
 
 - `o` `s` `r`은 이 파일만, `a`를 먼저 누르고 고르면 남은 파일 전부에 적용합니다(`a`를 다시 누르면 꺼짐). Shift(대문자)로 하지 않는 건 Caps Lock이 대소문자를 뒤집고 터미널은 그 상태를 알려 주지 않기 때문입니다.
@@ -181,18 +181,18 @@ mc의 F키 배치를 숫자로 씁니다. macOS 터미널에서는 F키가 밝�
 ### 진행 표시
 
 ```
- Pushing 2/3  video.mp4  Galaxy S24 Ultra:/sdcard/Download ← Computer  ████████░░░░░░░░░░░░ 42% (180 / 430 MB)  Esc Cancel
- Pulling 2/3  video.mp4  Galaxy S24 Ultra → ~/Downloads  ████████░░░░░░░░░░░░ 42% (180 / 430 MB)  Esc Cancel
+ Pushing (2/3)  video.mp4  Galaxy S24 Ultra:/sdcard/Download ← Computer  ████████░░░░░░░░░░░░ 42% (180 / 430 MB)  Esc Cancel
+ Pulling (2/3)  video.mp4  Galaxy S24 Ultra → ~/Downloads  ████████░░░░░░░░░░░░ 42% (180 / 430 MB)  Esc Cancel
 ```
 
 - **막대의 기준:** 항목이 하나면 그 파일의 바이트, 여러 개면 **작업 전체의 바이트**(끝난 항목 + 지금 항목)입니다. 작은 파일은 크기 확인 사이에 끝나서 파일마다의 막대는 거의 움직이지 않고, 개수 기준은 큰 파일 하나에서 오래 멈추기 때문입니다. 크기를 모르는 항목이 섞이면 개수 기준입니다. 어느 쪽이든 지금 항목 이름이 보입니다. 크기를 재는 동안에는 스피너입니다.
 - 기기를 항상 왼쪽에 두고 화살표는 화면 방향입니다. PC 경로는 `~`로 줄입니다.
-- 막대는 줄의 남은 폭을 채우되 10~40칸입니다. 채운 부분 `█`, 빈 부분 `░`(색이 꺼져도 기호로 보임). 여러 개면 막대 · 퍼센트 · 크기는 지금 항목(파일 또는 폴더)의 바이트 기준이고, 몇 번째인지는 `2/3`으로 봅니다.
+- 막대는 줄의 남은 폭을 채우되 10~40칸입니다. 채운 부분 `█`, 빈 부분 `░`(색이 꺼져도 기호로 보임). 여러 개면 막대 · 퍼센트 · 크기는 지금 항목(파일 또는 폴더)의 바이트 기준이고, 몇 번째인지는 `(2/3)`으로 봅니다(하나면 빼고, 크기를 모르는 항목이 섞여 막대가 개수 기준이면 막대가 같은 것을 보이므로 뺍니다). 크기를 모르는 항목 하나(삭제 · 폴더 `rm -rf`)는 스피너이고, 3초가 넘으면 걸린 시간을 `ui.Duration`(`12.3s`)으로 붙입니다.
 - 폭이 모자라면 파일 이름 · 경로를 먼저 줄이고, 그다음 크기 숫자 `(… / … MB)`를 빼고, 막대는 10칸까지 줄입니다. 퍼센트는 항상 남깁니다.
 - 바이트 진행률은 전체 크기를 알 때(디바이스 `stat` · PC `os.Stat`) 받는 쪽 파일 크기를 주기적으로 확인해 계산합니다. 모르면 막대 없이 스피너만 돕니다.
 - 넣기 · 꺼내기 동안에도 화면은 움직일 수 있지만, 동작 키(`5` `6` `7` `8`과 별칭)는 막습니다.
 - **Esc · Ctrl+C:** 지금 파일을 멈추고, 덜 받은 파일은 지우고, 남은 파일은 하지 않습니다.
-- 끝나면 상태 줄에 `✓ Pulled 3 files from Galaxy S24 Ultra → ~/Downloads` 또는 `2 of 3 pulled, 1 failed`를 보입니다. 실패가 있으면 Enter로 실패 목록(파일, adb 원본 메시지)을 엽니다.
+- 끝나면 상태 줄에 `✓ Pulled 3 files from Galaxy S24 Ultra to '~/Downloads'` 또는 `Couldn't pull 1 of 3 files`를 보입니다(`ak pull`의 `Couldn't pull 2 of 5 files`와 같은 말). 실패가 있으면 Enter로 실패 목록(파일, adb 원본 메시지)을 엽니다.
 
 ### 미디어 스캔
 
@@ -211,8 +211,8 @@ mc의 F키 배치를 숫자로 씁니다. macOS 터미널에서는 F키가 밝�
 ## 8. 삭제·이름 바꾸기·새 폴더
 
 - **삭제는 항상 확인합니다.** 상태 줄에 묻습니다.
-  - 디바이스: `Delete 3 items from Galaxy S24 Ultra? This cannot be undone. [y/N]` → `rm -r`
-  - PC: 1단계는 디바이스와 같이 `[y/N]` + `This cannot be undone.` 확인 후 영구 삭제(`local.go`의 `deleteLocal` 한 곳). 휴지통은 §10에서 정함
+  - 디바이스: `Delete 3 files from Galaxy S24 Ultra for good? [y/N]` → `rm -r`. 질문도 한 문장입니다([cli-design.md §3](cli-design.md)): 되돌릴 수 없다는 것은 `for good`이 말합니다.
+  - PC: 1단계는 디바이스와 같은 `[y/N]` 확인(`Delete 'a.txt' from Computer for good? [y/N]`) 후 영구 삭제(`local.go`의 `deleteLocal` 한 곳). 휴지통은 §10에서 정함
 - 이름 바꾸기 · 새 폴더는 아래 줄에서 입력받습니다. 빈 이름, `/` 포함, 이미 있는 이름은 거절합니다.
 - 디바이스 명령에 넘기는 경로는 모두 셸 따옴표 처리를 합니다(공백 · 한글 · `'` 포함 이름).
 
@@ -221,13 +221,21 @@ mc의 F키 배치를 숫자로 씁니다. macOS 터미널에서는 F키가 밝�
 대체 화면이 닫히면 셸 화면에는 아무것도 남지 않으므로, 한 일을 stderr에 요약합니다.
 
 ```
-✓ Pulled 3 files from Galaxy S24 Ultra → ~/Downloads
-✓ Pushed 'a.txt' as 'a (1).txt' to Galaxy S24 Ultra:/sdcard/Documents ← Computer
+✓ Pulled 3 files from Galaxy S24 Ultra to '~/Downloads'
+✓ Pushed 'a.txt' as 'a (1).txt' to '/sdcard/Documents' on Galaxy S24 Ultra
 ✓ Renamed 'b.txt' to 'c.txt' on Galaxy S24 Ultra
-✓ Made folder 'x' in ~/Downloads
-✓ Deleted 2 items on Galaxy S24 Ultra
-Warning: Canceled pushing to Galaxy S24 Ultra:/sdcard/Download ← Computer: 1 of 3 pushed
+✓ Made folder 'x' in '~/Downloads'
+✓ Deleted 2 items from Galaxy S24 Ultra
+Warning: Canceled pushing to '/sdcard/Download' on Galaxy S24 Ultra: 1 of 3 pushed
+Error: Couldn't delete 'c.txt' from Galaxy S24 Ultra: Permission denied
 ```
+
+메시지 규칙은 [cli-design.md §3](cli-design.md)와 같습니다(`ui.Quote` · `ui.Plural` · `ui.Duration` · `HumanSize`).
+
+- **이름은 작은따옴표, 기기 · `Computer` 라벨은 그대로**: 기기 폴더는 `'/sdcard/DCIM' on Galaxy S24 Ultra`, 컴퓨터 폴더는 `'~/Downloads'`(`place`). 상태 줄의 결과, 요약, 취소, 오류가 한 작업을 같은 말로 부릅니다(`copyJob.where`, `reportCopy`).
+- **전치사:** 넣기는 `to '<폴더>' on <기기>`, 꺼내기는 `from <기기> to '<폴더>'`, 삭제는 질문 · 결과 · 취소 · 오류 모두 `from <기기 또는 Computer>`, 이름 바꾸기는 `on <기기 또는 Computer>`.
+- **실패는 `Couldn't <동사> …`**: `Couldn't pull 'a.txt' from …: <원인>`, 일부 실패는 `Couldn't pull 1 of 3 files`, 입력 거절은 대상이 주어(`'b.txt' already exists`, `'x/y' contains '/'`, `The name is empty`).
+- **취소는 `Canceled <무엇>`이 맨 앞**이고 무게는 하나로 둡니다: 상태 줄에서는 넣기 · 꺼내기 · 붙여넣기 · 삭제 · 열기 · 같은 이름 질문의 취소가 모두 정보(흰 글씨)입니다. 사용자가 Esc로 시킨 일이고 덜 받은 파일은 지우므로 경고할 것이 없습니다(`Canceled pulling: 1 of 3 pulled`, `Canceled deleting: 2 of 3 deleted`, `Canceled pulling`). 끝날 때 요약에서는 도중에 멈춘 작업(일부만 됨)이 모두 `Warning:`입니다. 화면을 닫은 뒤 셸 기록만 보는 사람에게 그 작업이 끝까지 가지 않았다는 것을 알리려는 것이고, 아무것도 하지 않은 질문 취소는 요약에 남기지 않습니다.
 
 여러 항목을 다룬 줄 아래에는 그 이름들을 흐리게, 가로로 이어 최대 2줄에 보이고 `├─` `└─`로 요약 줄에 잇습니다(폴더는 `/`, 이름이 바뀐 것은 `a.txt → a (1).txt`, 2줄을 넘으면 끝에 `… and N more`). 요약 줄이 목록에 묻히지 않게 하려는 것입니다.
 

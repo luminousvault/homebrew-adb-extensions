@@ -37,7 +37,7 @@ func TestParallelInstallRunsConcurrently(t *testing.T) {
 	}
 	// Without a terminal each line is prefixed with the device.
 	for _, want := range []string{
-		"==> Installing 1 APK(s) on 2 devices",
+		"==> Installing 1 APK on 2 devices",
 		"[Google Pixel 9 Pro] ✓ Installed 'app.apk' on Google Pixel 9 Pro",
 		"Summary\n",
 		"✓ Installed on 2 devices",
@@ -56,7 +56,7 @@ func TestParallelInstallFailureSummary(t *testing.T) {
 	})
 	r := ak(t, f, "install", apkFile, "-s", serial, "-s", "SECOND")
 	if r.code != 1 || !strings.Contains(r.err, "Error: Couldn't install 'app.apk' on Google Pixel 9 Pro: INSTALL_FAILED_INSUFFICIENT_STORAGE") ||
-		!strings.Contains(r.err, "✗ app.apk  INSTALL_FAILED_INSUFFICIENT_STORAGE") || !strings.HasSuffix(r.err, "Error: 1 of 2 devices failed\n") {
+		!strings.Contains(r.err, "✗ app.apk  INSTALL_FAILED_INSUFFICIENT_STORAGE") || !strings.HasSuffix(r.err, "Error: Couldn't install on 1 of 2 devices\n") {
 		t.Errorf("code %d\n%s", r.code, r.err)
 	}
 }
@@ -75,7 +75,7 @@ func TestBoardLines(t *testing.T) {
 	ui.Err = &ui.Stream{}
 	files := []string{"/x/app-debug.apk", "/x/feature.apk"}
 	jobs := []*installJob{
-		{name: "Google Pixel 9 Pro", files: files, idx: 0, activity: "Installing...", state: jobRunning},
+		{name: "Google Pixel 9 Pro", files: files, idx: 0, activity: "Installing…", state: jobRunning},
 		{name: "Samsung SM-S928N", files: files, idx: 1, state: jobWaiting},
 		{name: "Pixel 7", files: files, idx: 1, state: jobDone, took: 12400 * time.Millisecond},
 		{name: "Pixel 6", files: files, idx: 0, state: jobFailed},
@@ -83,18 +83,18 @@ func TestBoardLines(t *testing.T) {
 	}
 	got := strings.Join(boardLines(jobs, 0), "\n")
 	want := strings.Join([]string{
-		"  ⠋ Google Pixel 9 Pro  [1/2] app-debug.apk  Installing...",
-		"  ⏸ Samsung SM-S928N    [2/2] feature.apk    Needs confirmation",
-		"  ✓ Pixel 7             [2/2] feature.apk    Done (12.4s)",
-		"  ✗ Pixel 6             [1/2] app-debug.apk  Failed",
-		"  – Pixel 5             [1/2] app-debug.apk  Skipped",
+		"  ⠋ Google Pixel 9 Pro  (1/2) app-debug.apk  Installing…",
+		"  ⏸ Samsung SM-S928N    (2/2) feature.apk    Needs confirmation",
+		"  ✓ Pixel 7             (2/2) feature.apk    Done (12.4s)",
+		"  ✗ Pixel 6             (1/2) app-debug.apk  Failed",
+		"  – Pixel 5             (1/2) app-debug.apk  Skipped",
 	}, "\n")
 	if got != want {
 		t.Errorf("board:\n%s\nwant:\n%s", got, want)
 	}
 	// A step that runs long is probably waiting for the user on the device.
 	jobs[0].stepStart = time.Now().Add(-slowStep - time.Second)
-	if got := boardLines(jobs[:1], 0)[0]; !strings.HasSuffix(got, "Installing... (check the device screen)") {
+	if got := boardLines(jobs[:1], 0)[0]; !strings.HasSuffix(got, "Installing… (check the device screen)") {
 		t.Errorf("slow step: %q", got)
 	}
 }
@@ -117,7 +117,7 @@ func TestParallelDetailAndSummaryLines(t *testing.T) {
 		"  c.apk",
 		"    Error: Couldn't install: INSTALL_FAILED_X",
 		"      Failure [INSTALL_FAILED_X]", // adb output, under the error
-		"  ✓ 1 other APK(s) installed"}     // b.apk: counted, so the block does not end at c.apk
+		"  ✓ 1 other APK installed"}        // b.apk: counted, so the block does not end at c.apk
 	if got := detailLines(j, msgs, []int8{1, 1, -1}); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("details:\n%s", strings.Join(got, "\n"))
 	}
@@ -276,7 +276,7 @@ func TestDetailCountsOtherAPKs(t *testing.T) {
 	j := &installJob{serial: "emulator-5554", name: "Pixel 7", files: []string{"a.apk", "b.apk", "c.apk", "d.apk"}}
 	msgs := []jobMsg{{ui.KindError, "Stopped installing 'b.apk' on Pixel 7: interrupted", "Stopped: interrupted", 1}}
 	got := strings.Join(detailLines(j, msgs, []int8{1, -1, 0, 0}), "\n")
-	if !strings.HasSuffix(got, "  ✓ 1 other APK(s) installed\n  – 2 other APK(s) not installed") {
+	if !strings.HasSuffix(got, "  ✓ 1 other APK installed\n  – 2 other APKs not installed") {
 		t.Errorf("details:\n%s", got)
 	}
 }

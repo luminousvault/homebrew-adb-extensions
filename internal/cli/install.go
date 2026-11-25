@@ -82,10 +82,10 @@ func validateInstallOptions(cmd *Command, o installOptions) error {
 			continue
 		}
 		if filepath.Ext(a) != ".apk" {
-			return usageErr(cmd, "Not an APK file: %s", a)
+			return usageErr(cmd, "%s is not an APK file", q(a))
 		}
 		if n > 0 {
-			return usageErr(cmd, "-l, -e and -f choose APKs from a directory; they cannot be used with APK files (%s)", a)
+			return usageErr(cmd, "-l, -e and -f choose APKs from a directory, not from APK files (%s)", q(a))
 		}
 	}
 	return nil
@@ -126,7 +126,11 @@ func displayDir(dir string) string {
 	return tildeHome(dir)
 }
 
-const hintChooseAPK = "Pass APK files, or use -l (newest) or -e (every APK)"
+const (
+	hintChooseAPK = "Pass APK files, or use -l (newest) or -e (every APK)"
+	hintNoAPK     = "Pass APK files or a directory that contains them"
+	hintFilter    = "Change the words after -f, or drop -f to pick from every APK"
+)
 
 // pickAPKs asks which APKs to install (or uses the only one).
 // scanned says the list came from a directory, so a single result is announced.
@@ -163,11 +167,11 @@ func pickAPKs(list, sources, location []string, prompt string, scanned bool) ([]
 func apksInCurrentDir(filter string) ([]string, error) {
 	list := listAPKs(".", sortNewest)
 	if len(list) == 0 {
-		return nil, failErr("Pass APK files or a directory that contains them", "No APK files in %s", displayDir("."))
+		return nil, failErr(hintNoAPK, "No APK files in %s", q(displayDir(".")))
 	}
 	if filter != "" {
 		if list, _ = filterAPKs(list, filter); len(list) == 0 {
-			return nil, failErr("", "No APK files match all of: %s", filter)
+			return nil, failErr(hintFilter, "No APK files match all of %s", q(filter))
 		}
 	}
 	return pickAPKs(list, nil, []string{displayDir(".")}, "Select APK files to install", true)
@@ -193,13 +197,17 @@ func apksFromArgs(args []string, filter string) ([]string, error) {
 		}
 	}
 	for _, m := range missing {
-		ui.Warn("Not found: %s", m)
+		ui.Warn("%s was not found", q(m))
 	}
 	if len(list) == 0 {
 		if len(dirs) > 0 {
-			return nil, failErr("", "No APK files in %s", strings.Join(dirs, ", "))
+			quoted := make([]string, len(dirs))
+			for i, d := range dirs {
+				quoted[i] = q(d)
+			}
+			return nil, failErr(hintNoAPK, "No APK files in %s", strings.Join(quoted, ", "))
 		}
-		return nil, failErr("", "No APK files to install")
+		return nil, failErr("Check the paths", "No APK files to install")
 	}
 	if filter != "" {
 		var keep []int
@@ -210,7 +218,7 @@ func apksFromArgs(args []string, filter string) ([]string, error) {
 		}
 		sources = s
 		if len(list) == 0 {
-			return nil, failErr("", "No APK files match all of: %s", filter)
+			return nil, failErr(hintFilter, "No APK files match all of %s", q(filter))
 		}
 	}
 	// APK files given by name are all installed; directories (or -f) mean "let me pick".
@@ -235,7 +243,7 @@ func selectInstallAPKs(o installOptions) ([]string, error) {
 		}
 		list := listAPKs(dir, sortNewest)
 		if len(list) == 0 {
-			return nil, failErr("", "No APK files in %s", displayDir(dir))
+			return nil, failErr(hintNoAPK, "No APK files in %s", q(displayDir(dir)))
 		}
 		if o.latest {
 			return list[:1], nil
@@ -267,7 +275,7 @@ func runInstall(c *Ctx) error {
 	release()
 	// After the device picker, which clears the screen, so the list stays visible.
 	if o.all {
-		ui.Step("Found %d APK(s) in %s", len(files), q(displayDir(filepath.Dir(files[0]))))
+		ui.Step("Found %s in %s", ui.Plural(len(files), "APK"), q(displayDir(filepath.Dir(files[0]))))
 		for _, l := range apkListLines(files) {
 			ui.Err.Println(l)
 		}
@@ -350,7 +358,7 @@ func (r *directReporter) progress(m say) {
 	text := m.full
 	sp := ui.Spin("%s", text)
 	r.sp = sp
-	r.slow = time.AfterFunc(slowStep, func() { sp.SetText("%s %s", text, ui.Err.Dim(slowHint)) })
+	r.slow = time.AfterFunc(slowStep, func() { sp.Update("%s %s", text, ui.Err.Dim(slowHint)) })
 }
 func (r *directReporter) done() {
 	if r.slow != nil {
@@ -451,7 +459,7 @@ func installOne(r reporter, serial string, opts []string, apkFile string) bool {
 	result := attempt(opts)
 	switch {
 	case strings.Contains(result, "INSTALL_FAILED_TEST_ONLY"):
-		r.warn(sayf("Test-only APK, retrying with -t", "%s is a test-only APK, retrying with -t", q(base)))
+		r.warn(sayf("Test-only APK, retrying with -t", "%s is a test-only APK, retrying with -t on %s", q(base), dev))
 		opts = append(opts, "-t")
 		result = attempt(opts)
 		if strings.Contains(result, "INSTALL_FAILED_VERSION_DOWNGRADE") {
@@ -461,7 +469,7 @@ func installOne(r reporter, serial string, opts []string, apkFile string) bool {
 	case strings.Contains(result, "INSTALL_FAILED_VERSION_DOWNGRADE"):
 		if !hasOpt(opts, "-d") {
 			r.warn(sayf("Older than the installed version, retrying with -d",
-				"%s is older than the installed version, retrying with -d", q(base)))
+				"%s is older than the version installed on %s, retrying with -d", q(base), dev))
 			result = attempt(append(opts, "-d"))
 			if !strings.Contains(result, "INSTALL_FAILED_VERSION_DOWNGRADE") {
 				return finish(result, "")

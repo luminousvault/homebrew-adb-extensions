@@ -213,7 +213,7 @@ func TestRecentFiles(t *testing.T) {
 	for _, c := range f.Calls {
 		pulled = pulled || strings.Contains(c, " pull /sdcard/DCIM/Camera/a, b.jpg ")
 	}
-	if !pulled || len(s.summary.Failed) != 1 || !strings.HasPrefix(s.summary.Failed[0], "Couldn't pull 'a, b.jpg' from Test Phone → ") {
+	if !pulled || len(s.summary.Failed) != 1 || !strings.HasPrefix(s.summary.Failed[0], "Couldn't pull 'a, b.jpg' from Test Phone to '") {
 		t.Errorf("g in recent: calls %q failed %q", f.Calls, s.summary.Failed)
 	}
 	press(t, s, "t")

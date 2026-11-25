@@ -21,7 +21,6 @@ _ak() {
   commands=(
     'activities:Show activity stack'
     'clear:Clear app data and cache'
-    'completion:Print a shell completion script'
     'devices:Show connected devices'
     'doctor:Check adb, devices and shell setup'
     'extract:Save the APK of an installed app'
@@ -31,7 +30,6 @@ _ak() {
     'kill:Force-stop apps'
     'launch:Launch an app'
     'logcat:Show logs of one or more apps'
-    'mac:Show device MAC addresses'
     'permissions:List granted permissions of an app'
     'pull:Pick recent files on a device and copy them here'
     'push:Copy files from here to a device'
@@ -39,6 +37,7 @@ _ak() {
     'restart:Restart an app and time its launch'
     'screenshot:Capture the screen to a file or the clipboard'
     'signature:Show signing certificate hashes'
+    'sysinfo:Show device details and identifiers (IMEI, MAC, Android ID)'
     'uninstall:Uninstall an app'
     'wifi:Switch a device to Wi-Fi debugging'
   )
@@ -142,13 +141,6 @@ _ak() {
             {-s,--serial}'[Target device]:serial:_ak_serials' \
             '*:package name:_message "package name"'
           ;;
-        mac)
-          _arguments -s \
-            '(- *)'{-h,--help}'[Show help for this command]' \
-            '*'{-s,--serial}'[Target device]:serial:_ak_serials' \
-            {-a,--all}'[All connected devices]' \
-            '--json[Print the result as JSON]'
-          ;;
         permissions)
           _arguments -s \
             '(- *)'{-h,--help}'[Show help for this command]' \
@@ -205,6 +197,13 @@ _ak() {
             {-s,--serial}'[Target device]:serial:_ak_serials' \
             '--json[Print the result as JSON]' \
             '1:package name or APK file:_path_files -g "*.apk(-.)" -/'
+          ;;
+        sysinfo)
+          _arguments -s \
+            '(- *)'{-h,--help}'[Show help for this command]' \
+            '*'{-s,--serial}'[Target device]:serial:_ak_serials' \
+            {-a,--all}'[All connected devices]' \
+            '--json[Print the result as JSON]'
           ;;
         uninstall)
           _arguments -s \

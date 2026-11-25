@@ -40,7 +40,7 @@ func runWifi(c *Ctx) error {
 	}
 	if len(c.Args) == 1 {
 		if c.Args[0] != "off" {
-			return usageErr(c.Cmd, "Unknown argument: %s", c.Args[0])
+			return usageErr(c.Cmd, "Unknown argument %s (use off)", q(c.Args[0]))
 		}
 		return wifiOff(c)
 	}
@@ -48,7 +48,7 @@ func runWifi(c *Ctx) error {
 	if v := c.String("--port"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 || n > 65535 {
-			return usageErr(c.Cmd, "Invalid port: %s", v)
+			return usageErr(c.Cmd, "%s is not a valid port (use 1-65535)", q(v))
 		}
 		port = n
 	}
@@ -57,13 +57,13 @@ func runWifi(c *Ctx) error {
 		return err
 	}
 	if isNetworkSerial(serial) {
-		ui.Success("%s is already connected over the network (%s)", deviceName(serial), serial)
+		ui.Success("%s is already connected over Wi-Fi (%s)", deviceName(serial), serial)
 		ui.Out.Println(serial)
 		return nil
 	}
 	ip := deviceIP(serial)
 	if ip == "" {
-		return failErr("Connect the device to Wi-Fi first", "%s has no Wi-Fi IP address", deviceName(serial))
+		return failErr("Connect the device to Wi-Fi, then run 'ak wifi"+serialArg(serial)+"' again", "%s has no Wi-Fi IP address", deviceName(serial))
 	}
 	name := deviceName(serial)
 	addr := ip + ":" + strconv.Itoa(port)
@@ -71,7 +71,7 @@ func runWifi(c *Ctx) error {
 	sp := ui.Spin("Switching %s to Wi-Fi debugging on port %d", name, port)
 	if out, err := adb.Combined("-s", serial, "tcpip", strconv.Itoa(port)); err != nil {
 		sp.Stop()
-		ui.Errorf("Couldn't switch %s to TCP mode", name)
+		ui.Errorf("Couldn't switch %s to Wi-Fi debugging", name)
 		ui.Detail("%s", out)
 		return errReported
 	}
@@ -87,11 +87,11 @@ func runWifi(c *Ctx) error {
 	if !connected {
 		ui.Errorf("Couldn't connect to %s at %s", name, addr)
 		ui.Detail("%s", last)
-		ui.Hint("Check that this computer can reach %s (same network, no client isolation). 'ak wifi off' switches the device back", ip)
+		ui.Hint("Check that this computer can reach %s on the same network (no client isolation)", ip)
 		return errReported
 	}
 	ui.Success("Connected to %s over Wi-Fi at %s", name, addr)
-	ui.Hint("You can unplug the USB cable. Use '-s %s' while both connections exist; 'ak wifi off' switches back to USB", addr)
+	ui.Hint("Unplug the USB cable (until then, pass '-s %s'), and run 'ak wifi off' to switch back to USB", addr)
 	ui.Out.Println(addr)
 	return nil
 }
@@ -113,7 +113,8 @@ func wifiOff(c *Ctx) error {
 	failed := false
 	for _, t := range targets {
 		if !isNetworkSerial(t) {
-			ui.Errorf("%s is not a network connection", t)
+			ui.Errorf("%s is not a Wi-Fi connection", q(t))
+			ui.Hint("Run 'ak wifi off' without -s to disconnect every Wi-Fi device")
 			failed = true
 			continue
 		}
@@ -121,9 +122,9 @@ func wifiOff(c *Ctx) error {
 		_, _ = adb.Combined("-s", t, "usb") // restart adbd in USB mode
 		out, _ := adb.Combined("disconnect", t)
 		if strings.Contains(out, "disconnected") {
-			ui.Success("Switched %s back to USB and disconnected %s", name, t)
+			ui.Success("Switched %s (%s) back to USB and disconnected it", name, t)
 		} else {
-			ui.Errorf("Couldn't disconnect %s", t)
+			ui.Errorf("Couldn't disconnect %s (%s)", name, t)
 			ui.Detail("%s", out)
 			failed = true
 		}

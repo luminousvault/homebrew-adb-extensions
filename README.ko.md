@@ -75,7 +75,7 @@ ak가 adb를 직접 찾습니다(`AK_ADB` → `ANDROID_HOME` → `ANDROID_SDK_RO
 ak devices                 # 연결된 디바이스
 ak install                 # 현재 폴더에서 APK를 고르고, 디바이스를 고름
 ak install app.apk -a      # 연결된 모든 디바이스에 동시에 설치
-ak info                    # 화면의 앱: 버전, SDK 레벨, 설치 출처
+ak info                    # 화면의 앱: 버전, SDK 레벨, 설치 출처, 경로, PID
 ak screenshot -co          # 저장하고 클립보드에 복사하고 열기
 ak logcat                  # 화면의 앱 로그, 재시작해도 따라감
 ak doctor                  # 설정이 제대로 됐는지 점검
@@ -145,13 +145,13 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 | APK | [`install`](docs/commands.ko.md#ak-install) | 한 대 또는 여러 대에 APK 설치, 실패 자동 복구 |
 | | [`extract`](docs/commands.ko.md#ak-extract) | 설치된 앱의 APK 꺼내기 |
 | | [`signature`](docs/commands.ko.md#ak-signature) | 앱 또는 APK 파일의 서명 인증서 해시 |
-| 앱 | [`info`](docs/commands.ko.md#ak-info) · [`permissions`](docs/commands.ko.md#ak-permissions) | 버전 · SDK 레벨 · 설치 출처 / 허용된 권한 |
+| 앱 | [`info`](docs/commands.ko.md#ak-info) · [`permissions`](docs/commands.ko.md#ak-permissions) | 버전 · SDK 레벨 · 설치 출처 · 경로 · PID / 허용된 권한 |
 | | [`launch`](docs/commands.ko.md#ak-launch) · [`kill`](docs/commands.ko.md#ak-kill) · [`restart`](docs/commands.ko.md#ak-restart) | 실행 · 강제 종료 · 재시작하며 실행 시간 측정 |
 | | [`clear`](docs/commands.ko.md#ak-clear) · [`uninstall`](docs/commands.ko.md#ak-uninstall) | 데이터 삭제 · 제거 |
 | | [`activities`](docs/commands.ko.md#ak-activities) · [`logcat`](docs/commands.ko.md#ak-logcat) | 액티비티 스택 · 앱 하나 또는 여러 개의 로그 |
 | 화면 | [`screenshot`](docs/commands.ko.md#ak-screenshot) · [`record`](docs/commands.ko.md#ak-record) | PNG를 파일이나 클립보드로 · MP4 녹화 |
 | 파일 | [`pull`](docs/commands.ko.md#ak-pull) · [`push`](docs/commands.ko.md#ak-push) · [`files`](docs/commands.ko.md#ak-files) | 디바이스의 최근 파일을 골라 가져오기 · 파일을 디바이스에 복사 · 양쪽을 둘러보며 넣기·꺼내기·삭제 |
-| 디바이스 | [`devices`](docs/commands.ko.md#ak-devices) · [`mac`](docs/commands.ko.md#ak-mac) · [`wifi`](docs/commands.ko.md#ak-wifi) | 디바이스 목록 · MAC 주소 · Wi-Fi 디버깅 |
+| 디바이스 | [`devices`](docs/commands.ko.md#ak-devices) · [`sysinfo`](docs/commands.ko.md#ak-sysinfo) · [`wifi`](docs/commands.ko.md#ak-wifi) | 디바이스 목록 · 디바이스 정보와 식별자 (IMEI, MAC, Android ID) · Wi-Fi 디버깅 |
 | 설정 | [`doctor`](docs/commands.ko.md#ak-doctor) · [`completion`](docs/commands.ko.md#ak-completion) | 설정 점검 · 셸 자동 완성 스크립트 |
 
 모든 옵션과 예시는 **[docs/commands.ko.md](docs/commands.ko.md)**에 있고, `ak <명령> --help`로도 같은 내용을 볼 수 있습니다.
@@ -160,7 +160,7 @@ ak doctor                  # 설정이 제대로 됐는지 점검
 
 - 패키지 이름을 적습니다. 없으면 `info`, `kill`, `clear`, `uninstall` 등 앱 명령은 화면에 떠 있는 앱을 쓰고, `clear`와 `uninstall`은 묻지 않습니다
 - 디바이스는 `-s <시리얼>`, `ANDROID_SERIAL`, `-a`(전부)로 고릅니다. 터미널이 아니면 선택 화면을 띄우지 않고 `-s`를 요구합니다. 파일과 APK도 선택 화면 대신 인자나 옵션으로 고릅니다: `install -l`, `pull -l`, `pull -f <단어>`
-- 결과는 stdout, 메시지는 stderr. `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `restart`, `doctor`는 `--json`을 지원합니다
+- 결과는 stdout, 메시지는 stderr. `devices`, `info`, `permissions`, `signature`, `sysinfo`, `activities`, `restart`, `doctor`는 `--json`을 지원합니다
 - 종료 코드: `0` 성공, `1` 실패(일부 실패 포함), `2` 사용법 오류, `130` 중단
 - 짧은 옵션은 묶어 쓸 수 있고(`-ea` = `-e -a`) 인자 앞뒤 어디에 와도 됩니다. 색은 터미널에서만(`NO_COLOR`, `--no-color`)
 

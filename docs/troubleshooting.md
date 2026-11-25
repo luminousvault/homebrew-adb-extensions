@@ -89,7 +89,7 @@ ak devices
 
 ```
 Error: Multiple devices connected: emulator-5554, emulator-5556
-Hint: Use -s <serial> or set ANDROID_SERIAL
+Hint: Pass -s <serial>, or set ANDROID_SERIAL
 ```
 
 **Cause:** several devices are connected and ak is not running in a terminal (a pipe, a script, CI), so it cannot show the device picker.
@@ -99,10 +99,10 @@ Hint: Use -s <serial> or set ANDROID_SERIAL
 ```bash
 ak info -s emulator-5554
 export ANDROID_SERIAL=emulator-5554      # default device, as with adb
-ak install -a app.apk                    # install, mac, screenshot: every device
+ak install -a app.apk                    # install, screenshot, sysinfo: every device
 ```
 
-`ak devices` lists the serials. `install`, `mac` and `screenshot` accept `-s` more than once.
+`ak devices` lists the serials. `install`, `screenshot` and `sysinfo` accept `-s` more than once.
 
 ## Install takes long or shows "(check the device screen)"
 
@@ -181,7 +181,7 @@ Homebrew installs completion for bash, zsh and fish. Otherwise add one line for 
 **Cause:** Android framework code that runs inside your app (views, input method, graphics, class loading, ART, Samsung's additions) logs under its own tags, such as `ViewRootImpl`, `ImeTracker` or `HWUI`. `ak logcat` hides those lines unless they are errors (E, F), and GPU driver lines (`Adreno*`, `qdgralloc`) unless they are fatal. The first time it hides one it says so:
 
 ```
-Hint: Framework and driver logs are hidden (errors are kept); -e shows them
+Hint: Pass -e to show framework and driver logs (their errors are always shown)
 ```
 
 **Fix:**

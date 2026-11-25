@@ -80,6 +80,15 @@ func TestCompletionMatchesCommands(t *testing.T) {
 		}
 		names[c.Name] = true
 		desc, ok := spec.desc[c.Name]
+		if c.TabHidden {
+			if ok {
+				t.Errorf("%s: TabHidden but in the completions/_ak command list", c.Name)
+			}
+			if _, ok := spec.flags[c.Name]; !ok {
+				t.Errorf("%s: TabHidden but its own options and arguments are missing", c.Name)
+			}
+			continue
+		}
 		if !ok {
 			t.Errorf("%s: missing from completions/_ak command list", c.Name)
 			continue
@@ -133,6 +142,33 @@ func TestCompletionKnowsEveryArgument(t *testing.T) {
 		if s, ok := completionScript(shell); !ok || !strings.Contains(s, "screenshot") {
 			t.Errorf("%s: no script", shell)
 		}
+	}
+}
+
+// `ak completion` is set up once, so `ak <Tab>` leaves it out in every shell,
+// while help still lists it and `ak completion <Tab>` still offers the shells
+// (the shells' own runs are in completion_shell_test.go).
+func TestCompletionCommandNotOfferedAtTop(t *testing.T) {
+	if !cmdCompletion.TabHidden {
+		t.Fatal("completion should be TabHidden")
+	}
+	offered := map[string]string{ // how each script offers a command for `ak <Tab>`
+		"zsh":        "    'completion:",
+		"bash":       "compgen -W 'activities clear completion ",
+		"fish":       "__fish_use_subcommand -a completion ",
+		"powershell": "'completion' = @{ Desc = 'Print a shell completion script'; Many = $false; Tab = $true",
+	}
+	for shell, needle := range offered {
+		script, _ := completionScript(shell)
+		if strings.Contains(script, needle) {
+			t.Errorf("%s: completion offered for ak <Tab>", shell)
+		}
+		if !strings.Contains(script, "zsh") || !strings.Contains(script, "powershell") {
+			t.Errorf("%s: shell names missing for ak completion <Tab>", shell)
+		}
+	}
+	if r := ak(t, baseFake(), "--help"); !strings.Contains(r.out, "  completion   ") {
+		t.Errorf("completion missing from ak --help:\n%s", r.out)
 	}
 }
 

@@ -25,7 +25,7 @@ func installAgentSkill() {
 		debuglog.Logf("agent skill: %v", err)
 	}
 	for _, p := range created {
-		ui.Success("Added the ak skill for AI agents: %s", tildeHome(filepath.Dir(p)))
+		ui.Success("Added the ak skill for AI agents to %s", q(tildeHome(filepath.Dir(p))))
 	}
 	if len(created) > 0 {
 		ui.Detail("Delete it to remove it; set AK_NO_SKILL=1 to never add it")
@@ -50,7 +50,7 @@ func agentSkillCategory(off bool, home string, statuses []agentskill.Status) che
 			where = append(where, dir)
 			cat.items = append(cat.items, checkItem{text: dir + " is current"})
 		case agentskill.Outdated, agentskill.Missing: // ak fixes these on every run; only seen when writing failed
-			cat.items = append(cat.items, checkItem{level: levelWarn, text: "Could not write " + dir,
+			cat.items = append(cat.items, checkItem{level: levelWarn, text: "Couldn't write " + dir,
 				hint: "Run with AK_DEBUG=1 to see why"})
 		case agentskill.Edited:
 			where = append(where, dir)

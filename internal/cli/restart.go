@@ -65,7 +65,7 @@ func runRestart(c *Ctx) error {
 	if v := c.String("--repeat"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 || n > 100 {
-			return usageErr(c.Cmd, "--repeat must be 1-100: %s", v)
+			return usageErr(c.Cmd, "--repeat must be 1-100: %s", q(v))
 		}
 		repeat = n
 	}
@@ -80,19 +80,23 @@ func runRestart(c *Ctx) error {
 	resolved, _ := adb.Combined("-s", serial, "shell", "cmd", "package", "resolve-activity", "--brief", t.pkg)
 	component := lastLine(resolved)
 	if !strings.Contains(component, "/") {
-		return failErr("", "%s has no launcher activity", q(t.pkg))
+		return failErr("", "%s has no launcher activity", t.describe(serial))
 	}
 
 	var runs []launchResult
 	for i := 0; i < repeat; i++ {
-		sp := ui.Spin("Restarting %s (%d/%d)", t.describe(serial), i+1, repeat)
+		count := ""
+		if repeat > 1 {
+			count = fmt.Sprintf(" (%d/%d)", i+1, repeat)
+		}
+		sp := ui.Spin("Restarting on %s%s", deviceName(serial), count)
 		_, _ = adb.Combined("-s", serial, "shell", "am", "force-stop", t.pkg)
 		time.Sleep(300 * time.Millisecond)
 		out, _ := adb.Combined("-s", serial, "shell", "am", "start", "-W", "--user", "0", "-n", component)
 		sp.Stop()
 		r, ok := parseLaunch(out)
 		if !ok {
-			ui.Errorf("Couldn't start %s", component)
+			ui.Errorf("Couldn't start %s on %s", q(component), deviceName(serial))
 			ui.Detail("%s", out)
 			return errReported
 		}
@@ -108,26 +112,32 @@ func runRestart(c *Ctx) error {
 	}
 	avg := sum / len(runs)
 	if c.JSON() {
-		return ui.JSON(map[string]any{"package": t.pkg, "activity": component, "runs": runs,
+		return ui.JSON(map[string]any{"package": t.pkg, "serial": serial, "device": deviceName(serial), "activity": component, "runs": runs,
 			"minMs": lo, "avgMs": avg, "maxMs": hi})
 	}
-	ui.Success("Restarted %s", t.describe(serial))
+	ui.Success("Restarted %s", t.onDevice(serial))
 	if repeat == 1 {
 		ui.KeyValues([][2]string{
+			{"package", t.pkg},
 			{"activity", component},
 			{"launchState", orDefault(runs[0].LaunchState, "-")},
-			{"totalTime", fmt.Sprintf("%d ms", runs[0].TotalTime)},
-			{"waitTime", fmt.Sprintf("%d ms", runs[0].WaitTime)},
+			{"totalTime", ms(runs[0].TotalTime)},
+			{"waitTime", ms(runs[0].WaitTime)},
 		})
 		return nil
 	}
+	ui.KeyValues([][2]string{{"package", t.pkg}, {"activity", component}})
+	ui.Out.Println("")
 	var rows [][]ui.Cell
 	for i, r := range runs {
 		rows = append(rows, []ui.Cell{{Text: strconv.Itoa(i + 1)}, {Text: orDefault(r.LaunchState, "-")},
-			{Text: fmt.Sprintf("%d ms", r.TotalTime)}, {Text: fmt.Sprintf("%d ms", r.WaitTime)}})
+			{Text: ms(r.TotalTime)}, {Text: ms(r.WaitTime)}})
 	}
 	ui.Table([]string{"RUN", "LAUNCH", "TOTAL", "WAIT"}, rows)
 	ui.Out.Println("")
-	ui.KeyValues([][2]string{{"min", fmt.Sprintf("%d ms", lo)}, {"avg", fmt.Sprintf("%d ms", avg)}, {"max", fmt.Sprintf("%d ms", hi)}})
+	ui.KeyValues([][2]string{{"min", ms(lo)}, {"avg", ms(avg)}, {"max", ms(hi)}})
 	return nil
 }
+
+// ms formats a launch time reported in milliseconds (ui.Duration).
+func ms(n int) string { return ui.Duration(time.Duration(n) * time.Millisecond) }

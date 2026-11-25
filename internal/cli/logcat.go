@@ -418,7 +418,7 @@ func runLogcat(c *Ctx) error {
 	minLevel := 0
 	if v := strings.ToUpper(c.String("--level")); v != "" {
 		if len(v) != 1 || !strings.Contains(levels, v) {
-			return usageErr(c.Cmd, "--level must be one of V, D, I, W, E, F: %s", v)
+			return usageErr(c.Cmd, "--level must be one of V, D, I, W, E, F: %s", q(v))
 		}
 		minLevel = strings.Index(levels, v)
 	}
@@ -427,9 +427,10 @@ func runLogcat(c *Ctx) error {
 		return err
 	}
 	var pkgs []string
+	foreground := false
 	for _, p := range c.Args {
 		if !validPackageName(p) {
-			return failErr("", "Invalid package name: %s", q(p))
+			return failErr(hintPackage(serial), "%s is not a valid package name", q(p))
 		}
 		if !slices.Contains(pkgs, p) {
 			pkgs = append(pkgs, p)
@@ -440,17 +441,18 @@ func runLogcat(c *Ctx) error {
 		if err := requirePackage(serial, pkg); err != nil {
 			return err
 		}
-		pkgs = []string{pkg}
+		pkgs, foreground = []string{pkg}, true
 	}
 	if c.Bool("--clear") {
 		_, _ = adb.Combined("-s", serial, "logcat", "-c")
 	}
 	t := &tracker{pkgs: pkgs, pids: appPIDs(serial, pkgs)}
 	if len(pkgs) == 1 {
+		app := target{pkg: pkgs[0], foreground: foreground}.describe(serial)
 		if pids := pidList(t.pids, pkgs[0]); pids == "" {
-			ui.Step("Waiting for %s to start on %s (Ctrl+C to stop)", q(pkgs[0]), deviceName(serial))
+			ui.Step("Waiting for %s to start (Ctrl+C to stop)", app)
 		} else {
-			ui.Step("Logs of %s (pid %s) on %s (Ctrl+C to stop)", q(pkgs[0]), pids, deviceName(serial))
+			ui.Step("Logs of %s, pid %s (Ctrl+C to stop)", app, pids)
 		}
 	} else {
 		ui.Step("Logs of %d apps on %s (Ctrl+C to stop)", len(pkgs), deviceName(serial))
@@ -516,7 +518,7 @@ func runLogcat(c *Ctx) error {
 		if !tags.show(l) {
 			if !hinted && tags.framework(l) {
 				hinted = true
-				ui.Hint("Framework and driver logs are hidden (errors are kept); -e shows them")
+				ui.Hint("Pass -e to show framework and driver logs (their errors are always shown)")
 			}
 			continue
 		}

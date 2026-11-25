@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -56,21 +57,22 @@ func filterRecentFiles(list []files.RecentFile, filter string) []files.RecentFil
 func ensureDir(dest string) error {
 	if st, err := os.Stat(dest); err == nil {
 		if !st.IsDir() {
-			return failErr("", "Not a directory: %s", q(dest))
+			return failErr("Pass a directory to save the files in", "%s is not a directory", q(dest))
 		}
 		return nil
 	}
-	ok, err := ui.Confirm("Directory "+q(dest)+" does not exist. Create it?", false)
+	ok, err := ui.Confirm("Create the missing directory "+q(dest)+"?", false)
 	switch {
 	case errors.Is(err, ui.ErrNoInput):
-		return failErr("Pass -y to create it", "Directory does not exist: %s", q(dest))
+		return failErr("Pass -y to create it", "%s does not exist", q(dest))
 	case err != nil:
 		return err
 	case !ok:
-		return failErr("", "Aborted")
+		// Like a declined uninstall in install: nothing was done, so exit 1.
+		return failErr("", "Skipped: %s was not created", q(dest))
 	}
 	if err := os.MkdirAll(dest, 0o755); err != nil {
-		return failErr("", "Cannot create directory %s: %v", q(dest), err)
+		return failErr("", "Couldn't create %s: %v", q(dest), err)
 	}
 	return nil
 }
@@ -100,7 +102,9 @@ func runPull(c *Ctx) error {
 	sp.Stop()
 	if len(recent) == 0 {
 		if raw == "" || strings.Contains(raw, "No result found") {
-			return failErr("", "No recent files found on %s", deviceName(serial))
+			release()
+			ui.Info("No recent files found on %s", deviceName(serial))
+			return nil
 		}
 		lines := strings.Split(strings.TrimRight(raw, "\n"), "\n")
 		release()
@@ -112,7 +116,8 @@ func runPull(c *Ctx) error {
 	if filter := c.String("--filter"); c.Bool("--filter") {
 		recent = filterRecentFiles(recent, filter)
 		if len(recent) == 0 {
-			return failErr("", "No recent files on %s match %s", deviceName(serial), q(filter))
+			return failErr("Change the words after -f, or drop -f to pick from every recent file",
+				"No recent files on %s match all of %s", deviceName(serial), q(filter))
 		}
 	}
 	chosen := []int{0} // -l, or -f with one match
@@ -147,12 +152,13 @@ func runPull(c *Ctx) error {
 		remote := recent[i].Path
 		name := path.Base(remote)
 		base := files.UniqueName(name, false, taken)
+		renamed := ""
 		switch {
 		case base == name:
 		case here[files.FoldName(name)]:
-			ui.Warn("%s already exists in %s, saving as %s", q(name), q(dest), q(base))
+			renamed = fmt.Sprintf("%s already exists in %s, saving as %s", q(name), q(displayDir(dest)), q(base))
 		default:
-			ui.Warn("Duplicate file name, saving %s as %s", q(name), q(base))
+			renamed = fmt.Sprintf("Another file is also named %s, saving as %s", q(name), q(base))
 		}
 		used[files.FoldName(base)] = true
 		local := filepath.Join(dest, base)
@@ -160,24 +166,29 @@ func runPull(c *Ctx) error {
 			local = "." + string(filepath.Separator) + local
 		}
 		start := time.Now()
-		sp := ui.Spin("Pulling %s", q(path.Base(remote)))
+		sp := ui.Spin("Pulling %s from %s", q(name), deviceName(serial))
 		out, err := adb.Combined("-s", serial, "pull", remote, local)
 		sp.Stop()
 		if err != nil {
 			failed++
-			ui.Errorf("Couldn't pull %s", q(remote))
+			ui.Errorf("Couldn't pull %s from %s", q(remote), deviceName(serial))
 			ui.Detail("%s", out)
 			continue
 		}
 		ok++
-		ui.Success("Pulled %s %s", q(local), ui.Err.Dim("("+fileMeta(remote, recent[i].Size)+", "+elapsed(start)+")"))
+		if renamed != "" { // after the step's "==>" line, before its result
+			ui.Warn("%s", renamed)
+		}
+		abs, shown := savedPath(local)
+		ui.Success("Pulled %s %s", q(shown), ui.Err.Dim("("+deviceName(serial)+", "+files.HumanSize(recent[i].Size)+", "+elapsed(start)+")"))
+		ui.Out.Println(abs)
 	}
 	if failed > 0 {
-		ui.Errorf("%d of %d files failed", failed, ok+failed)
+		ui.Errorf("Couldn't pull %d of %s", failed, ui.Plural(ok+failed, "file"))
 		return errReported
 	}
 	if ok > 1 {
-		ui.Success("Pulled %d files to %s", ok, q(dest))
+		ui.Success("Pulled %s from %s to %s", ui.Plural(ok, "file"), deviceName(serial), q(displayDir(dest)))
 	}
 	return nil
 }

@@ -232,6 +232,15 @@ func lowerFirst(t string) string {
 	return strings.ToLower(t[:1]) + t[1:]
 }
 
+// upperFirst starts an error's text (lower case, as Go errors are) with a
+// capital when it is the whole message.
+func upperFirst(t string) string {
+	if t == "" {
+		return t
+	}
+	return strings.ToUpper(t[:1]) + t[1:]
+}
+
 func (s *state) setMsg(kind msgKind, format string, args ...any) {
 	s.msg = &message{text: fmt.Sprintf(format, args...), kind: kind}
 }
@@ -725,18 +734,18 @@ func (s *state) up(p *pane) {
 // leaves alone, so the message tells what the selection is for.
 func (s *state) openFile(path string, note bool) {
 	if s.openLocal == nil {
-		s.setMsg(msgWarn, "Can't open files here")
+		s.setMsg(msgError, "Couldn't open %s here", ui.Quote(shown(filepath.Base(path))))
 		return
 	}
 	if err := s.openLocal(path); err != nil {
-		s.setMsg(msgError, "Couldn't open %s: %v", filepath.Base(path), err)
+		s.setMsg(msgError, "Couldn't open %s: %v", ui.Quote(shown(filepath.Base(path))), err)
 		return
 	}
 	if note {
-		s.setMsg(msgSuccess, "Opened %s (open takes the file under the cursor; the selection is for 3, 4, 5 and 8)", filepath.Base(path))
+		s.setMsg(msgSuccess, "Opened %s (open takes the file under the cursor; the selection is for 3, 4, 5 and 8)", ui.Quote(shown(filepath.Base(path))))
 		return
 	}
-	s.setMsg(msgSuccess, "Opened %s", filepath.Base(path))
+	s.setMsg(msgSuccess, "Opened %s", ui.Quote(shown(filepath.Base(path))))
 }
 
 // openDeviceFile pulls a device file to the temp folder and opens it on the
@@ -746,19 +755,20 @@ func (s *state) openDeviceFile(p *pane, e Entry, note bool) {
 	dir := filepath.Join(s.tempDir, strconv.FormatInt(s.now().UnixNano(), 36)+"-"+strconv.Itoa(s.opened))
 	dst := filepath.Join(dir, e.Name)
 	from := p.fs
-	s.pending = &task{label: "Opening " + e.Name, cancelable: true,
+	name := ui.Quote(shown(e.Name))
+	s.pending = &task{label: "Opening " + name, cancelable: true,
 		run: func(ctx context.Context, report func(progress)) func(*state) {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return func(s *state) { s.setMsg(msgError, "Couldn't open %s: %v", shown(e.Name), err) }
+				return func(s *state) { s.setMsg(msgError, "Couldn't open %s: %v", name, err) }
 			}
 			job := &copyJob{from: from, to: localFS{PC, computerLabel}, dstDir: dir, ops: []copyOp{{src: e, name: e.Name}}}
 			res := job.run(ctx, report)
 			return func(s *state) {
 				switch {
 				case res.canceled:
-					s.setMsg(msgInfo, "Canceled opening %s", shown(e.Name))
+					s.setMsg(msgInfo, "Canceled opening %s", name)
 				case len(res.failed) > 0:
-					s.setMsg(msgError, "Couldn't copy %s: %s", shown(e.Name), res.failed[0].msg)
+					s.setMsg(msgError, "Couldn't open %s: %s", name, res.failed[0].msg)
 				default:
 					s.openFile(dst, note)
 				}
@@ -795,7 +805,7 @@ func (s *state) toggleRecent(p *pane) {
 	p.recentList, p.recentErr = nil, nil
 	p.loadingNote = "Reading recent files"
 	s.refreshRows(p, "")
-	s.pending = &task{label: "Reading recent files", run: func(context.Context, func(progress)) func(*state) {
+	s.pending = &task{label: "Reading recent files on " + p.fs.Label(), run: func(context.Context, func(progress)) func(*state) {
 		list, err := lister.Recent()
 		return func(s *state) {
 			p.loadingNote = ""
@@ -827,7 +837,8 @@ func (s *state) send(p *pane, push bool) {
 	dst := s.panes[1-p.fs.Side()]
 	entries, err := dst.fs.List(dst.dir) // what is there now, even if the pane shows recent files
 	if err != nil {
-		s.setMsg(msgError, "Can't copy to %s: %s", location(dst.fs, dst.dir), errText(err))
+		verb := map[bool]string{true: "push", false: "pull"}[push]
+		s.setMsg(msgError, "Couldn't %s to %s: %s", verb, place(dst.fs, dst.dir), errText(err))
 		return
 	}
 	inDir := nameLookup(dst.fs, dst.dir, entries)
@@ -935,12 +946,12 @@ func (s *state) nextConflict() {
 
 // cancelPlan drops a push, pull or paste while its names are asked about.
 func (s *state) cancelPlan() {
-	s.mode, s.plan = modeNormal, nil
-	what := map[bool]string{true: "Push", false: "Pull"}[s.push]
+	what := map[bool]string{true: "pushing", false: "pulling"}[s.push]
 	if s.pasting {
-		what = "Paste"
+		what = map[bool]string{true: "moving", false: "copying"}[s.plan.cut]
 	}
-	s.setMsg(msgInfo, "%s canceled", what)
+	s.mode, s.plan = modeNormal, nil
+	s.setMsg(msgInfo, "Canceled %s", what)
 }
 
 func (s *state) handleConflict(k tui.Key) {
@@ -1078,8 +1089,8 @@ func withoutNamed(list []Entry, paths ...string) []Entry {
 	return kept
 }
 
-// finishSend reports a push or pull: "Pushed 'a.txt' to Pixel:/sdcard ← Computer",
-// "Pulled 3 files from Pixel → ~/Downloads".
+// finishSend reports a push or pull: "Pushed 'a.txt' to '/sdcard' on Pixel",
+// "Pulled 3 files from Pixel to '~/Downloads'".
 func (s *state) finishSend(job *copyJob, push bool, res copyResult) {
 	for _, p := range s.panes {
 		if p.fs == job.to && !p.recent {
@@ -1091,32 +1102,34 @@ func (s *state) finishSend(job *copyJob, push bool, res copyResult) {
 	if !push {
 		verb, past, ing = "pull", "Pulled", "pulling"
 	}
-	where := func(what string) string {
-		if push {
-			return fmt.Sprintf("%s to %s", what, route(job, push))
-		}
-		return fmt.Sprintf("%s from %s", what, route(job, push))
-	}
+	s.reportCopy(job, res, verb, past, ing)
+}
+
+// reportCopy puts a finished push, pull or paste into the status line and
+// the summary, naming the place the same way in each: "Pulled 3 files from
+// Pixel to '~/Downloads'", "Canceled pulling from Pixel to '~/Downloads': 1
+// of 3 pulled", "Couldn't pull 'a.txt' from Pixel to '~/Downloads': …".
+func (s *state) reportCopy(job *copyJob, res copyResult, verb, past, ing string) {
+	where := job.where()
 	what := pastedItems(res.done, res.doneAs)
 	if len(res.done) > 0 {
-		s.addDone(past+" "+where(what), itemNames(res.done, res.doneAs))
+		s.addDone(past+" "+what+" "+where, itemNames(res.done, res.doneAs))
 	}
 	if res.canceled {
 		s.summary.Canceled = append(s.summary.Canceled,
-			fmt.Sprintf("Canceled %s %s: %d of %d %s", ing, strings.TrimSpace(where("")), len(res.done), res.todo, strings.ToLower(past)))
+			fmt.Sprintf("Canceled %s %s: %d of %d %s", ing, where, len(res.done), res.todo, strings.ToLower(past)))
 	}
 	for _, f := range res.failed {
-		s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't %s %s: %s", verb, where("'"+f.name+"'"), f.msg))
+		s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't %s %s %s: %s", verb, ui.Quote(f.name), where, f.msg))
 	}
-	total := len(res.done) + len(res.failed)
 	switch {
 	case res.canceled:
-		s.setMsg(msgWarn, "Canceled %s: %d of %d %s", ing, len(res.done), res.todo, strings.ToLower(past))
+		s.setMsg(msgInfo, "Canceled %s: %d of %d %s", ing, len(res.done), res.todo, strings.ToLower(past))
 	case len(res.failed) > 0:
 		s.msg = &message{kind: msgError, failures: res.failed, done: itemNames(res.done, res.doneAs),
-			text: fmt.Sprintf("%d of %d %s, %d failed", len(res.done), total, strings.ToLower(past), len(res.failed))}
+			text: fmt.Sprintf("Couldn't %s %d of %s", verb, len(res.failed), ui.Plural(len(res.done)+len(res.failed), itemWord(job.sources())))}
 	default:
-		s.setMsg(msgSuccess, "%s %s", past, where(what))
+		s.setMsg(msgSuccess, "%s %s %s", past, what, where)
 	}
 }
 
@@ -1135,7 +1148,7 @@ func pastedItems(done []Entry, as []string) string {
 	case renamed == 0:
 		return countItems(done)
 	case len(done) == 1:
-		return "'" + shown(done[0].Name) + "' as '" + as[0] + "'"
+		return ui.Quote(shown(done[0].Name)) + " as " + ui.Quote(as[0])
 	}
 	return fmt.Sprintf("%s (%d renamed)", countItems(done), renamed)
 }
@@ -1153,8 +1166,13 @@ func withoutPaths(list, gone []Entry) []Entry {
 // countItems is "'a.txt'", "3 files", "2 folders" or "4 items".
 func countItems(list []Entry) string {
 	if len(list) == 1 {
-		return "'" + shown(list[0].Name) + "'"
+		return ui.Quote(shown(list[0].Name))
 	}
+	return ui.Plural(len(list), itemWord(list))
+}
+
+// itemWord is what list holds: "file", "folder", or "item" for both.
+func itemWord(list []Entry) string {
 	dirs := 0
 	for _, e := range list {
 		if e.Dir {
@@ -1163,11 +1181,11 @@ func countItems(list []Entry) string {
 	}
 	switch dirs {
 	case 0:
-		return strconv.Itoa(len(list)) + " files"
+		return "file"
 	case len(list):
-		return strconv.Itoa(len(list)) + " folders"
+		return "folder"
 	}
-	return strconv.Itoa(len(list)) + " items"
+	return "item"
 }
 
 // ---- delete ----
@@ -1209,7 +1227,7 @@ func (s *state) startDelete(p *pane, targets []Entry, unasked bool) {
 	f := p.fs
 	// Esc stops between items: the item being deleted (one rm -rf) runs to
 	// its end, so nothing is left half deleted by ak.
-	s.pending = &task{label: "Deleting " + countItems(targets), cancelable: true,
+	s.pending = &task{label: "Deleting " + countItems(targets) + " from " + f.Label(), cancelable: true,
 		run: func(ctx context.Context, report func(progress)) func(*state) {
 			var done []Entry
 			var failed []failure
@@ -1226,11 +1244,14 @@ func (s *state) startDelete(p *pane, targets []Entry, unasked bool) {
 			}
 			flushMedia(f)
 			stopped := len(done)+len(failed) < len(targets)
-			return func(s *state) { s.finishDelete(p, done, failed, stopped, len(targets), unasked) }
+			return func(s *state) { s.finishDelete(p, targets, done, failed, stopped, unasked) }
 		}}
 }
 
-func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bool, total int, unasked bool) {
+// finishDelete reports a delete, with "from <device or computer>" as the
+// question said it: "Deleted 3 files from Pixel".
+func (s *state) finishDelete(p *pane, targets, done []Entry, failed []failure, stopped, unasked bool) {
+	total := len(targets)
 	p.recentList = withoutPaths(p.recentList, done)
 	if s.clip != nil && s.clip.side == p.fs.Side() { // deleted items are no longer there to paste
 		if s.clip.items = withoutPaths(s.clip.items, done); len(s.clip.items) == 0 {
@@ -1249,20 +1270,20 @@ func (s *state) finishDelete(p *pane, done []Entry, failed []failure, stopped bo
 		how = " (Shift+Delete, not asked)"
 	}
 	if len(done) > 0 {
-		s.addDone(fmt.Sprintf("Deleted %s on %s%s", countItems(done), where, how), itemNames(done, nil))
+		s.addDone(fmt.Sprintf("Deleted %s from %s%s", countItems(done), where, how), itemNames(done, nil))
 	}
 	for _, f := range failed {
-		s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't delete '%s' on %s: %s", f.name, where, f.msg))
+		s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't delete %s from %s: %s", ui.Quote(f.name), where, f.msg))
 	}
 	if stopped {
-		s.summary.Canceled = append(s.summary.Canceled, fmt.Sprintf("Canceled deleting on %s: %d of %d deleted", where, len(done), total))
+		s.summary.Canceled = append(s.summary.Canceled, fmt.Sprintf("Canceled deleting from %s: %d of %d deleted", where, len(done), total))
 	}
 	switch {
 	case len(failed) > 0:
 		s.msg = &message{kind: msgError, failures: failed, done: itemNames(done, nil),
-			text: fmt.Sprintf("%d of %d deleted, %d failed", len(done), total, len(failed))}
+			text: fmt.Sprintf("Couldn't delete %d of %s", len(failed), ui.Plural(len(done)+len(failed), itemWord(targets)))}
 	case stopped:
-		s.setMsg(msgInfo, "Canceled: %d of %d deleted", len(done), total)
+		s.setMsg(msgInfo, "Canceled deleting: %d of %d deleted", len(done), total)
 	default:
 		s.setMsg(msgSuccess, "Deleted %s%s", countItems(done), how)
 	}
@@ -1401,9 +1422,9 @@ func (s *state) completeGoto(p *pane) {
 	}
 	entries, err := s.gotoList(p, gotoPath(p, strings.TrimSpace(dirPart)))
 	if err != nil {
-		s.inputHint = fmt.Sprintf("Can't read %s: %s", strings.TrimSpace(dirPart), errText(err))
+		s.inputHint = fmt.Sprintf("Couldn't read %s: %s", ui.Quote(strings.TrimSpace(dirPart)), errText(err))
 		if dirPart == "" {
-			s.inputHint = "Can't read this folder: " + errText(err)
+			s.inputHint = "Couldn't read this folder: " + errText(err)
 		}
 		return
 	}
@@ -1424,7 +1445,7 @@ func (s *state) completeGoto(p *pane) {
 	}
 	switch len(match) {
 	case 0:
-		s.inputHint = fmt.Sprintf("No folder starts with '%s'", prefix)
+		s.inputHint = "No folder starts with " + ui.Quote(prefix)
 		if prefix == "" {
 			s.inputHint = "No folders here"
 		}
@@ -1559,25 +1580,25 @@ func (s *state) submitInput(p *pane) {
 		dir := gotoPath(p, strings.TrimSpace(text))
 		entries, err := p.fs.List(dir) // once: a failure keeps the folder shown
 		if err != nil {
-			s.setMsg(msgError, "Can't open %s: %s", text, errText(err))
+			s.setMsg(msgError, "Couldn't go to %s: %s", ui.Quote(text), errText(err))
 			return
 		}
 		s.show(p, dir, "", entries, nil)
 		return
 	case inputMkdir:
 		if err := s.checkNewName(p, text, ""); err != nil {
-			s.setMsg(msgError, "%v", err)
+			s.setMsg(msgError, "%s", upperFirst(err.Error()))
 			return
 		}
 		if err := p.fs.Mkdir(p.fs.Join(p.dir, text)); err != nil {
-			s.setMsg(msgError, "Couldn't make folder '%s': %v", text, err)
-			s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't make folder '%s' in %s: %v", text, location(p.fs, p.dir), err))
+			s.setMsg(msgError, "Couldn't make folder %s: %v", ui.Quote(text), err)
+			s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't make folder %s in %s: %v", ui.Quote(text), place(p.fs, p.dir), err))
 			return
 		}
-		s.addDone(fmt.Sprintf("Made folder '%s' in %s", text, location(p.fs, p.dir)), nil)
+		s.addDone(fmt.Sprintf("Made folder %s in %s", ui.Quote(text), place(p.fs, p.dir)), nil)
 		s.reload(p)
 		s.refreshRows(p, p.fs.Join(p.dir, text))
-		s.setMsg(msgSuccess, "Made folder '%s'", text)
+		s.setMsg(msgSuccess, "Made folder %s", ui.Quote(text))
 	case inputRename:
 		e, ok := s.cursorEntry(p)
 		if !ok || shown(text) == shown(e.Name) { // unchanged (an NFD name pre-filled composed counts as the same)
@@ -1588,21 +1609,21 @@ func (s *state) submitInput(p *pane) {
 			dir = p.fs.Dir(e.Path)
 			var err error
 			if entries, err = p.fs.List(dir); err != nil {
-				s.setMsg(msgError, "Couldn't rename '%s': %s", shown(e.Name), errText(err))
+				s.setMsg(msgError, "Couldn't rename %s: %s", ui.Quote(shown(e.Name)), errText(err))
 				return
 			}
 		}
 		if err := checkNameIn(p.fs, dir, entries, text, e.Name); err != nil {
-			s.setMsg(msgError, "%v", err)
+			s.setMsg(msgError, "%s", upperFirst(err.Error()))
 			return
 		}
 		to := p.fs.Join(dir, text)
 		if err := renameEntry(p.fs, e, to); err != nil {
-			s.setMsg(msgError, "Couldn't rename '%s': %v", shown(e.Name), err)
-			s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't rename '%s' to '%s' on %s: %v", shown(e.Name), text, p.fs.Label(), err))
+			s.setMsg(msgError, "Couldn't rename %s: %v", ui.Quote(shown(e.Name)), err)
+			s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't rename %s to %s on %s: %v", ui.Quote(shown(e.Name)), ui.Quote(text), p.fs.Label(), err))
 			return
 		}
-		s.addDone(fmt.Sprintf("Renamed '%s' to '%s' on %s", shown(e.Name), text, p.fs.Label()), nil)
+		s.addDone(fmt.Sprintf("Renamed %s to %s on %s", ui.Quote(shown(e.Name)), ui.Quote(text), p.fs.Label()), nil)
 		s.renamedOnClipboard(p.fs, e.Path, to)
 		if p.recent {
 			s.renamedInRecent(p, e, text, to)
@@ -1610,7 +1631,7 @@ func (s *state) submitInput(p *pane) {
 			s.reload(p)
 		}
 		s.refreshRows(p, to)
-		s.setMsg(msgSuccess, "Renamed '%s' to '%s'", shown(e.Name), text)
+		s.setMsg(msgSuccess, "Renamed %s to %s", ui.Quote(shown(e.Name)), ui.Quote(text))
 	}
 }
 
@@ -1656,7 +1677,7 @@ func checkNameIn(f FS, dir string, entries []Entry, name, self string) error {
 		}
 	}
 	if _, ok := nameLookup(f, dir, others)(name); ok { // self out: a.txt -> A.txt is fine
-		return fmt.Errorf("'%s' already exists", name)
+		return fmt.Errorf("%s already exists", ui.Quote(name))
 	}
 	return nil
 }
@@ -1744,12 +1765,22 @@ func location(f FS, dir string) string {
 	return f.Label() + ":" + dir
 }
 
+// place names a folder in a message, quoted as names are and with the
+// device after it: "'/sdcard/DCIM' on Pixel 9 Pro", or "'~/Downloads'" on
+// the computer.
+func place(f FS, dir string) string {
+	if f.Side() == PC {
+		return ui.Quote(displayPath(f, dir))
+	}
+	return ui.Quote(dir) + " on " + f.Label()
+}
+
 func errText(err error) string {
 	switch {
 	case errors.Is(err, fs.ErrPermission):
-		return "Permission denied"
+		return "permission denied"
 	case errors.Is(err, fs.ErrNotExist):
-		return "No such folder"
+		return "no such folder"
 	}
 	return err.Error()
 }

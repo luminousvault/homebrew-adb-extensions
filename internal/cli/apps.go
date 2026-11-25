@@ -18,7 +18,7 @@ var argPackage = [2]string{"package", "Package name (default: the foreground app
 
 var cmdInfo = &Command{
 	Name: "info", Summary: "Show app version and SDK levels", Args: "[package]",
-	Long:     "Show the version, SDK levels, debuggable flag and installer of a package.",
+	Long:     "Show the version, SDK levels, debuggable and system flags, enabled state, installer, install and update times, APK path, UID and PID (when running) of a package.",
 	ArgHelp:  [][2]string{argPackage},
 	Examples: []string{"ak info", "ak info com.example.app", "ak info --json | jq .versionName"},
 	Device:   oneDevice, JSON: true, Run: runInfo,
@@ -27,12 +27,21 @@ var cmdInfo = &Command{
 var (
 	reMinSdk    = regexp.MustCompile(`minSdk=([0-9]*)`)
 	reTargetSdk = regexp.MustCompile(`targetSdk=([0-9]*)`)
+	reEnabled   = regexp.MustCompile(`^\s*User \d+:.* enabled=(\d)`)
+	reAppID     = regexp.MustCompile(`\bappId=(\d+)`)
+	reUserID    = regexp.MustCompile(`\buserId=(\d+)`)
 )
 
 // AppInfo is what `ak info` reports from `dumpsys package`.
 type AppInfo struct {
 	VersionName, VersionCode, MinSdk, TargetSdk, Installer string
-	Debuggable                                             bool
+	Debuggable, System                                     bool
+	// Enabled is the enabled= digit of the first `User N:` line: 0 default,
+	// 1 enabled, 2 disabled, 3 disabled by user, 4 disabled until used; "" if missing.
+	Enabled                                string
+	FirstInstallTime, LastUpdateTime, Path string
+	Splits                                 []string // including base; nil if missing
+	UID                                    string
 }
 
 func firstLine(out, substr string) string {
@@ -51,6 +60,16 @@ func afterEquals(line string) string {
 		return ""
 	}
 	return strings.Join(strings.Fields(parts[1]), " ")
+}
+
+// restAfter returns the rest of the first line containing key, after key,
+// trimmed. Unlike afterEquals it keeps '=' (a /data/app/~~…==/ path has it).
+func restAfter(out, key string) string {
+	l := firstLine(out, key)
+	if l == "" {
+		return ""
+	}
+	return strings.TrimSpace(l[strings.Index(l, key)+len(key):])
 }
 
 func parseAppInfo(dumpsys string) AppInfo {
@@ -77,7 +96,93 @@ func parseAppInfo(dumpsys string) AppInfo {
 	if a.Installer == "null" {
 		a.Installer = ""
 	}
+	// An updated system app has a second, hidden package block further down;
+	// firstLine keeps every field from the first (current) one.
+	if l := firstLine(dumpsys, "pkgFlags=["); l != "" {
+		for _, f := range strings.Fields(l) {
+			if f == "SYSTEM" {
+				a.System = true
+			}
+		}
+	}
+	for _, l := range strings.Split(dumpsys, "\n") {
+		if m := reEnabled.FindStringSubmatch(l); m != nil {
+			a.Enabled = m[1]
+			break
+		}
+	}
+	a.FirstInstallTime = restAfter(dumpsys, "firstInstallTime=")
+	a.LastUpdateTime = restAfter(dumpsys, "lastUpdateTime=")
+	a.Path = restAfter(dumpsys, "codePath=")
+	if l := firstLine(dumpsys, "splits=["); l != "" {
+		inner := l[strings.Index(l, "splits=[")+len("splits=["):]
+		inner, _, _ = strings.Cut(inner, "]")
+		for _, s := range strings.Split(inner, ",") {
+			if s = strings.TrimSpace(s); s != "" {
+				a.Splits = append(a.Splits, s)
+			}
+		}
+	}
+	// Android 9 and older print userId= instead of appId=.
+	for _, re := range []*regexp.Regexp{reAppID, reUserID} {
+		if m := re.FindStringSubmatch(dumpsys); m != nil {
+			a.UID = m[1]
+			break
+		}
+	}
 	return a
+}
+
+// enabledText is the `enabled` row: "yes", "no", "no (by user)", "no (until used)" or "-".
+func (a AppInfo) enabledText() string {
+	switch a.Enabled {
+	case "0", "1":
+		return "yes"
+	case "2":
+		return "no"
+	case "3":
+		return "no (by user)"
+	case "4":
+		return "no (until used)"
+	}
+	return "-"
+}
+
+// enabledJSON is true, false, or nil when the state is unknown.
+func (a AppInfo) enabledJSON() any {
+	switch a.Enabled {
+	case "0", "1":
+		return true
+	case "2", "3", "4":
+		return false
+	}
+	return nil
+}
+
+// pathText is the APK path with " (+N splits)" when there are splits besides base.
+func (a AppInfo) pathText() string {
+	if a.Path == "" {
+		return "-"
+	}
+	switch n := len(a.Splits) - 1; {
+	case n == 1:
+		return a.Path + " (+1 split)"
+	case n > 1:
+		return a.Path + " (+" + strconv.Itoa(n) + " splits)"
+	}
+	return a.Path
+}
+
+// parsePidof returns the first PID printed by `pidof`, or "" when not running.
+func parsePidof(out string) string {
+	f := strings.Fields(out)
+	if len(f) == 0 {
+		return ""
+	}
+	if _, err := strconv.Atoi(f[0]); err != nil {
+		return ""
+	}
+	return f[0]
 }
 
 func intOrNil(s string) any {
@@ -96,7 +201,14 @@ func strOrNil(s string) any {
 
 func tooMany(c *Ctx, max int) error {
 	if len(c.Args) > max {
-		return usageErr(c.Cmd, "Too many arguments: %s", strings.Join(c.Args[max:], " "))
+		extra := make([]string, len(c.Args)-max)
+		for i, a := range c.Args[max:] {
+			extra[i] = q(a)
+		}
+		if len(extra) == 1 {
+			return usageErr(c.Cmd, "Unexpected argument %s", extra[0])
+		}
+		return usageErr(c.Cmd, "Unexpected arguments %s", strings.Join(extra, ", "))
 	}
 	return nil
 }
@@ -115,25 +227,68 @@ func runInfo(c *Ctx) error {
 	}
 	a := parseAppInfo(adb.Out("-s", serial, "shell", "dumpsys", "package", t.pkg))
 	if a.VersionName == "" || a.VersionCode == "" || a.TargetSdk == "" {
-		return failErr("", "Could not read versionName, versionCode or targetSdk of %s", q(t.pkg))
+		return failErr("", "Couldn't read versionName, versionCode or targetSdk of %s", t.describe(serial))
 	}
+	pid := parsePidof(adb.Out("-s", serial, "shell", "pidof", t.pkg))
 	if c.JSON() {
+		var splits any
+		if a.Splits != nil {
+			splits = a.Splits
+		}
 		return ui.JSON(map[string]any{
-			"package": t.pkg, "versionName": a.VersionName, "versionCode": intOrNil(a.VersionCode),
+			"package": t.pkg, "serial": serial, "device": deviceName(serial), "versionName": a.VersionName, "versionCode": intOrNil(a.VersionCode),
 			"minSdk": intOrNil(a.MinSdk), "targetSdk": intOrNil(a.TargetSdk),
 			"debuggable": a.Debuggable, "installer": strOrNil(a.Installer),
+			"system": a.System, "enabled": a.enabledJSON(),
+			"firstInstallTime": strOrNil(a.FirstInstallTime), "lastUpdateTime": strOrNil(a.LastUpdateTime),
+			"path": strOrNil(a.Path), "splits": splits, "uid": intOrNil(a.UID), "pid": intOrNil(pid),
 		})
 	}
-	ui.Step("%s", t.describe(serial))
-	ui.KeyValues([][2]string{
-		{"versionName", a.VersionName},
-		{"versionCode", a.VersionCode},
-		{"minSdk", a.MinSdk},
-		{"targetSdk", a.TargetSdk},
-		{"debuggable", strconv.FormatBool(a.Debuggable)},
-		{"installerPackageName", orDefault(a.Installer, "-")},
-	})
+	ui.Step("App info %s", t.onDevice(serial))
+	rows := [][2]string{
+		{"package", t.pkg},
+		{"version", a.VersionName + " (" + a.VersionCode + ")"},
+		{"minSdk", sdkWithRelease(a.MinSdk)},
+		{"targetSdk", sdkWithRelease(a.TargetSdk)},
+		{"debuggable", yesNo(a.Debuggable)},
+		{"system", yesNo(a.System)},
+		{"enabled", a.enabledText()},
+		{"installer", orDefault(a.Installer, "-")},
+		{"installed", orDefault(a.FirstInstallTime, "-")},
+		{"updated", orDefault(a.LastUpdateTime, "-")},
+		{"path", a.pathText()},
+		{"uid", orDefault(a.UID, "-")},
+	}
+	if pid != "" {
+		rows = append(rows, [2]string{"pid", pid})
+	}
+	ui.KeyValues(rows)
 	return nil
+}
+
+// yesNo is how a boolean reads in text output; JSON keeps true/false.
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
+// androidReleases maps an API level to the Android version it shipped with.
+var androidReleases = map[string]string{
+	"14": "4.0", "15": "4.0.3", "16": "4.1", "17": "4.2", "18": "4.3", "19": "4.4", "20": "4.4W",
+	"21": "5.0", "22": "5.1", "23": "6", "24": "7.0", "25": "7.1", "26": "8.0", "27": "8.1",
+	"28": "9", "29": "10", "30": "11", "31": "12", "32": "12L", "33": "13", "34": "14",
+	"35": "15", "36": "16",
+}
+
+// sdkWithRelease returns "34 (Android 14)", or the level alone when the
+// version is not known.
+func sdkWithRelease(level string) string {
+	if v, ok := androidReleases[level]; ok {
+		return level + " (Android " + v + ")"
+	}
+	return level
 }
 
 // ── permissions ──────────────────────────────────────
@@ -181,11 +336,11 @@ func runPermissions(c *Ctx) error {
 	}
 	perms := parseGrantedPermissions(adb.Out("-s", serial, "shell", "dumpsys", "package", t.pkg))
 	if c.JSON() {
-		return ui.JSON(map[string]any{"package": t.pkg, "granted": perms})
+		return ui.JSON(map[string]any{"package": t.pkg, "serial": serial, "device": deviceName(serial), "granted": perms})
 	}
 	ui.Step("Granted permissions of %s", t.describe(serial))
 	if len(perms) == 0 {
-		ui.Info("(none)")
+		ui.Info("No granted permissions")
 	}
 	for _, p := range perms {
 		ui.Out.Println(p)
@@ -223,18 +378,19 @@ func runLaunch(c *Ctx) error {
 	if err := requirePackage(serial, pkg); err != nil {
 		return err
 	}
+	app := target{pkg: pkg}.describe(serial)
 	resolved, _ := adb.Combined("-s", serial, "shell", "cmd", "package", "resolve-activity", "--brief", pkg)
 	component := lastLine(resolved) // "No activity found" when there is none
 	if !strings.Contains(component, "/") {
-		return failErr("", "%s has no launcher activity", q(pkg))
+		return failErr("", "%s has no launcher activity", app)
 	}
 	result, _ := adb.Combined("-s", serial, "shell", "am", "start", "--user", "0", "-n", component)
 	if strings.Contains(result, "Exception occurred while executing 'start'") || strings.Contains(result, "Error:") {
-		ui.Errorf("Couldn't launch %s", q(pkg))
+		ui.Errorf("Couldn't launch %s", app)
 		ui.Detail("%s", result)
 		return errReported
 	}
-	ui.Success("Launched %s on %s", q(pkg), deviceName(serial))
+	ui.Success("Launched %s", app)
 	return nil
 }
 
@@ -269,7 +425,7 @@ func forEachPackage(c *Ctx, action func(serial, pkg, label string) bool) error {
 		if err != nil {
 			return err
 		}
-		if !action(serial, t.pkg, q(t.pkg)+" (foreground app)") {
+		if !action(serial, t.pkg, t.describe(serial)) {
 			return errReported
 		}
 		return nil
@@ -281,13 +437,15 @@ func forEachPackage(c *Ctx, action func(serial, pkg, label string) bool) error {
 		case seen[pkg]:
 			ui.Warn("Skipping duplicate package %s", q(pkg))
 		case !validPackageName(pkg):
-			ui.Errorf("Invalid package name: %s", q(pkg))
+			ui.Errorf("%s is not a valid package name", q(pkg))
+			ui.Hint("%s", hintPackage(serial))
 			failed = true
 		case !packageInstalled(serial, pkg):
-			ui.Errorf("Package not installed on %s: %s", deviceName(serial), q(pkg))
+			ui.Errorf("%s is not installed on %s", q(pkg), deviceName(serial))
+			ui.Hint("%s", hintPackage(serial))
 			failed = true
 		default:
-			if !action(serial, pkg, q(pkg)) {
+			if !action(serial, pkg, target{pkg: pkg}.describe(serial)) {
 				failed = true
 			}
 		}
@@ -302,7 +460,7 @@ func forEachPackage(c *Ctx, action func(serial, pkg, label string) bool) error {
 func runKill(c *Ctx) error {
 	return forEachPackage(c, func(serial, pkg, label string) bool {
 		if out, err := adb.Combined("-s", serial, "shell", "am", "force-stop", pkg); err != nil {
-			ui.Errorf("Couldn't stop %s", q(pkg))
+			ui.Errorf("Couldn't stop %s", label)
 			ui.Detail("%s", out)
 			return false
 		}
@@ -315,7 +473,7 @@ func runClear(c *Ctx) error {
 	return forEachPackage(c, func(serial, pkg, label string) bool {
 		out, _ := adb.Combined("-s", serial, "shell", "pm", "clear", pkg)
 		if !strings.Contains(out, "Success") {
-			ui.Errorf("Couldn't clear data of %s", q(pkg))
+			ui.Errorf("Couldn't clear data of %s", label)
 			ui.Detail("%s", out)
 			return false
 		}
@@ -349,7 +507,7 @@ func runUninstall(c *Ctx) error {
 	}
 	out, _ := adb.Combined("-s", serial, "uninstall", t.pkg)
 	if !strings.Contains(out, "Success") {
-		ui.Errorf("Couldn't uninstall %s", q(t.pkg))
+		ui.Errorf("Couldn't uninstall %s", t.describe(serial))
 		ui.Detail("%s", out)
 		return errReported
 	}
@@ -416,7 +574,7 @@ func runExtract(c *Ctx) error {
 	out, err := adb.Combined("-s", serial, "pull", remote, file)
 	sp.Stop()
 	if err != nil {
-		ui.Errorf("Couldn't pull the APK of %s", q(t.pkg))
+		ui.Errorf("Couldn't extract %s", t.describe(serial))
 		ui.Detail("%s", out)
 		return errReported
 	}
@@ -424,15 +582,15 @@ func runExtract(c *Ctx) error {
 	if st, err := os.Stat(file); err == nil {
 		size = files.HumanSize(st.Size()) + ", "
 	}
-	ui.Success("Saved %s %s", q(file), ui.Err.Dim("("+size+elapsed(start)+")"))
+	abs, shown := savedPath(file)
+	ui.Success("Saved %s %s", q(shown), ui.Err.Dim("("+deviceName(serial)+", "+size+elapsed(start)+")"))
+	ui.Out.Println(abs)
 	if splits > 0 {
-		ui.Warn("%s also has %d split APKs; the base APK alone may not install", q(t.pkg), splits)
+		ui.Warn("%s also has %s, so the base APK alone may not install", q(t.pkg), ui.Plural(splits, "split APK"))
 		ui.Hint("List them with 'adb -s %s shell pm path %s', pull each, and install them together with 'adb install-multiple'", serial, t.pkg)
 	}
 	return nil
 }
 
-// elapsed formats the time since start like "3.2s".
-func elapsed(start time.Time) string {
-	return strconv.FormatFloat(time.Since(start).Seconds(), 'f', 1, 64) + "s"
-}
+// elapsed formats the time since start like "3.2s" or "120ms" (ui.Duration).
+func elapsed(start time.Time) string { return ui.Duration(time.Since(start)) }

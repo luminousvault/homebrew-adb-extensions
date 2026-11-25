@@ -86,11 +86,12 @@ func runScreenshot(c *Ctx) error {
 		if err != nil {
 			return err
 		}
-		sp := ui.Spin("Capturing %s", deviceName(s))
+		start := time.Now()
+		sp := ui.Spin("Capturing the screen on %s", deviceName(s))
 		data, err := adb.Output("-s", s, "exec-out", "screencap", "-p")
 		sp.Stop()
 		if err != nil || !bytes.HasPrefix(data, pngMagic) {
-			ui.Errorf("Couldn't capture the screen of %s", deviceName(s))
+			ui.Errorf("Couldn't capture the screen on %s", deviceName(s))
 			if len(data) > 0 && !bytes.HasPrefix(data, pngMagic) {
 				ui.Detail("%s", strings.TrimSpace(string(data[:min(len(data), 300)])))
 			}
@@ -98,25 +99,26 @@ func runScreenshot(c *Ctx) error {
 			continue
 		}
 		if screenOff(s) {
-			ui.Warn("The screen of %s is off; the image may be black", deviceName(s))
+			ui.Warn("The screen of %s is off, so the image may be black", deviceName(s))
 			ui.Hint("%s", wakeHint(s))
 		}
-		meta := ui.Err.Dim("(" + deviceName(s) + ", " + files.HumanSize(int64(len(data))) + ")")
+		meta := ui.Err.Dim("(" + deviceName(s) + ", " + files.HumanSize(int64(len(data))) + ", " + elapsed(start) + ")")
 		if save {
 			if err := os.WriteFile(path, data, 0o644); err != nil {
 				ui.Errorf("Couldn't save %s: %v", q(path), err)
 				failed = true
 				continue
 			}
-			ui.Success("Saved %s %s", q(path), meta)
-			ui.Out.Println(path)
+			abs, shown := savedPath(path)
+			ui.Success("Saved %s %s", q(shown), meta)
+			ui.Out.Println(abs)
 		}
 		if copyImg {
 			if err := copyScreenshot(path, data, save); err != nil {
 				ui.Errorf("Couldn't copy the screenshot to the clipboard: %v", err)
 				failed = true
-			} else if save {
-				ui.Success("Copied to the clipboard")
+			} else if save { // "Saved" above already gave the device, size and time
+				ui.Success("Copied the screenshot to the clipboard")
 			} else {
 				ui.Success("Copied the screenshot to the clipboard %s", meta)
 			}

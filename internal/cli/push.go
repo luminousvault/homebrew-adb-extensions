@@ -55,11 +55,11 @@ func pushArgs(args []string) ([]localFile, error) {
 		st, err := os.Stat(a)
 		switch {
 		case err != nil:
-			return nil, failErr("Check the path, or run 'ak push' without files to pick from the current directory", "No such file: %s", q(a))
+			return nil, failErr("Check the path, or run 'ak push' without files to pick from the current directory", "%s was not found", q(a))
 		case st.IsDir():
-			return nil, failErr("Pass the files inside it instead, e.g. ak push "+shellArg(a)+"/*", "%s is a directory; ak push copies files only", q(a))
+			return nil, failErr("Pass the files inside it instead, e.g. ak push "+shellArg(a)+"/*", "%s is a directory, and ak push copies files only", q(a))
 		case !st.Mode().IsRegular():
-			return nil, failErr("", "Not a regular file: %s", q(a))
+			return nil, failErr("Pass regular files only", "%s is not a regular file", q(a))
 		}
 		files = append(files, localFile{a, st.Size()})
 	}
@@ -140,7 +140,7 @@ func runPush(c *Ctx) error {
 	}
 	if failed > 0 {
 		if total := len(list) * len(serials); total > 1 {
-			ui.Errorf("%d of %d files failed", failed, total)
+			ui.Errorf("Couldn't push %d of %s", failed, ui.Plural(total, "file"))
 		}
 		return errReported
 	}
@@ -171,12 +171,12 @@ func pushTo(s string, list []localFile, dest string) int {
 		ui.Step("Created %s on %s", q(dest), name)
 	case strings.TrimSpace(out) == "ak:notdir":
 		ui.Errorf("%s on %s is not a directory", q(dest), name)
-		ui.Hint("Push into a directory with -d")
+		ui.Hint("Pass -d with a directory to push into")
 		return len(list)
 	default:
 		ui.Errorf("Couldn't list %s on %s", q(dest), name)
 		ui.Detail("%s", strings.TrimSpace(out))
-		ui.Hint("Without its file names ak could overwrite them; push somewhere else with -d")
+		ui.Hint("Pass -d with another directory, so no file there is overwritten")
 		return len(list)
 	}
 	sdk, _ := strconv.Atoi(deviceProps(s)["ro.build.version.sdk"])
@@ -188,9 +188,6 @@ func pushTo(s string, list []localFile, dest string) int {
 		target := files.UniqueName(base, false, func(n string) bool { _, ok := used[files.FoldName(n)]; return ok })
 		there := used[files.FoldName(base)]
 		used[files.FoldName(target)] = target
-		if target != base {
-			ui.Warn("%s already exists on %s, pushing as %s", q(path.Join(dest, there)), name, q(target))
-		}
 		remote := path.Join(dest, target)
 		start := time.Now()
 		sp := ui.Spin("Pushing %s to %s", q(base), name)
@@ -207,17 +204,21 @@ func pushTo(s string, list []localFile, dest string) int {
 			continue
 		}
 		ok++
+		if target != base { // after the step's "==>" line, before its result
+			ui.Warn("%s already exists on %s, pushing as %s", q(path.Join(dest, there)), name, q(target))
+		}
 		// From Android 11 (API 30) writes go through FUSE and MediaStore sees them at once.
 		if sdk > 0 && sdk < 30 {
 			uri := (&url.URL{Scheme: "file", Path: remote}).String()
 			scan := adb.Shell(s, "am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "+files.ShellQuote(uri))
 			debuglog.Logf("media scan %s: %s", uri, strings.TrimSpace(scan))
 		}
-		ui.Success("Pushed %s to %s:%s %s", q(f.path), name, remote,
-			ui.Err.Dim("("+files.HumanSize(f.size)+", "+elapsed(start)+")"))
+		ui.Success("Pushed %s to %s %s", q(f.path), q(remote),
+			ui.Err.Dim("("+name+", "+files.HumanSize(f.size)+", "+elapsed(start)+")"))
+		ui.Out.Println(remote)
 	}
 	if ok > 1 {
-		ui.Success("Pushed %d files to %s:%s", ok, name, dest)
+		ui.Success("Pushed %s to %s on %s", ui.Plural(ok, "file"), q(dest), name)
 	}
 	return failed
 }

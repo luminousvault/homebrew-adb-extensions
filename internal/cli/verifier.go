@@ -31,7 +31,7 @@ func runVerifier(c *Ctx) error {
 	if len(c.Args) == 1 {
 		action = c.Args[0]
 		if action != "on" && action != "off" {
-			return usageErr(c.Cmd, "Expected 'on' or 'off': %s", action)
+			return usageErr(c.Cmd, "Unknown argument %s (use on or off)", q(action))
 		}
 	}
 	serials, err := c.Devices()

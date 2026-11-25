@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/luminousvault/homebrew-adb-extensions/internal/adb/adbtest"
+	"github.com/luminousvault/homebrew-adb-extensions/internal/files"
 	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
@@ -81,14 +82,14 @@ func TestScreenshotSavesPNGAndPrintsPath(t *testing.T) {
 	png := string(pngMagic) + "rest-of-image"
 	f.Responses["-s "+serial+" exec-out screencap -p"] = adbtest.Response{Stdout: png}
 	r := ak(t, f, "screenshot", "shot.png")
-	if r.code != 0 || r.out != "shot.png\n" || !strings.HasPrefix(r.err, "==> Capturing Google Pixel 9 Pro\n✓ Saved 'shot.png'") {
+	if r.code != 0 || r.out != absIn(t, "shot.png")+"\n" || !strings.HasPrefix(r.err, "==> Capturing the screen on Google Pixel 9 Pro\n✓ Saved '"+tildeHome(absIn(t, "shot.png"))+"'") {
 		t.Fatalf("code %d out %q err %q", r.code, r.out, r.err)
 	}
 	if b, _ := os.ReadFile("shot.png"); string(b) != png {
 		t.Error("file content")
 	}
 	f.Responses["-s "+serial+" exec-out screencap -p"] = adbtest.Response{Stdout: "screencap: permission denied"}
-	if r := ak(t, f, "screenshot", "bad.png"); r.code != 1 || !strings.Contains(r.err, "Error: Couldn't capture the screen of Google Pixel 9 Pro\n  screencap: permission denied") {
+	if r := ak(t, f, "screenshot", "bad.png"); r.code != 1 || !strings.Contains(r.err, "Error: Couldn't capture the screen on Google Pixel 9 Pro\n  screencap: permission denied") {
 		t.Errorf("bad capture: %d %q", r.code, r.err)
 	}
 }
@@ -105,7 +106,7 @@ func TestRestartRepeat(t *testing.T) {
 }
 
 func TestWifiArgs(t *testing.T) {
-	if r := ak(t, baseFake(), "wifi", "on"); r.code != 2 || !strings.Contains(r.err, "Unknown argument: on") {
+	if r := ak(t, baseFake(), "wifi", "on"); r.code != 2 || !strings.Contains(r.err, "Unknown argument 'on' (use off)\nHint: Run 'ak wifi --help' to see the options") {
 		t.Errorf("%d %q", r.code, r.err)
 	}
 	if r := ak(t, baseFake(), "wifi", "off"); r.code != 0 || !strings.Contains(r.err, "No devices connected over Wi-Fi") {
@@ -182,13 +183,13 @@ func TestScreenshotCopy(t *testing.T) {
 
 	copied = nil
 	r = ak(t, f, "screenshot", "-c", "shot.png")
-	if r.code != 0 || r.out != "shot.png\n" || len(copied) != 1 || copied[0] != "shot.png" || !strings.Contains(r.err, "✓ Copied to the clipboard") {
+	if r.code != 0 || r.out != absIn(t, "shot.png")+"\n" || len(copied) != 1 || copied[0] != "shot.png" || !strings.Contains(r.err, "✓ Copied the screenshot to the clipboard\n") {
 		t.Errorf("-c with a file: code %d out %q copied %v\n%s", r.code, r.out, copied, r.err)
 	}
 
 	copied, opened = nil, nil
 	r = ak(t, f, "screenshot", "-co")
-	if r.code != 0 || len(copied) != 1 || len(opened) != 1 || copied[0] != opened[0] || strings.TrimSpace(r.out) != opened[0] {
+	if r.code != 0 || len(copied) != 1 || len(opened) != 1 || copied[0] != opened[0] || strings.TrimSpace(r.out) != absIn(t, opened[0]) {
 		t.Errorf("-c -o: code %d out %q copied %v opened %v", r.code, r.out, copied, opened)
 	}
 
@@ -406,5 +407,103 @@ func TestForegroundTaskPrefersResumed(t *testing.T) {
 	}
 	if got := foregroundTask("    * Hist  #0: ActivityRecord{2 u0 com.example.app/.Main t5}\n"); got != "5" {
 		t.Errorf("fallback: %q", got)
+	}
+}
+
+// Output rules (docs/dev/cli-design.md §3, §8): a "==>" title naming the
+// target, stdout that names it in its first row, "-"/yes/no in text, "No …"
+// for an empty result, and the saved path on stdout.
+func TestOutputNamesTheTarget(t *testing.T) {
+	f := baseFake()
+	f.Responses["-s "+serial+" shell cmd package resolve-activity --brief com.example.app"] = adbtest.Response{Stdout: "priority=0\ncom.example.app/.Main\n"}
+	f.Responses["-s "+serial+" shell am force-stop com.example.app"] = adbtest.Response{}
+	f.Responses["-s "+serial+" shell am start -W --user 0 -n com.example.app/.Main"] = adbtest.Response{Stdout: "Status: ok\nLaunchState: COLD\nTotalTime: 400\nWaitTime: 410\n"}
+
+	r := ak(t, f, "restart")
+	if r.code != 0 || !strings.HasPrefix(r.out, "  package      com.example.app\n  activity     com.example.app/.Main\n") ||
+		!strings.Contains(r.err, "✓ Restarted on Google Pixel 9 Pro (foreground app)\n") {
+		t.Errorf("restart: code %d\n%s\n%s", r.code, r.out, r.err)
+	}
+	r = ak(t, f, "restart", "-r", "2")
+	if r.code != 0 || !strings.HasPrefix(r.out, "  package   com.example.app\n  activity  com.example.app/.Main\n\nRUN") {
+		t.Errorf("restart -r: code %d\n%s", r.code, r.out)
+	}
+	for _, cmd := range [][]string{{"restart", "--json"}, {"info", "--json"}, {"permissions", "--json"}} {
+		r = ak(t, f, cmd...)
+		if !strings.Contains(r.out, `"serial": "`+serial+`"`) || !strings.Contains(r.out, `"device": "Google Pixel 9 Pro"`) {
+			t.Errorf("%v: no serial/device in %s", cmd, r.out)
+		}
+	}
+
+	r = ak(t, f, "kill")
+	if r.err != "✓ Stopped 'com.example.app' (foreground app) on Google Pixel 9 Pro\n" {
+		t.Errorf("kill: %q", r.err)
+	}
+	r = ak(t, f, "activities")
+	if !strings.HasPrefix(r.err, "==> Activity stack on Google Pixel 9 Pro\n") {
+		t.Errorf("activities: %q", r.err)
+	}
+
+	f.Responses["-s "+serial+" shell dumpsys package com.example.app"] = adbtest.Response{Stdout: "  Package [com.example.app] (1):\n"}
+	r = ak(t, f, "permissions", "com.example.app")
+	if r.code != 0 || r.out != "" || r.err != "==> Granted permissions of 'com.example.app' on Google Pixel 9 Pro\n  No granted permissions\n" {
+		t.Errorf("no permissions: code %d out %q err %q", r.code, r.out, r.err)
+	}
+}
+
+func TestSignaturePrintsSubjectFirst(t *testing.T) {
+	apkFile, err := filepath.Abs("../apk/testdata/aktest.apk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := ak(t, baseFake(), "signature", apkFile)
+	if want := "  file  " + absPath(apkFile) + "\n\nSigner #1\n"; r.code != 0 || !strings.HasPrefix(r.out, want) {
+		t.Errorf("code %d stdout:\n%s\nwant prefix:\n%s\nstderr %s", r.code, r.out, want, r.err)
+	}
+	if !strings.HasPrefix(r.err, "==> Signature of the APK file\n") { // stdout's file row names it
+		t.Errorf("stderr %q", r.err)
+	}
+	resetDeviceCache()
+	propsCache[serial] = map[string]string{"ro.product.brand": "google", "ro.product.model": "Pixel 9 Pro"}
+	fg := signatureTarget{pkg: "com.example.app", serial: serial, foreground: true}
+	if got := fg.describe(); got != "'com.example.app' (foreground app) on Google Pixel 9 Pro" {
+		t.Errorf("describe %q", got)
+	}
+	if got := fg.subject(); got != "on Google Pixel 9 Pro (foreground app)" {
+		t.Errorf("subject %q", got)
+	}
+}
+
+// absIn is p from the current directory, as saved paths are printed on stdout.
+func absIn(t *testing.T, p string) string {
+	t.Helper()
+	a, err := filepath.Abs(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+func TestSavedPathsOnStdout(t *testing.T) {
+	dest := t.TempDir()
+	f := baseFake()
+	f.Responses["-s "+serial+" shell "+files.RecentFilesQuery] = adbtest.Response{
+		Stdout: "Row: 0 _data=/storage/emulated/0/Download/report.pdf, date_modified=2, _size=2048\n"}
+	local := filepath.Join(dest, "report.pdf")
+	f.Responses["-s "+serial+" pull /storage/emulated/0/Download/report.pdf "+local] = adbtest.Response{}
+	r := ak(t, f, "pull", dest, "-l")
+	if r.code != 0 || r.out != local+"\n" || !strings.Contains(r.err, "✓ Pulled '"+tildeHome(local)+"' (Google Pixel 9 Pro, 2 KB, ") {
+		t.Errorf("pull: code %d out %q err %q", r.code, r.out, r.err)
+	}
+
+	t.Chdir(t.TempDir())
+	f = baseFake()
+	f.Responses["-s "+serial+" shell pm path com.example.app"] = adbtest.Response{Stdout: "package:/data/app/base.apk\n"}
+	f.Responses["-s "+serial+" pull /data/app/base.apk com.example.app.apk"] = adbtest.Response{}
+	r = ak(t, f, "extract")
+	apk := absIn(t, "com.example.app.apk")
+	if r.code != 0 || r.out != apk+"\n" ||
+		!strings.Contains(r.err, "==> Extracting 'com.example.app' (foreground app) on Google Pixel 9 Pro\n✓ Saved '"+tildeHome(apk)+"' (Google Pixel 9 Pro, ") {
+		t.Errorf("extract: code %d out %q err %q", r.code, r.out, r.err)
 	}
 }

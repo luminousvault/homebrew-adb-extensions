@@ -28,14 +28,14 @@ type Options struct {
 // Summary is what ak files did, for stderr after the screen closes
 // (files-design.md §8).
 type Summary struct {
-	Done     []string   // "Pulled 3 files from Pixel → ~/Downloads"
+	Done     []string   // "Pulled 3 files from Pixel to '~/Downloads'"
 	Items    [][]string // per Done line: the names it covers when there are several, else nil
-	Canceled []string   // "Canceled pulling from Pixel → ~/Downloads: 1 of 3 pulled"
-	Failed   []string   // "Couldn't pull 'a.txt' from Pixel → ~/Downloads: <reason>"
+	Canceled []string   // "Canceled pulling from Pixel to '~/Downloads': 1 of 3 pulled"
+	Failed   []string   // "Couldn't pull 'a.txt' from Pixel to '~/Downloads': <reason>"
 }
 
-// Print writes the summary to stderr: ✓ lines, Warning: lines for
-// canceled pushes and pulls, then Error: lines.
+// Print writes the summary to stderr: ✓ lines, Warning: lines for jobs
+// canceled part way (left incomplete), then Error: lines.
 func (s Summary) Print() {
 	for i, d := range s.Done {
 		ui.Success("%s", d)
@@ -59,7 +59,7 @@ const summaryItemRows = 2
 // printItems lists names under a summary line, dim, side by side over at most
 // summaryItemRows rows, joined to it with ├─ and └─:
 //
-//	✓ Copied 9 files to Pixel:/sdcard/Download
+//	✓ Copied 9 files to '/sdcard/Download' on Pixel
 //	  ├─ b1.png  b2.png  b3.png  c.mp4  c.png
 //	  └─ cold2.mp4  dda.png  deck.mp4  dual.png
 func printItems(items []string) {

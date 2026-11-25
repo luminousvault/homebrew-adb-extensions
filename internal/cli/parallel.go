@@ -87,7 +87,7 @@ func (r *jobReporter) emit(k ui.Kind, m say) {
 }
 
 // joinWarnings puts warnings about one APK on one line:
-// "Older than the installed version, retrying with -d; downgrade not allowed ...".
+// "Older than the installed version, retrying with -d; downgrade not allowed …".
 func joinWarnings(a, b string) string {
 	if a == "" {
 		return b
@@ -101,7 +101,7 @@ func joinWarnings(a, b string) string {
 func (r *jobReporter) progress(m say) {
 	word, _, _ := strings.Cut(m.full, " ")
 	r.j.with(func() {
-		r.j.activity = word + "..."
+		r.j.activity = word + "…"
 		r.j.stepStart = time.Now()
 	})
 	if r.live {
@@ -175,7 +175,7 @@ func runJob(j *installJob, opts []string, live bool) {
 		if installStop.Load() {
 			break // Ctrl+C: do not start the next APK
 		}
-		j.with(func() { j.idx, j.activity, j.reason = i, "Installing...", "" })
+		j.with(func() { j.idx, j.activity, j.reason = i, "Installing…", "" })
 		ok := installOne(r, j.serial, opts, f)
 		j.with(func() {
 			if ok {
@@ -216,7 +216,10 @@ func boardLines(jobs []*installJob, frame int) []string {
 	var lines []string
 	for _, j := range jobs {
 		j.mu.Lock()
-		apk := fmt.Sprintf("[%d/%d] %s", j.idx+1, len(j.files), ui.Pad(filepath.Base(j.files[j.idx]), apkW))
+		apk := ui.Pad(filepath.Base(j.files[j.idx]), apkW)
+		if len(j.files) > 1 {
+			apk = fmt.Sprintf("(%d/%d) %s", j.idx+1, len(j.files), apk)
+		}
 		var icon, status string
 		switch {
 		case j.interrupted:
@@ -231,7 +234,7 @@ func boardLines(jobs []*installJob, frame int) []string {
 		case j.state == jobFailed && j.skipped:
 			icon, status = e.Yellow("–"), e.Yellow("Skipped")
 		case j.state == jobDone:
-			icon, status = e.Green("✓"), "Done "+e.Dim(fmt.Sprintf("(%.1fs)", j.took.Seconds()))
+			icon, status = e.Green("✓"), "Done "+e.Dim("("+ui.Duration(j.took)+")")
 		default:
 			icon, status = e.Red("✗"), e.Red("Failed")
 		}
@@ -248,7 +251,7 @@ func installParallel(devices, files []string, opts []string) error {
 		jobs[i] = &installJob{serial: d, name: deviceName(d), files: files, answer: make(chan string),
 			results: make([]int8, len(files)), notes: make([]string, len(files)), start: time.Now()}
 	}
-	ui.Step("Installing %d APK(s) on %d devices", len(files), len(devices))
+	ui.Step("Installing %s on %s", ui.Plural(len(files), "APK"), ui.Plural(len(devices), "device"))
 
 	var wg sync.WaitGroup
 	for _, j := range jobs {
@@ -379,14 +382,14 @@ func askWaiting(jobs []*installJob, applyAll *bool) bool {
 			continue
 		}
 		j.mu.Lock()
-		apk, reason, q := filepath.Base(j.files[j.idx]), j.reason, j.question
+		apk, reason, question := filepath.Base(j.files[j.idx]), j.reason, j.question
 		j.mu.Unlock()
 		ui.Err.Println("")
-		ui.Err.Println(ui.Err.Bold(j.name) + " — " + apk)
+		ui.Err.Println(ui.Err.Bold(j.name) + " " + ui.Err.Dim("("+j.serial+")") + " — " + q(apk))
 		if reason != "" {
 			ui.Err.Println("  " + ui.Line(ui.KindWarn, reason))
 		}
-		k, err := ui.Choose("  "+q, "(a: yes for every device)", "y", "n", "a")
+		k, err := ui.Choose("  "+question, "(a: yes for every device)", "y", "n", "a")
 		if err != nil {
 			for _, rest := range waitingJobs(jobs) {
 				answer(rest, "interrupt")
@@ -438,13 +441,14 @@ func finishParallel(jobs []*installJob, board, interrupted bool) error {
 	}
 	switch {
 	case interrupted:
-		ui.Errorf("Interrupted; installs that were running may be incomplete")
+		// Exit 130 prints nothing (report); what Ctrl+C left behind is a warning.
+		ui.Warn("Interrupted; installs that were running may be incomplete")
 		return ui.ErrInterrupted
 	case failed > 0:
-		ui.Errorf("%d of %d devices failed", failed, len(jobs))
+		ui.Errorf("Couldn't install on %d of %s", failed, ui.Plural(len(jobs), "device"))
 		return errReported
 	}
-	ui.Success("Installed on %d devices", len(jobs))
+	ui.Success("Installed on %s", ui.Plural(len(jobs), "device"))
 	return nil
 }
 
@@ -509,7 +513,7 @@ func summaryLines(jobs []*installJob, get func(int) ([]int8, []string, bool)) []
 //	  app.apk
 //	    Warning: Older than the installed version, retrying with -d; downgrade not allowed without uninstalling
 //	    ✓ Installed (24.9s), after uninstalling 'com.example.app' (its data was removed)
-//	  ✓ 4 other APK(s) installed
+//	  ✓ 4 other APKs installed
 //
 // APKs without trouble are only counted on the last line, so the block does
 // not read as if the device stopped after the APK shown.
@@ -560,10 +564,10 @@ func detailLines(j *installJob, msgs []jobMsg, results []int8) []string {
 		}
 	}
 	if installed > 0 {
-		lines = append(lines, "  "+ui.Line(ui.KindSuccess, fmt.Sprintf("%d other APK(s) installed", installed)))
+		lines = append(lines, "  "+ui.Line(ui.KindSuccess, ui.Plural(installed, "other APK")+" installed"))
 	}
 	if notRun > 0 {
-		lines = append(lines, "  "+ui.Err.Dim(fmt.Sprintf("– %d other APK(s) not installed", notRun)))
+		lines = append(lines, "  "+ui.Err.Dim("– "+ui.Plural(notRun, "other APK")+" not installed"))
 	}
 	return lines
 }

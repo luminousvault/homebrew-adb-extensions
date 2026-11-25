@@ -8,9 +8,12 @@
 package files
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 // Side is where a pane's files live.
@@ -161,11 +164,11 @@ func UniqueName(name string, dir bool, taken func(string) bool) string {
 func validName(name string) error {
 	switch {
 	case strings.TrimSpace(name) == "":
-		return fmt.Errorf("name is empty")
+		return errors.New("the name is empty")
 	case strings.ContainsAny(name, "/\n") || (strings.Contains(name, `\`) && isWindows):
-		return fmt.Errorf("name can't contain '/'")
+		return fmt.Errorf("%s contains '/'", ui.Quote(name))
 	case name == "." || name == "..":
-		return fmt.Errorf("%q is not a valid name", name)
+		return fmt.Errorf("%s is not a valid name", ui.Quote(name))
 	}
 	return nil
 }
