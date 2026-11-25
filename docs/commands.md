@@ -12,7 +12,7 @@ Usage: `ak <command> [options] [arguments]`. Options may come before or after ar
 - **App:** [info](#ak-info), [permissions](#ak-permissions), [launch](#ak-launch), [kill](#ak-kill), [clear](#ak-clear), [uninstall](#ak-uninstall), [restart](#ak-restart), [activities](#ak-activities), [logcat](#ak-logcat)
 - **Screen:** [screenshot](#ak-screenshot), [record](#ak-record)
 - **Files:** [pull](#ak-pull), [push](#ak-push), [files](#ak-files)
-- **Device:** [devices](#ak-devices), [mac](#ak-mac), [wifi](#ak-wifi)
+- **Device:** [devices](#ak-devices), [sysinfo](#ak-sysinfo), [wifi](#ak-wifi)
 - **Setup:** [doctor](#ak-doctor), [completion](#ak-completion)
 - [Global options](#global-options)
 
@@ -649,18 +649,21 @@ ak devices
 ak devices --json
 ```
 
-## ak mac
+## ak sysinfo
 
-Show device MAC addresses.
+Show device details and identifiers (IMEI, MAC, Android ID).
 
 ```
-ak mac [options]
+ak sysinfo [options]
 ```
 
-Show the MAC addresses of a device.
-  Wi-Fi (current)  MAC of the current connection (per network, may be randomized)
-  Wi-Fi (factory)  The device's own Wi-Fi MAC, if exposed (also when Wi-Fi is off)
-  Bluetooth        Bluetooth MAC
+Show a device's "About phone" details in one place:
+  Device       Model, manufacturer and the name set on the device
+  Software     Android version, security patch and build
+  Identifiers  Serial number, IMEI (and the second IMEI on dual-SIM devices), Android ID
+  Network      Wi-Fi IP address and MAC addresses
+  Hardware     CPU ABI and screen size
+Values the device doesn't expose are shown as n/a (null in JSON).
 
 **Options**
 
@@ -674,9 +677,9 @@ Show the MAC addresses of a device.
 **Examples**
 
 ```bash
-ak mac
-ak mac --all
-ak mac --json
+ak sysinfo
+ak sysinfo --all
+ak sysinfo --json | jq '.[].imei'
 ```
 
 ## ak wifi

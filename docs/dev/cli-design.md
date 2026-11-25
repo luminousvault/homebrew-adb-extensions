@@ -154,7 +154,7 @@ Examples:                                      ← Examples (없으면 생략)
 - 여러 단어인 머리글은 밑줄로 잇습니다(`PLAY_PROTECT_SCAN`). 띄어 쓰면 열이 나뉜 것처럼 보입니다.
 - 폭 계산은 `ui.TextWidth`, 맞춤은 `ui.Pad`를 씁니다. 한글·CJK·이모지는 2칸이라 `len`이나 `%-*s`로는 열이 어긋납니다.
 - 키-값 목록은 `ui.KeyValues`(`  key  value`).
-- `--json`: `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `restart`, `doctor`. stdout에는 JSON만 나갑니다(`ui.JSON`, 2칸 들여쓰기, HTML 이스케이프 없음).
+- `--json`: `devices`, `info`, `permissions`, `signature`, `sysinfo`, `mac`, `activities`, `restart`, `doctor`. stdout에는 JSON만 나갑니다(`ui.JSON`, 2칸 들여쓰기, HTML 이스케이프 없음).
 - JSON 키는 camelCase이고, 버전 사이에 이름과 구조를 유지합니다. `--json`이어도 종료 코드는 텍스트 출력과 같습니다.
 
 ## 9. 진행 표시

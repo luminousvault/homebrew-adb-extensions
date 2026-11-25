@@ -6,9 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - `info`: more rows from the same `dumpsys package`: `system`, `enabled` (`yes`, `no`, `no (by user)`, `no (until used)`), `installed` and `updated` times, `path` (with `(+N splits)` for split APKs), `uid`, and `pid` while the app is running. For an updated system app the values come from the current package, not the hidden system one. `--json` adds `system`, `enabled`, `firstInstallTime`, `lastUpdateTime`, `path`, `splits`, `uid` and `pid`; existing keys are unchanged
+- `ak sysinfo`: a device's "About phone" in one place: model, manufacturer and device name; Android version, API level, security patch and build; serial, IMEI (and the second IMEI on dual-SIM devices), Android ID; Wi-Fi IP, Wi-Fi and Bluetooth MACs; CPU ABI and screen size (with the size and density in use when changed). Values a device doesn't expose are `n/a`, and a hint shows how to open `*#06#` when the IMEI can't be read. `-s` repeated or `-a` for several devices; `--json` prints one object, or an array for several devices
 
 ### Changed
 - `info`: the package name is now the first line of the result, so it stays when messages are hidden (`2>/dev/null`), and the title says only whether it is the foreground app and on which device. versionName and versionCode are shown together as `version`, SDK levels get their Android version (`34 (Android 14)`), and `installerPackageName` is now `installer`, as in `--json` (`--json` is unchanged)
+- `mac` is hidden from the help and Tab completion; its MACs are now part of `ak sysinfo`. `ak mac` still works with the same output
 
 ## [2.4.1] - 2026-11-20
 

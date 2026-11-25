@@ -99,10 +99,10 @@ Hint: Use -s <serial> or set ANDROID_SERIAL
 ```bash
 ak info -s emulator-5554
 export ANDROID_SERIAL=emulator-5554      # default device, as with adb
-ak install -a app.apk                    # install, mac, screenshot: every device
+ak install -a app.apk                    # install, screenshot, sysinfo: every device
 ```
 
-`ak devices` lists the serials. `install`, `mac` and `screenshot` accept `-s` more than once.
+`ak devices` lists the serials. `install`, `screenshot` and `sysinfo` accept `-s` more than once.
 
 ## Install takes long or shows "(check the device screen)"
 

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1172,5 +1173,182 @@ func TestRecordClock(t *testing.T) {
 	}
 	if got := recordClock(65, 180); got != "1:05 / 3:00" {
 		t.Errorf("limit: %q", got)
+	}
+}
+
+// Made-up, Luhn-valid IMEIs (not from a real device).
+const (
+	fakeIMEI  = "490154203237518"
+	fakeIMEI2 = "356938035643809"
+)
+
+// parcelDump formats s the way `service call` prints a String16 reply.
+func parcelDump(s string) string {
+	words := []uint32{0, uint32(len(s))}
+	for i := 0; i < len(s); i += 2 {
+		w := uint32(s[i])
+		if i+1 < len(s) {
+			w |= uint32(s[i+1]) << 16
+		}
+		words = append(words, w)
+	}
+	var b strings.Builder
+	b.WriteString("Result: Parcel(\n")
+	for i := 0; i < len(words); i += 4 {
+		fmt.Fprintf(&b, "0x%08x:", i*4)
+		for _, w := range words[i:min(i+4, len(words))] {
+			fmt.Fprintf(&b, " %08x", w)
+		}
+		b.WriteString(" '................'\n")
+	}
+	return strings.TrimSuffix(b.String(), "\n") + ")\n"
+}
+
+func TestParseParcelString(t *testing.T) {
+	if got := parseParcelString(parcelDump(fakeIMEI)); got != fakeIMEI {
+		t.Errorf("got %q", got)
+	}
+	exception := "Result: Parcel(\n0x00000000: fffffffe 0000002f 00610050 00630072 '..../...P.a.r.c.'\n" +
+		"0x00000010: 006c0065 00640020 00740061 00200061 'e.l. .d.a.t.a. .')\n"
+	for _, out := range []string{
+		exception,
+		"Result: Parcel(\t00000000 ffffffff   '........')\n",                    // null string
+		"Result: Parcel(\n0x00000000: 00000000 0000000f 00350033 '....3.5.')\n", // truncated
+		"Service iphonesubinfo does not exist\n",
+		"",
+	} {
+		if got := parseParcelString(out); got != "" {
+			t.Errorf("%q: got %q", out, got)
+		}
+	}
+}
+
+func TestValidIMEI(t *testing.T) {
+	for s, want := range map[string]bool{
+		fakeIMEI: true, fakeIMEI2: true, "490154203237519": false, "49015420323751": false,
+		"49015420323751a": false, "": false,
+	} {
+		if validIMEI(s) != want {
+			t.Errorf("%q: want %v", s, want)
+		}
+	}
+}
+
+func sysinfoFake(dev string) *adbtest.Fake {
+	f := baseFake()
+	if dev != serial {
+		f = twoDevices()
+	}
+	for _, d := range []string{serial, "SECOND"} {
+		p := "-s " + d + " shell "
+		f.Responses[p+"getprop"] = adbtest.Response{Stdout: getpropOut +
+			"[ro.product.manufacturer]: [Google]\n[ro.build.version.security_patch]: [2025-01-05]\n" +
+			"[ro.build.display.id]: [BP1A.250105.001]\n[ro.serialno]: [HWSERIAL01]\n"}
+		f.Responses[p+"settings get global device_name"] = adbtest.Response{Stdout: "Test Phone\n"}
+		f.Responses[p+"settings get secure android_id"] = adbtest.Response{Stdout: "0123456789abcdef\n"}
+		f.Responses[p+"service call iphonesubinfo 1 s16 com.android.shell"] = adbtest.Response{Stdout: parcelDump(fakeIMEI)}
+		f.Responses[p+"service call iphonesubinfo 4 i32 1 s16 com.android.shell"] = adbtest.Response{Stdout: parcelDump(fakeIMEI2)}
+		f.Responses[p+"ip -f inet addr show wlan0"] = adbtest.Response{Stdout: "    inet 192.168.0.10/24 brd 192.168.0.255 scope global wlan0\n"}
+		f.Responses[p+"getprop ro.build.version.sdk"] = adbtest.Response{Stdout: "36\n"}
+		f.Responses[p+"cmd wifi status 2>/dev/null"] = adbtest.Response{Stdout: "WifiInfo: SSID: \"TestNet\", MAC: ae:12:34:56:78:9a, Supplicant state: COMPLETED\n"}
+		f.Responses[p+"settings get secure bluetooth_address"] = adbtest.Response{Stdout: "A0:B1:C2:D3:E4:F5\n"}
+		f.Responses[p+"wm size; wm density"] = adbtest.Response{Stdout: "Physical size: 1440x3120\nOverride size: 1080x2340\nPhysical density: 560\n"}
+	}
+	return f
+}
+
+const sysinfoText = "Device\n  model          Pixel 9 Pro\n  manufacturer   Google\n  name           Test Phone\n" +
+	"Software\n  android        16 (API 36)\n  securityPatch  2025-01-05\n  build          BP1A.250105.001\n" +
+	"Identifiers\n  serial         HWSERIAL01\n  imei           " + fakeIMEI + "\n  imei2          " + fakeIMEI2 + "\n" +
+	"  androidId      0123456789abcdef\n" +
+	"Network\n  ip             192.168.0.10\n  wifiMac        ae:12:34:56:78:9a (randomized, SSID \"TestNet\")\n" +
+	"  wifiFactory    n/a\n  bluetooth      a0:b1:c2:d3:e4:f5\n" +
+	"Hardware\n  abi            arm64-v8a\n  screen         1440x3120, 560 dpi (in use: 1080x2340)\n"
+
+func TestSysinfoText(t *testing.T) {
+	r := ak(t, sysinfoFake(serial), "sysinfo")
+	if r.code != 0 || r.out != sysinfoText || r.err != "==> Google Pixel 9 Pro (TESTSERIAL01)\n" {
+		t.Errorf("code %d\nstdout:\n%s\nwant:\n%s\nstderr %q", r.code, r.out, sysinfoText, r.err)
+	}
+	if r := ak(t, sysinfoFake(serial), "sysinfo", "extra"); r.code != 2 {
+		t.Errorf("extra argument: code %d", r.code)
+	}
+}
+
+func TestSysinfoMissingValues(t *testing.T) {
+	f := baseFake() // getprop only: no telephony, no Wi-Fi, no settings
+	r := ak(t, f, "sysinfo")
+	for _, want := range []string{
+		"  name           n/a\n", "  android        16 (API 36)\n", "  securityPatch  n/a\n",
+		"  serial         TESTSERIAL01\n", "  imei           n/a\n  androidId      n/a\n",
+		"  wifiMac        n/a (Wi-Fi is off or not connected)\n", "  screen         n/a\n",
+	} {
+		if !strings.Contains(r.out, want) {
+			t.Errorf("missing %q in:\n%s", want, r.out)
+		}
+	}
+	if strings.Contains(r.out, "imei2") {
+		t.Error("imei2 row shown without a second IMEI")
+	}
+	if r.code != 0 || r.err != "==> Google Pixel 9 Pro (TESTSERIAL01)\nHint: "+hintIMEI+"\n" {
+		t.Errorf("code %d stderr %q", r.code, r.err)
+	}
+}
+
+func TestSysinfoIMEIFallbacks(t *testing.T) {
+	f := sysinfoFake(serial)
+	p := "-s " + serial + " shell service call iphonesubinfo "
+	// Code 1 is not getDeviceId here; slot 0 of code 4 is. Slot 1 repeats slot 0 (single SIM).
+	f.Responses[p+"1 s16 com.android.shell"] = adbtest.Response{Stdout: parcelDump("123")}
+	f.Responses[p+"4 i32 0 s16 com.android.shell"] = adbtest.Response{Stdout: parcelDump(fakeIMEI)}
+	f.Responses[p+"4 i32 1 s16 com.android.shell"] = adbtest.Response{Stdout: parcelDump(fakeIMEI)}
+	r := ak(t, f, "sysinfo")
+	if !strings.Contains(r.out, "  imei           "+fakeIMEI+"\n  androidId") {
+		t.Errorf("stdout:\n%s", r.out)
+	}
+}
+
+func TestSysinfoJSON(t *testing.T) {
+	r := ak(t, sysinfoFake(serial), "sysinfo", "--json")
+	var arr []map[string]any
+	if err := json.Unmarshal([]byte(r.out), &arr); err != nil || len(arr) != 1 {
+		t.Fatalf("want a one-element array: %v: %s", err, r.out)
+	}
+	got := arr[0]
+	want := map[string]any{
+		"serial": serial, "device": "Google Pixel 9 Pro", "model": "Pixel 9 Pro", "manufacturer": "Google",
+		"name": "Test Phone", "android": "16", "api": 36.0, "securityPatch": "2025-01-05", "build": "BP1A.250105.001",
+		"hardwareSerial": "HWSERIAL01", "imei": fakeIMEI, "imei2": fakeIMEI2, "androidId": "0123456789abcdef",
+		"ip": "192.168.0.10", "wifiMac": "ae:12:34:56:78:9a", "wifiSsid": "TestNet", "wifiRandomized": true,
+		"wifiFactory": nil, "bluetooth": "a0:b1:c2:d3:e4:f5", "abi": "arm64-v8a",
+		"screen": map[string]any{"width": 1440.0, "height": 3120.0, "density": 560.0},
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("got  %v\nwant %v", got, want)
+	}
+	if r := ak(t, baseFake(), "sysinfo", "--json"); !strings.Contains(r.out, `"imei2": null`) || !strings.Contains(r.out, `"screen": null`) {
+		t.Errorf("missing values: %s", r.out)
+	}
+}
+
+func TestSysinfoAllDevices(t *testing.T) {
+	r := ak(t, sysinfoFake("SECOND"), "sysinfo", "--all")
+	if r.code != 0 || r.out != sysinfoText+"\n"+sysinfoText ||
+		!strings.Contains(r.err, "==> Google Pixel 9 Pro (TESTSERIAL01)\n") || !strings.Contains(r.err, "==> Google Pixel 9 Pro (SECOND)\n") {
+		t.Errorf("code %d stdout:\n%s\nstderr:\n%s", r.code, r.out, r.err)
+	}
+	r = ak(t, sysinfoFake("SECOND"), "sysinfo", "--all", "--json")
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(r.out), &got); err != nil || len(got) != 2 || got[1]["serial"] != "SECOND" {
+		t.Errorf("%v: %s", err, r.out)
+	}
+}
+
+func TestMacHidden(t *testing.T) {
+	if r := ak(t, baseFake(), "--help"); strings.Contains(r.out, " mac ") || !strings.Contains(r.out, "sysinfo") {
+		t.Errorf("global help:\n%s", r.out)
+	}
+	if strings.Contains(zshCompletion(), "'mac:") {
+		t.Error("mac in the zsh completion")
 	}
 }

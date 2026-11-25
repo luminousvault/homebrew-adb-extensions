@@ -12,7 +12,7 @@
 - **앱:** [info](#ak-info), [permissions](#ak-permissions), [launch](#ak-launch), [kill](#ak-kill), [clear](#ak-clear), [uninstall](#ak-uninstall), [restart](#ak-restart), [activities](#ak-activities), [logcat](#ak-logcat)
 - **화면:** [screenshot](#ak-screenshot), [record](#ak-record)
 - **파일:** [pull](#ak-pull), [push](#ak-push), [files](#ak-files)
-- **디바이스:** [devices](#ak-devices), [mac](#ak-mac), [wifi](#ak-wifi)
+- **디바이스:** [devices](#ak-devices), [sysinfo](#ak-sysinfo), [wifi](#ak-wifi)
 - **설정:** [doctor](#ak-doctor), [completion](#ak-completion)
 - [전역 옵션](#전역-옵션)
 
@@ -648,18 +648,21 @@ ak devices
 ak devices --json
 ```
 
-## ak mac
+## ak sysinfo
 
-디바이스 MAC 주소 보기.
+디바이스 정보와 식별자 보기 (IMEI, MAC, Android ID).
 
 ```
-ak mac [options]
+ak sysinfo [options]
 ```
 
-디바이스의 MAC 주소를 보여 줍니다.
-  Wi-Fi (current)  현재 연결의 MAC (네트워크마다 다르고 무작위일 수 있음)
-  Wi-Fi (factory)  디바이스 고유의 Wi-Fi MAC, 볼 수 있는 경우만 (Wi-Fi가 꺼져 있어도 표시)
-  Bluetooth        Bluetooth MAC
+디바이스의 "휴대전화 정보"를 한곳에 모아 보여 줍니다.
+  Device       모델, 제조사, 디바이스에 설정한 이름
+  Software     Android 버전, 보안 패치, 빌드
+  Identifiers  일련번호, IMEI (듀얼 SIM 디바이스는 두 번째 IMEI도), Android ID
+  Network      Wi-Fi IP 주소와 MAC 주소
+  Hardware     CPU ABI와 화면 크기
+디바이스가 알려 주지 않는 값은 n/a(JSON에서는 null)로 표시합니다.
 
 **옵션**
 
@@ -673,9 +676,9 @@ ak mac [options]
 **예시**
 
 ```bash
-ak mac
-ak mac --all
-ak mac --json
+ak sysinfo
+ak sysinfo --all
+ak sysinfo --json | jq '.[].imei'
 ```
 
 ## ak wifi

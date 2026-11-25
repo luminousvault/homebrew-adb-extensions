@@ -151,7 +151,7 @@ Commands, options, device serials (each with its model and Android version in zs
 | | [`activities`](docs/commands.md#ak-activities) · [`logcat`](docs/commands.md#ak-logcat) | Activity stack · logs of one or more apps |
 | Screen | [`screenshot`](docs/commands.md#ak-screenshot) · [`record`](docs/commands.md#ak-record) | PNG to a file or the clipboard · MP4 recording |
 | Files | [`pull`](docs/commands.md#ak-pull) · [`push`](docs/commands.md#ak-push) · [`files`](docs/commands.md#ak-files) | Pick recent files on the device and copy them here · copy files to the device · browse both and push, pull or delete |
-| Device | [`devices`](docs/commands.md#ak-devices) · [`mac`](docs/commands.md#ak-mac) · [`wifi`](docs/commands.md#ak-wifi) | Device list · MAC addresses · Wi-Fi debugging |
+| Device | [`devices`](docs/commands.md#ak-devices) · [`sysinfo`](docs/commands.md#ak-sysinfo) · [`wifi`](docs/commands.md#ak-wifi) | Device list · Device details and identifiers (IMEI, MAC, Android ID) · Wi-Fi debugging |
 | Setup | [`doctor`](docs/commands.md#ak-doctor) · [`completion`](docs/commands.md#ak-completion) | Check the setup · shell completion script |
 
 Every option and example is in **[docs/commands.md](docs/commands.md)**; `ak <command> --help` shows the same.
@@ -160,7 +160,7 @@ Every option and example is in **[docs/commands.md](docs/commands.md)**; `ak <co
 
 - Name the package. Without one, `info`, `kill`, `clear`, `uninstall` and the other app commands use the app on screen, and `clear` and `uninstall` do not ask first
 - Choose devices with `-s <serial>`, `ANDROID_SERIAL`, or `-a` (all). Without a terminal ak never opens a picker; it asks for `-s` instead. Files and APKs are chosen with arguments or options instead of the picker: `install -l`, `pull -l`, `pull -f <words>`
-- Results go to stdout, messages to stderr; `--json` on `devices`, `info`, `permissions`, `signature`, `mac`, `activities`, `restart` and `doctor`
+- Results go to stdout, messages to stderr; `--json` on `devices`, `info`, `permissions`, `signature`, `sysinfo`, `activities`, `restart` and `doctor`
 - Exit codes: `0` success, `1` failure (also partial), `2` usage error, `130` interrupted
 - Short options combine (`-ea` is `-e -a`) and may come before or after arguments; colors only on terminals (`NO_COLOR`, `--no-color`)
 

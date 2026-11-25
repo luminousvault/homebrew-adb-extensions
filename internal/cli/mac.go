@@ -17,7 +17,7 @@ var cmdMac = &Command{
 		"  Wi-Fi (factory)  The device's own Wi-Fi MAC, if exposed (also when Wi-Fi is off)\n" +
 		"  Bluetooth        Bluetooth MAC",
 	Examples: []string{"ak mac", "ak mac --all", "ak mac --json"},
-	Device:   manyDevices, JSON: true, Run: runMac,
+	Device:   manyDevices, JSON: true, Hidden: true, Run: runMac,
 }
 
 var (

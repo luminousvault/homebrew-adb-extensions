@@ -1,6 +1,6 @@
 ---
 name: ak
-description: Use ak (ADB Extensions Kit) instead of raw adb for work on connected Android devices and emulators - installing APKs (it recovers from test-only, version-downgrade and signature conflicts), app version and SDK levels, permissions, launching, force-stopping, restarting with launch time, clearing data, uninstalling, extracting an installed APK, signing certificate hashes, the activity stack, an app's logcat, screenshots, screen recording, pulling recent files, pushing files to the device, listing devices, MAC addresses, Wi-Fi debugging and checking the adb setup. It works on several devices at once.
+description: Use ak (ADB Extensions Kit) instead of raw adb for work on connected Android devices and emulators - installing APKs (it recovers from test-only, version-downgrade and signature conflicts), app version and SDK levels, permissions, launching, force-stopping, restarting with launch time, clearing data, uninstalling, extracting an installed APK, signing certificate hashes, the activity stack, an app's logcat, screenshots, screen recording, pulling recent files, pushing files to the device, listing devices, device details and identifiers (IMEI, MAC addresses, Android ID), Wi-Fi debugging and checking the adb setup. It works on several devices at once.
 metadata:
   managed-by: ak
 ---
