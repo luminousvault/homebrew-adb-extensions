@@ -201,7 +201,14 @@ func strOrNil(s string) any {
 
 func tooMany(c *Ctx, max int) error {
 	if len(c.Args) > max {
-		return usageErr(c.Cmd, "Too many arguments: %s", strings.Join(c.Args[max:], " "))
+		extra := make([]string, len(c.Args)-max)
+		for i, a := range c.Args[max:] {
+			extra[i] = q(a)
+		}
+		if len(extra) == 1 {
+			return usageErr(c.Cmd, "Unexpected argument %s", extra[0])
+		}
+		return usageErr(c.Cmd, "Unexpected arguments %s", strings.Join(extra, ", "))
 	}
 	return nil
 }
@@ -220,7 +227,7 @@ func runInfo(c *Ctx) error {
 	}
 	a := parseAppInfo(adb.Out("-s", serial, "shell", "dumpsys", "package", t.pkg))
 	if a.VersionName == "" || a.VersionCode == "" || a.TargetSdk == "" {
-		return failErr("", "Could not read versionName, versionCode or targetSdk of %s", q(t.pkg))
+		return failErr("", "Couldn't read versionName, versionCode or targetSdk of %s", t.describe(serial))
 	}
 	pid := parsePidof(adb.Out("-s", serial, "shell", "pidof", t.pkg))
 	if c.JSON() {
@@ -371,18 +378,19 @@ func runLaunch(c *Ctx) error {
 	if err := requirePackage(serial, pkg); err != nil {
 		return err
 	}
+	app := target{pkg: pkg}.describe(serial)
 	resolved, _ := adb.Combined("-s", serial, "shell", "cmd", "package", "resolve-activity", "--brief", pkg)
 	component := lastLine(resolved) // "No activity found" when there is none
 	if !strings.Contains(component, "/") {
-		return failErr("", "%s has no launcher activity", q(pkg))
+		return failErr("", "%s has no launcher activity", app)
 	}
 	result, _ := adb.Combined("-s", serial, "shell", "am", "start", "--user", "0", "-n", component)
 	if strings.Contains(result, "Exception occurred while executing 'start'") || strings.Contains(result, "Error:") {
-		ui.Errorf("Couldn't launch %s", q(pkg))
+		ui.Errorf("Couldn't launch %s", app)
 		ui.Detail("%s", result)
 		return errReported
 	}
-	ui.Success("Launched %s on %s", q(pkg), deviceName(serial))
+	ui.Success("Launched %s", app)
 	return nil
 }
 
@@ -429,10 +437,12 @@ func forEachPackage(c *Ctx, action func(serial, pkg, label string) bool) error {
 		case seen[pkg]:
 			ui.Warn("Skipping duplicate package %s", q(pkg))
 		case !validPackageName(pkg):
-			ui.Errorf("Invalid package name: %s", q(pkg))
+			ui.Errorf("%s is not a valid package name", q(pkg))
+			ui.Hint("%s", hintPackage(serial))
 			failed = true
 		case !packageInstalled(serial, pkg):
-			ui.Errorf("Package not installed on %s: %s", deviceName(serial), q(pkg))
+			ui.Errorf("%s is not installed on %s", q(pkg), deviceName(serial))
+			ui.Hint("%s", hintPackage(serial))
 			failed = true
 		default:
 			if !action(serial, pkg, target{pkg: pkg}.describe(serial)) {
@@ -450,7 +460,7 @@ func forEachPackage(c *Ctx, action func(serial, pkg, label string) bool) error {
 func runKill(c *Ctx) error {
 	return forEachPackage(c, func(serial, pkg, label string) bool {
 		if out, err := adb.Combined("-s", serial, "shell", "am", "force-stop", pkg); err != nil {
-			ui.Errorf("Couldn't stop %s", q(pkg))
+			ui.Errorf("Couldn't stop %s", label)
 			ui.Detail("%s", out)
 			return false
 		}
@@ -463,7 +473,7 @@ func runClear(c *Ctx) error {
 	return forEachPackage(c, func(serial, pkg, label string) bool {
 		out, _ := adb.Combined("-s", serial, "shell", "pm", "clear", pkg)
 		if !strings.Contains(out, "Success") {
-			ui.Errorf("Couldn't clear data of %s", q(pkg))
+			ui.Errorf("Couldn't clear data of %s", label)
 			ui.Detail("%s", out)
 			return false
 		}
@@ -497,7 +507,7 @@ func runUninstall(c *Ctx) error {
 	}
 	out, _ := adb.Combined("-s", serial, "uninstall", t.pkg)
 	if !strings.Contains(out, "Success") {
-		ui.Errorf("Couldn't uninstall %s", q(t.pkg))
+		ui.Errorf("Couldn't uninstall %s", t.describe(serial))
 		ui.Detail("%s", out)
 		return errReported
 	}
@@ -564,7 +574,7 @@ func runExtract(c *Ctx) error {
 	out, err := adb.Combined("-s", serial, "pull", remote, file)
 	sp.Stop()
 	if err != nil {
-		ui.Errorf("Couldn't pull the APK of %s", q(t.pkg))
+		ui.Errorf("Couldn't extract %s", t.describe(serial))
 		ui.Detail("%s", out)
 		return errReported
 	}
@@ -575,13 +585,11 @@ func runExtract(c *Ctx) error {
 	ui.Success("Saved %s %s", q(file), ui.Err.Dim("("+deviceName(serial)+", "+size+elapsed(start)+")"))
 	ui.Out.Println(file)
 	if splits > 0 {
-		ui.Warn("%s also has %d split APKs; the base APK alone may not install", q(t.pkg), splits)
+		ui.Warn("%s also has %s, so the base APK alone may not install", q(t.pkg), ui.Plural(splits, "split APK"))
 		ui.Hint("List them with 'adb -s %s shell pm path %s', pull each, and install them together with 'adb install-multiple'", serial, t.pkg)
 	}
 	return nil
 }
 
-// elapsed formats the time since start like "3.2s".
-func elapsed(start time.Time) string {
-	return strconv.FormatFloat(time.Since(start).Seconds(), 'f', 1, 64) + "s"
-}
+// elapsed formats the time since start like "3.2s" or "120ms" (ui.Duration).
+func elapsed(start time.Time) string { return ui.Duration(time.Since(start)) }

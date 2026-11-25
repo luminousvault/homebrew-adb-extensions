@@ -79,7 +79,7 @@ func runCompletion(c *Ctx) error {
 	}
 	script, ok := completionScript(c.Args[0])
 	if !ok {
-		return usageErr(c.Cmd, "Unknown shell: %s (use %s)", q(c.Args[0]), strings.Join(completionShells, ", "))
+		return usageErr(c.Cmd, "Unknown shell %s (use %s)", q(c.Args[0]), strings.Join(completionShells, ", "))
 	}
 	_, err := io.WriteString(ui.Out.W, script)
 	return err

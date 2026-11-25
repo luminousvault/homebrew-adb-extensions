@@ -418,7 +418,7 @@ func runLogcat(c *Ctx) error {
 	minLevel := 0
 	if v := strings.ToUpper(c.String("--level")); v != "" {
 		if len(v) != 1 || !strings.Contains(levels, v) {
-			return usageErr(c.Cmd, "--level must be one of V, D, I, W, E, F: %s", v)
+			return usageErr(c.Cmd, "--level must be one of V, D, I, W, E, F: %s", q(v))
 		}
 		minLevel = strings.Index(levels, v)
 	}
@@ -430,7 +430,7 @@ func runLogcat(c *Ctx) error {
 	foreground := false
 	for _, p := range c.Args {
 		if !validPackageName(p) {
-			return failErr("", "Invalid package name: %s", q(p))
+			return failErr(hintPackage(serial), "%s is not a valid package name", q(p))
 		}
 		if !slices.Contains(pkgs, p) {
 			pkgs = append(pkgs, p)
@@ -518,7 +518,7 @@ func runLogcat(c *Ctx) error {
 		if !tags.show(l) {
 			if !hinted && tags.framework(l) {
 				hinted = true
-				ui.Hint("Framework and driver logs are hidden (errors are kept); -e shows them")
+				ui.Hint("Pass -e to show framework and driver logs (their errors are always shown)")
 			}
 			continue
 		}

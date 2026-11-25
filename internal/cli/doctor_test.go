@@ -26,8 +26,8 @@ func TestDoctorReport(t *testing.T) {
 		{Serial: "emulator-5556", State: "unauthorized"},
 	}
 	cats := doctorChecks(found, devices, "emulator-5558", "", okCompletion)
-	adbHint := "      Hint: Running them side by side (e.g. ak and Android Studio) restarts the adb server. " +
-		"Point ak at the same adb: " + setEnv("AK_ADB", "<path to adb>")
+	adbHint := "      Hint: Point ak at the same adb, since running both (e.g. ak and Android Studio) restarts the adb server: " +
+		setEnv("AK_ADB", "<path to adb>")
 	got := strings.Join(doctorLines(cats, false), "\n")
 	want := strings.Join([]string{
 		"[✗] adb (37.0.1, ~/sdk/platform-tools/adb)",

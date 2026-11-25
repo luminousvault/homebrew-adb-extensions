@@ -22,8 +22,11 @@ var cmdSysinfo = &Command{
 	Device:   manyDevices, JSON: true, Run: runSysinfo,
 }
 
-const hintIMEI = "To see the IMEI on the device, open the dialer with *#06#: " +
-	"adb shell am start -a android.intent.action.DIAL -d 'tel:*%2306%23'"
+// hintIMEI shows the IMEI on the device itself: the dialer with *#06#.
+func hintIMEI(serial string) string {
+	return "Run 'adb" + serialArg(serial) + " shell am start -a android.intent.action.DIAL -d tel:*%2306%23' " +
+		"to show the IMEI on the device (the dialer with *#06#)"
+}
 
 var reParcelWord = regexp.MustCompile(`^[0-9a-fA-F]{8}$`)
 
@@ -294,10 +297,12 @@ func runSysinfo(c *Ctx) error {
 		return err
 	}
 	infos := make([]sysInfo, len(serials))
-	noIMEI := false
+	noIMEI := "" // the first device whose IMEI ak could not read
 	for i, s := range serials {
 		infos[i] = collectSysinfo(s)
-		noIMEI = noIMEI || infos[i].IMEI == nil
+		if infos[i].IMEI == nil && noIMEI == "" {
+			noIMEI = s
+		}
 	}
 	if c.JSON() {
 		return ui.JSON(infos) // always an array, like mac, so scripts see one shape for 1 or n devices
@@ -308,8 +313,8 @@ func runSysinfo(c *Ctx) error {
 		}
 		printSysinfo(s)
 	}
-	if noIMEI {
-		ui.Hint("%s", hintIMEI)
+	if noIMEI != "" {
+		ui.Hint("%s", hintIMEI(noIMEI))
 	}
 	return nil
 }

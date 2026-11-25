@@ -32,11 +32,11 @@ func runFiles(c *Ctx) error {
 	if len(c.Args) == 1 {
 		start = c.Args[0]
 		if !strings.HasPrefix(start, "/") {
-			return usageErr(c.Cmd, "path must be an absolute device path, e.g. /sdcard/DCIM: %s", q(start))
+			return usageErr(c.Cmd, "%s is not an absolute device path, e.g. /sdcard/DCIM", q(start))
 		}
 	}
 	if !canPick() {
-		return failErr("Use ak pull or ak push", "ak files needs a terminal")
+		return failErr("Run 'ak pull' or 'ak push' instead", "ak files needs a terminal")
 	}
 	release := holdPickers() // device picker, then the file manager, on one screen
 	defer release()
@@ -50,7 +50,7 @@ func runFiles(c *Ctx) error {
 	release()
 	sum.Print()
 	if errors.Is(err, tui.ErrNoTerminal) {
-		return failErr("Use ak pull or ak push", "ak files needs a terminal")
+		return failErr("Run 'ak pull' or 'ak push' instead", "ak files needs a terminal")
 	}
 	if err != nil {
 		return err

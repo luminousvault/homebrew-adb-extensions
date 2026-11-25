@@ -260,8 +260,8 @@ func adbCategory(found []adbFound) checkCategory {
 		}
 	default:
 		it := checkItem{level: levelProblem, text: "Other adb with a different version",
-			hint: "Running them side by side (e.g. ak and Android Studio) restarts the adb server. " +
-				"Point ak at the same adb: " + setEnv("AK_ADB", "<path to adb>")}
+			hint: "Point ak at the same adb, since running both (e.g. ak and Android Studio) restarts the adb server: " +
+				setEnv("AK_ADB", "<path to adb>")}
 		for _, f := range others {
 			it.details = append(it.details, tildeHome(f.Path)+"  "+f.Version+"  ("+f.Source+")")
 		}
@@ -321,12 +321,12 @@ func devicesCategory(devices []deviceFound, envSerial string) checkCategory {
 func apksignerCategory(apksigner string) checkCategory {
 	if apksigner != "" {
 		return checkCategory{name: "apksigner", summary: tildeHome(apksigner), items: []checkItem{
-			{text: "Fallback for 'ak signature' when it cannot parse an APK"}}}
+			{text: "Fallback for 'ak signature' when its own parser fails on an APK"}}}
 	}
 	// Optional: ak reads signatures itself, so a missing apksigner is not an issue.
 	return checkCategory{name: "apksigner", summary: "optional, not installed", items: []checkItem{{
 		text:    "Not installed",
-		details: []string{"Only needed when 'ak signature' cannot parse an APK; comes with SDK build-tools"}}}}
+		details: []string{"Only needed when the parser of 'ak signature' fails on an APK; comes with SDK build-tools"}}}}
 }
 
 func setEnv(name, value string) string {

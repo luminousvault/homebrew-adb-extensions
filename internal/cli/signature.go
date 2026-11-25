@@ -111,7 +111,7 @@ func resolveSignatureTarget(c *Ctx) (signatureTarget, error) {
 	input := c.Args[0]
 	if strings.HasSuffix(input, ".apk") {
 		if st, err := os.Stat(input); err != nil || st.IsDir() {
-			return signatureTarget{}, failErr("", "APK file not found: %s", q(input))
+			return signatureTarget{}, failErr("Check the path", "%s was not found", q(input))
 		}
 		return signatureTarget{apkPath: absPath(input)}, nil
 	}
@@ -155,11 +155,11 @@ func runSignature(c *Ctx) error {
 		}
 		_ = tmp.Close()
 		defer func() { _ = os.Remove(tmp.Name()) }()
-		sp := ui.Spin("Pulling the APK on %s", deviceName(t.serial))
+		sp := ui.Spin("Pulling the APK from %s", deviceName(t.serial))
 		out, err := adb.Combined("-s", t.serial, "pull", remote, tmp.Name())
 		sp.Stop()
 		if err != nil {
-			ui.Errorf("Couldn't pull the APK of %s", q(t.pkg))
+			ui.Errorf("Couldn't pull the APK of %s", t.describe())
 			ui.Detail("%s", out)
 			return errReported
 		}
@@ -170,7 +170,7 @@ func runSignature(c *Ctx) error {
 	if err != nil {
 		debuglog.Logf("apk.Signers failed: %v", err)
 		if c.JSON() {
-			return failErr("", "Could not read the signature of %s: %v", t.describe(), err)
+			return failErr("", "Couldn't read the signature of %s: %v", t.describe(), err)
 		}
 		return signatureWithAPKSigner(apkPath, t, err)
 	}
@@ -209,9 +209,9 @@ func signatureWithAPKSigner(apkPath string, t signatureTarget, parseErr error) e
 	tool := adb.FindBuildTool("apksigner")
 	if tool == "" {
 		return failErr("Install Android SDK build-tools to use apksigner as a fallback",
-			"Could not read the signature of %s: %v", label, parseErr)
+			"Couldn't read the signature of %s: %v", label, parseErr)
 	}
-	ui.Warn("Could not parse the APK (%v); using apksigner", parseErr)
+	ui.Warn("Couldn't parse the APK, so apksigner reads it instead (%v)", parseErr)
 	run := func(extra ...string) string {
 		out, _ := exec.Command(tool, append(append([]string{"verify", "--print-certs"}, extra...), apkPath)...).CombinedOutput()
 		return string(out)
@@ -221,7 +221,7 @@ func signatureWithAPKSigner(apkPath string, t signatureTarget, parseErr error) e
 		out = run("--min-sdk-version", "21") // legacy algorithms (MD5/SHA-1) need an older min SDK
 	}
 	if !strings.Contains(out, "certificate") {
-		ui.Errorf("apksigner could not read the signature of %s", label)
+		ui.Errorf("Couldn't read the signature of %s with apksigner", label)
 		ui.Detail("%s", out)
 		return errReported
 	}

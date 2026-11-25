@@ -40,9 +40,22 @@ ak의 출력·옵션·대화형 UI가 따르는 규칙입니다. 새 커맨드�
 | `ui.Detail` | `  내용` (들여쓰기) | 전체 흐림 (adb 원본 출력, 경로, 시간) |
 
 - **기호는 다섯 가지만**: `==>`, `✓`, `Warning:`, `Error:`, `Hint:`. 색을 꺼도 기호로 뜻이 전달됩니다.
-- **이름은 작은따옴표로**: 패키지·파일·경로는 `q()`로 감쌉니다(`Installed 'app.apk' on Google Pixel 9 Pro`). 문장과 이름의 경계를 보이게 하려는 것입니다.
+- **이름은 작은따옴표로**: 패키지·파일·폴더·경로, 그리고 사용자가 입력한 값(옵션 값, 모르는 옵션·인자, `-s`로 준 시리얼)은 `q()`로 감쌉니다(`Installed 'app.apk' on Google Pixel 9 Pro`, `--repeat must be 1-100: '0'`). 문장과 이름의 경계를 보이게 하려는 것입니다. `q()`는 `ui.Quote`의 별칭이라 `internal/files`도 같은 함수를 씁니다.
   - 디바이스 이름은 사람이 읽는 이름이라 감싸지 않습니다.
   - stdout 결과(저장한 경로 등)는 스크립트가 읽으므로 감싸지 않습니다.
+- **한 대상은 어느 메시지에서나 같은 이름으로**: 진행(스피너·`==>`), 성공, 경고, 실패가 같은 대상을 같은 말로 부릅니다. 앱이면 `target.describe`(아래), 파일이면 `'a.txt' to|from <디바이스>`. `✓ Stopped 'pkg' on Google Pixel 9 Pro`이면 실패도 `Error: Couldn't stop 'pkg' on Google Pixel 9 Pro`입니다. 실패만 디바이스가 빠지면 여러 대·여러 앱일 때 무엇이 실패했는지 모릅니다.
+- **문장**: 대문자로 시작하고 마침표를 찍지 않으며, 메시지 하나는 한 문장입니다(`Warning:`·`Info`도). 두 생각은 `,`·`;`·`, so`로 잇습니다. 옵션으로 시작하는 문장(`--level must be one of …`, `-s requires a value (ID)`)만 옵션 그대로 소문자로 시작합니다.
+- **실패는 `Couldn't <동사> …`** 한 가지입니다: `Couldn't pull 'a.pdf' from Google Pixel 9 Pro`, `Couldn't read the signature of 'pkg' on …: <원인>`. `Could not`·`Cannot`·`can't`·`Failed to`는 쓰지 않습니다. 여러 개 중 일부 실패 요약도 같습니다: `Couldn't pull 2 of 5 files`, `Couldn't install on 1 of 2 devices`.
+- **상태 오류는 대상이 주어**입니다: `'x' is not installed on <디바이스>`, `'x' is not a valid package name`, `'x' is not a directory`, `'x' was not found`, `'x' does not exist`, `Device 'X' is unauthorized`. `Not a directory: 'x'`·`Package not installed on …: 'x'`처럼 라벨을 앞에 두지 않습니다.
+  - 예외는 "모르는 것" 한 가족으로, 라벨 + 따옴표 이름, 콜론 없이 씁니다: `Unknown command 'x'`, `Unknown option '-x'`(묶음이면 `(in '-ex')`), `Unknown argument 'on' (use off)`, `Unknown shell 'x' (use zsh, …)`. 남는 인자는 `Unexpected argument 'x'`. 받을 수 있는 값을 알면 괄호에 `(use …)`.
+- **`Hint:`는 동사로 시작하는 명령문 한 문장**입니다: `Run 'ak info' …`, `Pass -y to create it`, `Turn the screen on: '…'`, `Check the path`. 명령은 작은따옴표로 감쌉니다.
+  - 여러 대가 연결돼 있을 수 있으면 명령에 실제 시리얼을 넣습니다(`serialArg`: 준비된 디바이스가 2대 이상이면 ` -s <시리얼>`). 그대로 붙여 넣으면 같은 디바이스에서 돌게 하려는 것입니다.
+  - 고칠 방법을 아는 오류에는 모두 `Hint:`를 붙입니다(`failErr(hint, …)`).
+  - 고칠 방법이 아닌 설명은 `Hint:`로 쓰지 않습니다. `ui.Info`·`ui.Detail`로 쓰거나 명령문으로 바꿉니다(`Pass -e to show framework and driver logs (…)`).
+- **확인 질문도 한 문장**입니다: `Create the missing directory 'x'? [y/N]`, `Uninstall 'pkg' from <디바이스> (removes its data) and reinstall? [Y/n]`.
+- **개수는 `ui.Plural(n, "APK")`**: `1 APK` / `3 APKs`, `1 file` / `2 files`. `APK(s)`처럼 쓰지 않습니다.
+- **시간은 `ui.Duration`**: 1초 미만은 `120ms`, 그 이상은 `1.2s`(소수 한 자리)이고 `0.0s`는 없습니다. 걸린 시간(`install`, 상태판 `Done`, `extract`, `pull`, `push`, `screenshot`)과 `restart`의 실행 시간(`totalTime`·`waitTime`·min/avg/max)에 씁니다. 예외: `record`의 시간은 녹화 길이라 정수 초(`12s`)입니다. 크기는 `files.HumanSize`(`1.2 MB`)이고 커맨드가 직접 만들지 않습니다.
+- **단계에 대한 경고는 그 단계의 `==>` 뒤**에 둡니다. `push`·`pull`의 이름 바꾸기(`Warning: 'a.txt' already exists on …, pushing as 'a (1).txt'`)는 `==> Pushing 'a.txt' to …` 다음, `✓ Pushed …` 앞에 나옵니다. 터미널이 아니면 `==>`가 남으므로 무엇에 대한 경고인지 순서로 보입니다.
 - **제목은 대상마다 `==>` 한 줄**: 결과를 보여 주는 커맨드는 대상(앱·디바이스)마다 stderr에 `ui.Step` 제목을 하나 둡니다. stdout만 보면 누구의 결과인지 모르기 때문입니다.
   - **대상은 한 번만 부릅니다**: stdout 결과에 대상 행(`package`·`file`·`serial`, §8)이 있으면 제목은 대상을 다시 부르지 않고 무엇과 어디만 말합니다. 대상 행이 없는 결과(한 줄에 하나인 목록, `✓ Stopped`·`✓ Saved` 같은 동작 메시지, 결과 데이터가 없는 커맨드의 스피너)는 제목이 대상을 부릅니다.
     ```
@@ -52,12 +65,13 @@ ak의 출력·옵션·대화형 UI가 따르는 규칙입니다. 새 커맨드�
     ==> Granted permissions of 'com.example.app' on Google Pixel 9 Pro   ← stdout은 권한 이름만
     android.permission.INTERNET
     ```
-  - 대상 행이 있는 곳: `info`(`==> App info on <디바이스>`), `signature`(`==> Signature on <디바이스>`, 스피너 `Pulling the APK on <디바이스>`, 로컬 APK는 `==> Signature of the APK file`), `restart`(`✓ Restarted on <디바이스>`, 스피너 `Restarting on <디바이스> (1/3)`), `sysinfo`(`==> <디바이스>`).
+  - 대상 행이 있는 곳: `info`(`==> App info on <디바이스>`), `signature`(`==> Signature on <디바이스>`, 스피너 `Pulling the APK from <디바이스>`, 로컬 APK는 `==> Signature of the APK file`), `restart`(`✓ Restarted on <디바이스>`, 스피너 `Restarting on <디바이스> (1/3)`), `sysinfo`(`==> <디바이스>`).
   - 어디는 `on <디바이스>`, 포그라운드 앱을 쓴 경우는 `on <디바이스> (foreground app)`입니다(`target.onDevice`).
-  - 앱을 부를 때는 `'pkg' on <디바이스>`, 포그라운드 앱이면 `'pkg' (foreground app) on <디바이스>` 하나만 씁니다(`target.describe`): 스피너(`Extracting …`), `✓ Stopped …`·`✓ Uninstalled …`, `permissions`·`logcat` 제목, 오류 메시지.
+  - 앱을 부를 때는 `'pkg' on <디바이스>`, 포그라운드 앱이면 `'pkg' (foreground app) on <디바이스>` 하나만 씁니다(`target.describe`): 스피너(`Extracting …`), `✓ Stopped …`·`✓ Launched …`·`✓ Uninstalled …`, `permissions`·`logcat` 제목, 오류 메시지(`Couldn't stop …`, `… has no launcher activity`, `Couldn't pull the APK of …`).
   - 디바이스: `sysinfo`는 `Device` 섹션 첫 행이 `serial`이라 `==> <디바이스>`만. 숨긴 `mac`은 `serial` 행이 없어 `==> <디바이스> (serial)`, 시리얼은 흐리게. 디바이스 전체를 보는 결과는 `==> <무엇> on <디바이스>`(`==> Activity stack on Google Pixel 9 Pro`).
-- **`✓` 뒤 괄호는 `(<디바이스>, 크기, 시간)` 순서**이고, 커맨드가 가진 것만 넣습니다: `✓ Saved 'shot.png' (Google Pixel 9 Pro, 1.2 MB)`, `✓ Pulled 'a.pdf' (Google Pixel 9 Pro, 2 KB, 0.4s)`, 문장이 이미 디바이스를 부르면(`✓ Installed 'app.apk' on Google Pixel 9 Pro (3.2s)`) 괄호에 디바이스를 다시 넣지 않습니다. 여러 대 설치에서 이 문장이 `[디바이스]` 접두사 뒤에도 쓰이기 때문입니다. `record`의 시간은 녹화 길이입니다(`(…, 4.1 MB, 12s)`).
-- **빈 결과는 `ui.Info`로 `No …` 문장**(stderr)을 씁니다: `No granted permissions`, `No devices connected`, `No devices connected over Wi-Fi`. stdout은 비워 둡니다. `(none)` 같은 표시는 쓰지 않습니다.
+- **`✓` 뒤 괄호는 `(<디바이스>, 크기, 시간)` 순서**이고, 커맨드가 가진 것만 넣습니다: `✓ Saved 'shot.png' (Google Pixel 9 Pro, 1.2 MB, 0.8s)`, `✓ Pulled 'a.pdf' (Google Pixel 9 Pro, 2 KB, 0.4s)`, 문장이 이미 디바이스를 부르면(`✓ Installed 'app.apk' on Google Pixel 9 Pro (3.2s)`) 괄호에 디바이스를 다시 넣지 않습니다. 여러 대 설치에서 이 문장이 `[디바이스]` 접두사 뒤에도 쓰이기 때문입니다. `record`의 시간은 녹화 길이입니다(`(…, 4.1 MB, 12s)`).
+- **빈 결과는 `ui.Info`로 `No …` 문장**(stderr)을 쓰고 exit 0입니다: `No granted permissions`, `No devices connected`, `No devices connected over Wi-Fi`, `No recent files found on <디바이스>`(`pull`), `No activities found on <디바이스>`(`activities`). 찾아봤는데 없는 것은 실패가 아닙니다. stdout은 비워 두고(`--json`이면 `[]`), `(none)` 같은 표시는 쓰지 않습니다.
+  - 사용자가 좁힌 조건에 맞는 것이 없으면(`-f`) 실패(exit 1)이고 조건을 고치는 `Hint:`를 붙입니다: `No recent files on … match all of 'x'`, `No APK files match all of 'x'`.
 - **빈 줄**: 커맨드 시작과 끝에는 넣지 않습니다. 블록(디바이스 하나, 표 하나, `==>` 제목과 그 아래 목록) 사이에 한 줄을 둡니다. 한 줄짜리 `==>` 단계끼리는 붙입니다.
 - **블록 안에서는 짧은 문장**: 머리글에 이미 디바이스·APK 이름이 있으면 각 줄에서 이름을 반복하지 않습니다(§10의 `say`).
 - 한 줄로 된 메시지를 미리 만들어야 하면(상태판·접두사 출력) `ui.Line(kind, text)`를 씁니다.
@@ -71,16 +85,24 @@ ak의 출력·옵션·대화형 UI가 따르는 규칙입니다. 새 커맨드�
 | `nil` | 0 | 없음 (도움말·버전도 0) |
 | `failErr(hint, …)` | 1 | `Error:` + 있으면 `Hint:` |
 | `errReported` | 1 | 없음 (이미 출력한 실패. 여러 대상 중 일부 실패 포함) |
-| `usageErr(cmd, …)` | 2 | `Error:` + `Run 'ak <cmd> --help' for usage.` |
+| `usageErr(cmd, …)` | 2 | `Error:` + `Hint: Run 'ak <cmd> --help' to see the options` |
 | `ui.ErrInterrupted` / `tui.ErrInterrupted` | 130 | 없음 (Ctrl+C) |
 | 그 밖의 `error` | 1 | `Error: <err>` |
 
 - 사용법 오류: 알 수 없는 옵션, 값 누락, 값을 받지 않는 옵션에 값, 인자 개수(`tooMany`), 함께 쓸 수 없는 옵션.
 - 알 수 없는 커맨드는 exit 2와 `Hint: Run 'ak --help' to see all commands`.
+- Ctrl+C(130)는 `report`가 아무것도 출력하지 않습니다. 누른 사람이 이미 알기 때문입니다. 중단 때문에 남은 상태를 알려야 할 때만 커맨드가 그 전에 `Warning:`을 출력합니다(여러 대 설치: `Warning: Interrupted; installs that were running may be incomplete`). `Error: Interrupted`는 쓰지 않습니다.
+- **확인 질문을 거절하면** 사용자가 시킨 일을 하지 않은 것이므로 exit 1이고, `Error: Skipped …`로 무엇을 하지 않았는지 말합니다: `install`의 `Skipped 'app.apk' on <디바이스>`, `pull`의 `Skipped: 'dir' was not created`. `Aborted`는 쓰지 않습니다. 터미널이 아니라 묻지 못했으면 `Hint: Pass -y …`를 붙입니다(§7).
 
 ```
 Error: Multiple devices connected: emulator-5554, emulator-5556
-Hint: Use -s <serial> or set ANDROID_SERIAL
+Hint: Pass -s <serial>, or set ANDROID_SERIAL
+
+Error: Unknown option '-x'
+Hint: Run 'ak info --help' to see the options
+
+Error: 'com.example.typo' is not installed on Google Pixel 9 Pro
+Hint: Open the app and run 'ak info' to see its package name
 ```
 
 ## 5. 도움말
@@ -147,7 +169,7 @@ Examples:                                      ← Examples (없으면 생략)
 | `-a, --all` | 준비된(`device` 상태) 모든 디바이스 |
 | 지정 없음 + 1대 | 그 디바이스 |
 | 지정 없음 + 여러 대 + 터미널 | 선택 UI (`manyDevices`면 다중 선택) |
-| 지정 없음 + 여러 대 + 터미널 아님 | `Error: Multiple devices connected: …` + `Hint: Use -s <serial> …` (exit 1) |
+| 지정 없음 + 여러 대 + 터미널 아님 | `Error: Multiple devices connected: …` + `Hint: Pass -s <serial> …` (exit 1) |
 | 0대 | `Error: No devices connected` (exit 1) |
 
 - `oneDevice` 커맨드에 `-s`를 두 번 주면 사용법 오류(exit 2)입니다.
@@ -183,7 +205,13 @@ Examples:                                      ← Examples (없으면 생략)
 - 1초 넘게 걸릴 수 있는 작업(설치, pull, extract, 캡처, 재시작 등)은 `ui.Spin`을 씁니다.
   - stderr이 터미널이면 한 줄 스피너(`⠋ Installing 'app.apk' on …`)를 그리고, 끝나면 지운 뒤 `✓`/`Error:` 줄을 남깁니다.
   - 터미널이 아니면 `==> 내용` 한 줄만 출력합니다. 결과 줄은 그대로 나갑니다.
-- 설치 단계가 **10초를 넘으면** 스피너와 상태판에 흐리게 `(check the device screen)`을 붙입니다(`slowStep`). 대개 디바이스가 Play Protect 검사나 USB 설치 허용을 묻고 기다리는 중이기 때문입니다.
+- **문구는 `<동사>ing <대상> on|to|from <디바이스>`** 이고 전치사를 빼지 않습니다: `Installing 'app.apk' on …`, `Extracting 'pkg' on …`, `Capturing the screen on …`, `Recording the screen on … (0:12, Ctrl+C to stop)`, `Pulling 'a.pdf' from …`, `Pushing 'a.txt' to …`, `Restarting on … (2/3)`(`restart`는 결과 첫 행이 `package`라 앱을 부르지 않음, §3).
+  - 반복 횟수는 `(i/N)`이고 N이 1이면 뺍니다. 상태판의 APK 번호도 `(1/2)`입니다.
+  - 멈추는 방법은 어디서나 `(Ctrl+C to stop)`, 줄임표는 `…` 한 글자입니다(`...` 아님).
+- **단계가 바뀌면 `SetText`, 같은 단계 안의 시계·카운터·덧붙임은 `Update`**:
+  - `SetText`는 터미널이 아니면 바뀐 문구를 `==>` 줄로도 출력합니다(직전에 출력한 문구와 다를 때만). `record`의 `Stopping the recording on …` → `Saving the recording from …`, `wifi`의 `Connecting to …`가 로그에 남습니다.
+  - `Update`는 출력하지 않습니다. 매초 바뀌는 `record`의 시계, 설치의 `(check the device screen)`처럼 진행 중에 바뀌는 것이 로그를 채우지 않게 하려는 것입니다. 그래서 터미널이 아니면 `record`는 `==> Recording the screen on … (Ctrl+C to stop)` 한 줄만 남깁니다.
+- 설치 단계가 **10초를 넘으면** 스피너와 상태판에 흐리게 `(check the device screen)`을 붙입니다(`slowStep`, `Update`). 대개 디바이스가 Play Protect 검사나 USB 설치 허용을 묻고 기다리는 중이기 때문입니다.
 - 여러 디바이스 작업은 상태판을 씁니다(§11).
 
 ## 10. 선택 UI (`internal/tui`)
@@ -209,13 +237,14 @@ Examples:                                      ← Examples (없으면 생략)
 ### 상태판 (stderr이 터미널일 때)
 
 ```
-==> Installing 2 APK(s) on 2 devices
-  ⠋ Google Pixel 9 Pro  [1/2] app-debug.apk  Installing...
-  ✓ Samsung SM-S928N    [2/2] feature.apk    Done (12.4s)
+==> Installing 2 APKs on 2 devices
+  ⠋ Google Pixel 9 Pro  (1/2) app-debug.apk  Installing…
+  ✓ Samsung SM-S928N    (2/2) feature.apk    Done (12.4s)
 ```
 
 - 디바이스당 한 줄, 100ms마다 제자리에서 다시 그립니다(`ui.Board`). 줄은 `ui.Fit`으로 자르고 커서는 숨깁니다.
-- 상태: 스피너 + 현재 동작(`Installing...`, `Uninstalling...`, `Reinstalling...`) → `⏸ Needs confirmation` → `✓ Done (시간)` / `✗ Failed` / `– Skipped` / `✗ Interrupted`.
+- APK가 하나면 번호 `(1/1)`을 뺍니다.
+- 상태: 스피너 + 현재 동작(`Installing…`, `Uninstalling…`, `Reinstalling…`) → `⏸ Needs confirmation` → `✓ Done (시간)` / `✗ Failed` / `– Skipped` / `✗ Interrupted`.
 
 ### 터미널이 아닐 때
 
@@ -230,7 +259,7 @@ Examples:                                      ← Examples (없으면 생략)
 - 대기열이 비면 빈 줄 뒤에 상태판을 새로 그립니다. **아직 끝나지 않은 디바이스만** 넣습니다. 끝난 디바이스는 위 상태판에 이미 남아 있습니다.
 
 ```
-Google Pixel 9 Pro — app-debug.apk
+Google Pixel 9 Pro (SERIAL) — 'app-debug.apk'
   Warning: Signature differs from the installed app
   Uninstall 'com.example.app' (removes its data) and reinstall? [Y/n/a] (a: yes for every device)
 ```
@@ -243,7 +272,7 @@ Google Pixel 9 Pro — app-debug.apk
 ### Ctrl+C
 
 - 터미널이 SIGINT를 adb에도 보내므로 실행 중인 설치는 스스로 멈춥니다. ak는 `installStop`을 켜서 다음 APK·재시도·제거를 시작하지 않게 합니다.
-- 진행 중이던 디바이스는 `✗ Interrupted`로 표시하고(최대 5초 기다림) 상세·요약을 출력한 뒤 `Error: Interrupted; installs that were running may be incomplete`, exit 130.
+- 진행 중이던 디바이스는 `✗ Interrupted`로 표시하고(최대 5초 기다림) 상세·요약을 출력한 뒤 `Warning: Interrupted; installs that were running may be incomplete`, exit 130(§4: 130에 `Error:`는 없음).
 - 질문 중의 Ctrl+C는 SIGINT가 아니라 키로 들어옵니다. 그래서 ak가 자기 프로세스 그룹에 SIGINT를 보내 실행 중인 adb도 멈춥니다(`interruptGroup`). Windows는 실행 중인 설치가 끝나기를 기다립니다.
 
 ### 메시지 두 벌: `say`
@@ -260,9 +289,9 @@ Google Pixel 9 Pro — app-debug.apk
 1. **상세 블록**(상태판일 때만): 경고나 오류가 있었던 APK만 디바이스별로 묶습니다.
    - 한 APK의 경고는 한 줄로 합칩니다(`; `로 연결, `joinWarnings`). 그 뒤에 한 일과 결과(`✓`/`Error:`)를 둡니다. 경고만 남아 왜 나왔는지 헤매지 않게 하려는 것입니다.
    - 제거·재설치는 결과 한 줄로 줄입니다: `✓ Installed (43.5s), after uninstalling 'pkg' (its data was removed)`. 결과를 앞에, 과정을 뒤에 둡니다.
-   - 문제없던 APK는 마지막에 개수만 셉니다(`✓ 4 other APK(s) installed`). 디바이스가 거기서 멈춘 것처럼 읽히지 않게 하려는 것입니다.
+   - 문제없던 APK는 마지막에 개수만 셉니다(`✓ 4 other APKs installed`). 디바이스가 거기서 멈춘 것처럼 읽히지 않게 하려는 것입니다.
 2. **요약**: 디바이스당 한 줄(`✓ 이름  n/m installed`). 다 설치되지 않은 디바이스 아래에만 실패(`✗`)·건너뜀(`–`)·미실행 APK를 한 줄씩 적습니다. APK 이름을 한 줄에 늘어놓으면 폭을 넘어 깨지기 때문입니다.
-3. 마지막 줄: 모두 성공이면 `✓ Installed on N devices`, 아니면 `Error: X of N devices failed`(exit 1).
+3. 마지막 줄: 모두 성공이면 `✓ Installed on N devices`, 아니면 `Error: Couldn't install on X of N devices`(exit 1).
 
 ```
 Google Pixel 9 Pro (SERIAL)
@@ -274,7 +303,7 @@ Summary
   ✓ Google Pixel 9 Pro  5/5 installed
   ✗ Samsung SM-S928N    4/5 installed
       ✗ feature.apk  INSTALL_FAILED_INSUFFICIENT_STORAGE
-Error: 1 of 2 devices failed
+Error: Couldn't install on 1 of 2 devices
 ```
 
 ## 12. doctor
@@ -319,7 +348,7 @@ Error: 1 of 2 devices failed
 
 대화형 파일 관리자의 규칙 요약입니다. 화면 예시, 실기기 확인 결과, 고른 이유는 [files-design.md](files-design.md)에 있습니다.
 
-- **터미널 전용:** 터미널이 아니면 `ak files needs a terminal` + `Hint: Use ak pull or ak push`. 같은 일을 비대화형으로 하는 `pull` · `push`가 짝입니다.
+- **터미널 전용:** 터미널이 아니면 `ak files needs a terminal` + `Hint: Run 'ak pull' or 'ak push' instead`. 같은 일을 비대화형으로 하는 `pull` · `push`가 짝입니다.
 - **화면:** 선택 UI 규칙(§10)을 따릅니다: 대체 화면, stderr, 터미널 높이를 넘지 않기, `ui.Fit`, 크기 변경 시 다시 그리기, 색이 꺼져도 기호로 구분. 위에서부터 머리글 · 문자 키 줄 · 목록 · 클립보드 줄 · 상태 줄 · 번호 키 바입니다. 폭이 되면 기기(왼쪽, 고정)와 컴퓨터(오른쪽) 두 창, 한 창이면 목록을 두 단(mc brief)으로 놓습니다.
 - **줄 수는 폭과 높이로만 정합니다.** 복사 중 진행 줄, 질문 · 입력은 상태 줄과 번호 바 첫 줄 자리를 대신 쓰고 줄 수를 바꾸지 않습니다. 목록이 들썩이지 않게 하기 위해서입니다. 클립보드 줄은 비어 있어도 한 줄을 잡아 둡니다. 높이가 모자라면 번호 바 위 빈 줄 → 클립보드 줄 → 문자 키 줄 → 번호 바 → 구분선 → 머리글 순으로 뺍니다.
 - **키:** mc의 F키 배치를 숫자로 씁니다(macOS 터미널은 F키를 시스템이 먼저 받음): 1 Sort · 2 Recent · 3 Copy · 4 Cut · 5 To computer/To device · 6 Paste · 7 Mkdir · 8 Delete · 9 Show/Hide computer · 0 Rename. 문자 별칭은 바 · 도움말에 괄호로 보입니다. 지금 쓸 수 없는 키는 라벨을 남기고 흐리게(색이 꺼지면 라벨 앞 `×`) 그리며 눌러도 아무 일이 없습니다. 도움말은 `?`, 끝내기는 `q` · Ctrl+C. 필터 · 이름 입력 중에는 숫자도 글자입니다.

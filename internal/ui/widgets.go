@@ -77,12 +77,31 @@ var spinFrames = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
 type Spinner struct {
 	mu   sync.Mutex
 	text string
+	said string // the last text announced with "==>" off a terminal
 	stop chan struct{}
 	done sync.WaitGroup
 }
 
-// SetText changes the spinner text (e.g. an elapsed timer).
+// SetText moves the spinner to a new step ("Saving the recording from …").
+// Off a terminal, where there is no spinner, the new text is printed as a
+// "==>" line when it differs from the last one printed.
 func (s *Spinner) SetText(format string, args ...any) {
+	text := fmt.Sprintf(format, args...)
+	s.mu.Lock()
+	s.text = text
+	announce := !Err.TTY && text != s.said
+	if announce {
+		s.said = text
+	}
+	s.mu.Unlock()
+	if announce {
+		Step("%s", text)
+	}
+}
+
+// Update changes the spinner text without announcing it off a terminal: for
+// clocks, counters and notes that change while the same step runs.
+func (s *Spinner) Update(format string, args ...any) {
 	s.mu.Lock()
 	s.text = fmt.Sprintf(format, args...)
 	s.mu.Unlock()
@@ -98,6 +117,7 @@ func (s *Spinner) current() string {
 func Spin(format string, args ...any) *Spinner {
 	s := &Spinner{text: fmt.Sprintf(format, args...)}
 	if !Err.TTY {
+		s.said = s.text
 		Step("%s", s.text)
 		return s
 	}

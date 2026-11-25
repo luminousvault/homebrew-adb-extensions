@@ -189,7 +189,7 @@ func printMAC(m macInfo) {
 		{"Bluetooth", orDefault(str(m.Bluetooth), "-")},
 	})
 	if str(m.WifiFactory) == "" && m.Randomized {
-		ui.Hint("To see the factory MAC of %s, set Wi-Fi privacy to 'Use device MAC' and run again", m.Device)
+		ui.Hint("Set Wi-Fi privacy to 'Use device MAC' on %s and run again to see its factory MAC", m.Device)
 	}
 }
 

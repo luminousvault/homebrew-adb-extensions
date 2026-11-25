@@ -30,7 +30,7 @@ ak files [path]
 
 - `Device: oneDevice`. 디바이스가 여러 대면 기존 선택 UI로 먼저 고릅니다.
 - **터미널이 아니면** 바로 실패합니다.
-  `Error: ak files needs a terminal` + `Hint: Use ak pull or ak push`
+  `Error: ak files needs a terminal` + `Hint: Run 'ak pull' or 'ak push' instead`
 - `--json` 없음. 끝날 때 한 일을 stderr에 남깁니다(§8).
 - 자동완성: `path`는 디바이스 경로라 제안하지 않습니다(`compArgs`에 "제안 없음").
 - 에이전트용 SKILL.md에는 넣지 않습니다(대화형이라 에이전트가 쓸 수 없음). 대신 `pull` · `push`를 안내합니다.

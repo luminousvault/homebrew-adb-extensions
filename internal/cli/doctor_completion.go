@@ -200,7 +200,7 @@ func completionCategory(r completionReport) checkCategory {
 	switch r.Status {
 	case "unknown":
 		cat.summary = "unknown shell"
-		text := "Could not tell which shell you use"
+		text := "Couldn't tell which shell you use"
 		if r.other != "" {
 			cat.summary = r.other + " not supported"
 			text = "ak completes zsh, bash, fish and PowerShell"

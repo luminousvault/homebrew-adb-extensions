@@ -51,7 +51,20 @@ func packageInstalled(serial, pkg string) bool {
 	return false
 }
 
-const hintPackage = "Run 'ak info' on the foreground app to check the name"
+// hintPackage tells how to find a package name. With several devices
+// connected, the command names the device so it runs on the same one.
+func hintPackage(serial string) string {
+	return "Open the app and run 'ak info" + serialArg(serial) + "' to see its package name"
+}
+
+// serialArg is " -s <serial>" when several devices are connected, so a
+// command in a hint reaches the same device; "" otherwise.
+func serialArg(serial string) string {
+	if len(adb.ReadySerials()) > 1 {
+		return " -s " + serial
+	}
+	return ""
+}
 
 // requirePackage fails unless pkg is well-formed and installed on serial.
 func requirePackage(serial, pkg string) error {
@@ -59,10 +72,10 @@ func requirePackage(serial, pkg string) error {
 		return failErr("Open the app on the device or pass a package name", "No foreground app found on %s", deviceName(serial))
 	}
 	if !validPackageName(pkg) {
-		return failErr("", "Invalid package name: %s", q(pkg))
+		return failErr(hintPackage(serial), "%s is not a valid package name", q(pkg))
 	}
 	if !packageInstalled(serial, pkg) {
-		return failErr(hintPackage, "Package not installed on %s: %s", deviceName(serial), q(pkg))
+		return failErr(hintPackage(serial), "%s is not installed on %s", q(pkg), deviceName(serial))
 	}
 	return nil
 }
@@ -72,7 +85,7 @@ func requirePackage(serial, pkg string) error {
 func apkPathForPackage(serial, pkg string) (string, int, error) {
 	out := adb.Shell(serial, "pm path "+pkg)
 	if strings.TrimSpace(out) == "" {
-		return "", 0, failErr("", "Package not found on %s: %s", deviceName(serial), q(pkg))
+		return "", 0, failErr(hintPackage(serial), "%s was not found on %s", q(pkg), deviceName(serial))
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	chosen := lines[0]

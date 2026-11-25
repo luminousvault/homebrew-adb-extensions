@@ -82,14 +82,14 @@ func TestScreenshotSavesPNGAndPrintsPath(t *testing.T) {
 	png := string(pngMagic) + "rest-of-image"
 	f.Responses["-s "+serial+" exec-out screencap -p"] = adbtest.Response{Stdout: png}
 	r := ak(t, f, "screenshot", "shot.png")
-	if r.code != 0 || r.out != "shot.png\n" || !strings.HasPrefix(r.err, "==> Capturing Google Pixel 9 Pro\n✓ Saved 'shot.png'") {
+	if r.code != 0 || r.out != "shot.png\n" || !strings.HasPrefix(r.err, "==> Capturing the screen on Google Pixel 9 Pro\n✓ Saved 'shot.png'") {
 		t.Fatalf("code %d out %q err %q", r.code, r.out, r.err)
 	}
 	if b, _ := os.ReadFile("shot.png"); string(b) != png {
 		t.Error("file content")
 	}
 	f.Responses["-s "+serial+" exec-out screencap -p"] = adbtest.Response{Stdout: "screencap: permission denied"}
-	if r := ak(t, f, "screenshot", "bad.png"); r.code != 1 || !strings.Contains(r.err, "Error: Couldn't capture the screen of Google Pixel 9 Pro\n  screencap: permission denied") {
+	if r := ak(t, f, "screenshot", "bad.png"); r.code != 1 || !strings.Contains(r.err, "Error: Couldn't capture the screen on Google Pixel 9 Pro\n  screencap: permission denied") {
 		t.Errorf("bad capture: %d %q", r.code, r.err)
 	}
 }
@@ -106,7 +106,7 @@ func TestRestartRepeat(t *testing.T) {
 }
 
 func TestWifiArgs(t *testing.T) {
-	if r := ak(t, baseFake(), "wifi", "on"); r.code != 2 || !strings.Contains(r.err, "Unknown argument: on") {
+	if r := ak(t, baseFake(), "wifi", "on"); r.code != 2 || !strings.Contains(r.err, "Unknown argument 'on' (use off)\nHint: Run 'ak wifi --help' to see the options") {
 		t.Errorf("%d %q", r.code, r.err)
 	}
 	if r := ak(t, baseFake(), "wifi", "off"); r.code != 0 || !strings.Contains(r.err, "No devices connected over Wi-Fi") {
@@ -183,7 +183,7 @@ func TestScreenshotCopy(t *testing.T) {
 
 	copied = nil
 	r = ak(t, f, "screenshot", "-c", "shot.png")
-	if r.code != 0 || r.out != "shot.png\n" || len(copied) != 1 || copied[0] != "shot.png" || !strings.Contains(r.err, "✓ Copied to the clipboard") {
+	if r.code != 0 || r.out != "shot.png\n" || len(copied) != 1 || copied[0] != "shot.png" || !strings.Contains(r.err, "✓ Copied the screenshot to the clipboard\n") {
 		t.Errorf("-c with a file: code %d out %q copied %v\n%s", r.code, r.out, copied, r.err)
 	}
 

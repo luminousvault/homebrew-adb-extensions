@@ -132,7 +132,7 @@ func runActivities(c *Ctx) error {
 	dumpsys := adb.Shell(serial, "dumpsys activity activities")
 	foreground := foregroundTask(dumpsys)
 	if foreground == "" {
-		return failErr("", "No foreground activity found on %s", deviceName(serial))
+		return failErr("Turn the screen on and open an app", "No foreground activity found on %s", deviceName(serial))
 	}
 	hist := histLines(dumpsys)
 	tasks := []string{foreground}
@@ -152,11 +152,15 @@ func runActivities(c *Ctx) error {
 			result = append(result, t)
 		}
 	}
-	if len(result) == 0 {
-		return failErr("", "No activities found on %s", deviceName(serial))
-	}
 	if c.JSON() {
+		if result == nil {
+			result = []taskJSON{} // "[]", not "null"
+		}
 		return ui.JSON(result)
+	}
+	if len(result) == 0 {
+		ui.Info("No activities found on %s", deviceName(serial))
+		return nil
 	}
 	ui.Step("Activity stack on %s", deviceName(serial))
 	for i, t := range result {

@@ -83,30 +83,30 @@ func runRecord(c *Ctx) error {
 	if v := c.String("--time-limit"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 0 {
-			return usageErr(c.Cmd, "--time-limit must be 0 (no limit) or a number of seconds: %s", v)
+			return usageErr(c.Cmd, "--time-limit must be 0 (no limit) or a number of seconds: %s", q(v))
 		}
 		limit = n
 	}
 	size := c.String("--size")
 	if size != "" && !reSize.MatchString(size) {
-		return usageErr(c.Cmd, "--size must look like 1280x720: %s", size)
+		return usageErr(c.Cmd, "--size must look like 1280x720: %s", q(size))
 	}
 	serial, err := c.Device()
 	if err != nil {
 		return err
 	}
-	// screenrecord can't record a screen that is off (UNASSIGNED_LAYER_STACK),
+	// screenrecord fails on a screen that is off (UNASSIGNED_LAYER_STACK),
 	// and finding that out after it exits takes several seconds.
 	if screenOff(serial) {
 		return failErr(wakeHint(serial),
-			"The screen of %s is off; it can't be recorded", deviceName(serial))
+			"Couldn't record the screen on %s: the screen is off", deviceName(serial))
 	}
 	if !noTimeLimit(serial) {
 		switch {
 		case limit < 0:
 			limit = 180
 		case limit == 0 || limit > 180:
-			return failErr("Use -t 1-180", "screenrecord on %s can't record longer than 180 seconds", deviceName(serial))
+			return failErr("Pass -t with 1-180 seconds", "%s records at most 180 seconds", deviceName(serial))
 		}
 	} else if limit < 0 {
 		limit = 0
@@ -139,7 +139,11 @@ func runRecord(c *Ctx) error {
 	defer signal.Stop(sig)
 
 	start := time.Now()
-	sp := ui.Spin("Recording %s (%s) — press Ctrl+C to stop", deviceName(serial), recordClock(0, limit))
+	// The clock changes every second, so it goes in with Update: off a
+	// terminal only the step itself is printed.
+	recording := "Recording the screen on " + deviceName(serial)
+	sp := ui.Spin("%s (Ctrl+C to stop)", recording)
+	sp.Update("%s (%s, Ctrl+C to stop)", recording, recordClock(0, limit))
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	stopped := false
@@ -166,7 +170,7 @@ wait:
 		case <-tick.C:
 			if !stopped {
 				el := int(time.Since(start).Seconds())
-				sp.SetText("Recording %s (%s) — press Ctrl+C to stop", deviceName(serial), recordClock(el, limit))
+				sp.Update("%s (%s, Ctrl+C to stop)", recording, recordClock(el, limit))
 			}
 		}
 	}
@@ -175,7 +179,7 @@ wait:
 	n := waitStable(serial, remote, 10*time.Second)
 	if n <= 0 {
 		sp.Stop()
-		ui.Errorf("The recording on %s was not saved", deviceName(serial))
+		ui.Errorf("Couldn't save the recording on %s", deviceName(serial))
 		if s := strings.TrimSpace(log.String()); s != "" {
 			ui.Detail("%s", s)
 			if strings.Contains(s, "UNASSIGNED_LAYER_STACK") {

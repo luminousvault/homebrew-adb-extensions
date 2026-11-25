@@ -320,7 +320,7 @@ func TestAndroidSerialEnv(t *testing.T) {
 func TestMultipleDevicesWithoutTerminal(t *testing.T) {
 	r := ak(t, twoDevices(), "info")
 	want := "Error: Multiple devices connected: TESTSERIAL01, SECOND\n" +
-		"Hint: Use -s <serial> or set ANDROID_SERIAL\n"
+		"Hint: Pass -s <serial>, or set ANDROID_SERIAL\n"
 	if r.code != 1 || r.err != want || r.out != "" {
 		t.Errorf("code %d stderr %q", r.code, r.err)
 	}
@@ -375,13 +375,13 @@ func TestDeviceErrors(t *testing.T) {
 		t.Errorf("no devices: %d %q", r.code, r.err)
 	}
 	r = ak(t, baseFake(), "info", "-s", "NOPE")
-	if r.code != 1 || !strings.Contains(r.err, "Error: Device not found: NOPE") {
+	if r.code != 1 || !strings.Contains(r.err, "Error: Device 'NOPE' was not found") {
 		t.Errorf("unknown serial: %d %q", r.code, r.err)
 	}
 	f = baseFake()
 	f.Responses["devices"] = adbtest.Response{Stdout: "List of devices attached\nLOCKED\tunauthorized\n"}
 	r = ak(t, f, "info", "-s", "LOCKED")
-	if r.code != 1 || !strings.Contains(r.err, "Device LOCKED is unauthorized\nHint: Accept the USB debugging prompt") {
+	if r.code != 1 || !strings.Contains(r.err, "Device 'LOCKED' is unauthorized\nHint: Accept the USB debugging prompt") {
 		t.Errorf("unauthorized: %d %q", r.code, r.err)
 	}
 }
@@ -390,8 +390,9 @@ func TestKillMultipleExitCode(t *testing.T) {
 	f := baseFake()
 	f.Responses["-s "+serial+" shell am force-stop com.example.app"] = adbtest.Response{}
 	r := ak(t, f, "kill", "com.example.app", "bad", "com.not.installed", "com.example.app")
-	want := "✓ Stopped 'com.example.app' on Google Pixel 9 Pro\nError: Invalid package name: 'bad'\n" +
-		"Error: Package not installed on Google Pixel 9 Pro: 'com.not.installed'\nWarning: Skipping duplicate package 'com.example.app'\n"
+	hint := "Hint: Open the app and run 'ak info' to see its package name\n"
+	want := "✓ Stopped 'com.example.app' on Google Pixel 9 Pro\nError: 'bad' is not a valid package name\n" + hint +
+		"Error: 'com.not.installed' is not installed on Google Pixel 9 Pro\n" + hint + "Warning: Skipping duplicate package 'com.example.app'\n"
 	if r.code != 1 || r.err != want {
 		t.Errorf("code %d stderr:\n%s", r.code, r.err)
 	}
@@ -403,10 +404,10 @@ func TestLaunchFailure(t *testing.T) {
 	f.Responses["-s "+serial+" shell am start --user 0 -n com.example.app/.MainActivity"] = adbtest.Response{
 		Stdout: "Starting: Intent { cmp=com.example.app/.MainActivity }\nException occurred while executing 'start':\njava.lang.SecurityException\n"}
 	r := ak(t, f, "launch", "com.example.app")
-	if r.code != 1 || !strings.HasPrefix(r.err, "Error: Couldn't launch 'com.example.app'\n  Starting: Intent") {
+	if r.code != 1 || !strings.HasPrefix(r.err, "Error: Couldn't launch 'com.example.app' on Google Pixel 9 Pro\n  Starting: Intent") {
 		t.Errorf("code %d:\n%s", r.code, r.err)
 	}
-	if r := ak(t, f, "launch"); r.code != 2 || !strings.Contains(r.err, "Missing package name\nRun 'ak launch --help' for usage.") {
+	if r := ak(t, f, "launch"); r.code != 2 || !strings.Contains(r.err, "Missing package name\nHint: Run 'ak launch --help' to see the options\n") {
 		t.Errorf("missing arg: %d %q", r.code, r.err)
 	}
 }
@@ -415,7 +416,7 @@ func TestLaunchWithoutLauncherActivity(t *testing.T) {
 	f := baseFake()
 	f.Responses["-s "+serial+" shell cmd package resolve-activity --brief com.example.app"] = adbtest.Response{Stdout: "No activity found\n"}
 	r := ak(t, f, "launch", "com.example.app")
-	if r.code != 1 || r.err != "Error: 'com.example.app' has no launcher activity\n" {
+	if r.code != 1 || r.err != "Error: 'com.example.app' on Google Pixel 9 Pro has no launcher activity\n" {
 		t.Errorf("code %d:\n%s", r.code, r.err)
 	}
 	for _, c := range f.Calls {
@@ -435,11 +436,11 @@ func TestHelpAndUsageErrors(t *testing.T) {
 		{[]string{"--help"}, 0, "  install      Install APKs on one or more devices\n", ""},
 		{[]string{"info", "-h"}, 0, "Usage:\n  ak info [options] [package]", ""},
 		{[]string{"install", "--help"}, 0, "  -f, --filter WORDS", ""},
-		{[]string{"nope"}, 2, "", "Error: Unknown command: nope\nHint: Run 'ak --help' to see all commands\n"},
-		{[]string{"info", "-x"}, 2, "", "Error: Unknown option: -x\nRun 'ak info --help' for usage.\n"},
-		{[]string{"info", "--json=1"}, 2, "", "Error: Option --json does not take a value"},
-		{[]string{"info", "-s"}, 2, "", "Error: Option -s requires a value (ID)"},
-		{[]string{"devices", "extra"}, 2, "", "Error: Too many arguments: extra"},
+		{[]string{"nope"}, 2, "", "Error: Unknown command 'nope'\nHint: Run 'ak --help' to see all commands\n"},
+		{[]string{"info", "-x"}, 2, "", "Error: Unknown option '-x'\nHint: Run 'ak info --help' to see the options\n"},
+		{[]string{"info", "--json=1"}, 2, "", "Error: --json does not take a value"},
+		{[]string{"info", "-s"}, 2, "", "Error: -s requires a value (ID)"},
+		{[]string{"devices", "extra"}, 2, "", "Error: Unexpected argument 'extra'"},
 		{[]string{"install", "-l", "-e"}, 2, "", "Error: Use only one of -l, -e and -f"},
 	}
 	for _, c := range cases {
@@ -498,7 +499,7 @@ func TestMacCommand(t *testing.T) {
 	r := ak(t, f, "mac")
 	want := "  Wi-Fi (current)  ae:12:34:56:78:9a (randomized, SSID \"TestNet\")\n" +
 		"  Wi-Fi (factory)  -\n  Bluetooth        a0:b1:c2:d3:e4:f5\n"
-	if r.out != want || !strings.HasPrefix(r.err, "==> Google Pixel 9 Pro (TESTSERIAL01)\nHint: To see the factory MAC") {
+	if r.out != want || !strings.HasPrefix(r.err, "==> Google Pixel 9 Pro (TESTSERIAL01)\nHint: Set Wi-Fi privacy to 'Use device MAC' on Google Pixel 9 Pro") {
 		t.Errorf("stdout:\n%s\nstderr %q", r.out, r.err)
 	}
 }
@@ -521,7 +522,7 @@ func TestInstallSelection(t *testing.T) {
 	}
 	writeAPK(t, sub, "only-release.apk", 0)
 	if _, err := selectInstallAPKs(installOptions{filtered: true, filter: "debug", args: []string{sub}}); err == nil ||
-		!strings.Contains(err.Error(), "No APK files match all of: debug") {
+		!strings.Contains(err.Error(), "No APK files match all of 'debug'") {
 		t.Errorf("filter not applied: %v", err)
 	}
 	// Several APKs without a terminal: ask for explicit choice.
@@ -552,7 +553,7 @@ func TestInstallRecovery(t *testing.T) {
 	r := ak(t, f, "install", apkFile)
 	// Without a terminal each attempt prints its start line instead of a spinner.
 	if r.code != 0 || !strings.Contains(r.err, "==> Installing 'app.apk' on Google Pixel 9 Pro\n"+
-		"Warning: 'app.apk' is a test-only APK, retrying with -t\n==> Installing 'app.apk' on Google Pixel 9 Pro\n✓ Installed 'app.apk' on Google Pixel 9 Pro (") {
+		"Warning: 'app.apk' is a test-only APK, retrying with -t on Google Pixel 9 Pro\n==> Installing 'app.apk' on Google Pixel 9 Pro\n✓ Installed 'app.apk' on Google Pixel 9 Pro (") {
 		t.Errorf("test-only: %d\n%s", r.code, r.err)
 	}
 
@@ -587,7 +588,7 @@ func TestInstallRecovery(t *testing.T) {
 func TestPullNeedsYesForNewDirWithoutTerminal(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "new")
 	r := ak(t, baseFake(), "pull", dest)
-	if r.code != 1 || !strings.Contains(r.err, "Error: Directory does not exist: '"+dest+"'\nHint: Pass -y to create it") {
+	if r.code != 1 || !strings.Contains(r.err, "Error: '"+dest+"' does not exist\nHint: Pass -y to create it") {
 		t.Errorf("%d %q", r.code, r.err)
 	}
 }
@@ -639,7 +640,7 @@ func TestPullChoosesWithoutTerminal(t *testing.T) {
 		t.Errorf("two matches without terminal: %d %q", r.code, r.err)
 	}
 	r = ak(t, fake(), "pull", dest, "-f", "nothing")
-	if r.code != 1 || !strings.Contains(r.err, "Error: No recent files on Google Pixel 9 Pro match 'nothing'") {
+	if r.code != 1 || !strings.Contains(r.err, "Error: No recent files on Google Pixel 9 Pro match all of 'nothing'\nHint: ") {
 		t.Errorf("no match: %d %q", r.code, r.err)
 	}
 }
@@ -774,7 +775,7 @@ func TestInstallEveryAPKListsThemFirst(t *testing.T) {
 		f.Responses["-s "+serial+" install -r "+p] = adbtest.Response{Stdout: "Success\n"}
 	}
 	r := ak(t, f, "install", "-e", dir)
-	want := "==> Found 2 APK(s) in '" + dir + "'\n  1. app-debug.apk    1 B · "
+	want := "==> Found 2 APKs in '" + dir + "'\n  1. app-debug.apk    1 B · "
 	if r.code != 0 || !strings.HasPrefix(r.err, want) || !strings.Contains(r.err, "\n  2. app-release.apk  1 B · ") {
 		t.Errorf("code %d\n%s", r.code, r.err)
 	}
@@ -874,7 +875,7 @@ func TestBundledShortOptions(t *testing.T) {
 			t.Errorf("%v: args %v", tc.args, c.Args)
 		}
 	}
-	if _, _, err := parse(cmdInstall, []string{"-ez"}); err == nil || !strings.Contains(err.Error(), "Unknown option: -z (in -ez)") {
+	if _, _, err := parse(cmdInstall, []string{"-ez"}); err == nil || !strings.Contains(err.Error(), "Unknown option '-z' (in '-ez')") {
 		t.Errorf("unknown in bundle: %v", err)
 	}
 	if _, help, _ := parse(cmdInstall, []string{"-eh"}); !help {
@@ -956,7 +957,7 @@ func TestScreenOffWarnings(t *testing.T) {
 		f.Responses["-s "+serial+" exec-out screencap -p"] = adbtest.Response{Stdout: png}
 
 		r := ak(t, f, "screenshot", "shot.png")
-		want := "Warning: The screen of Google Pixel 9 Pro is off; the image may be black\n" +
+		want := "Warning: The screen of Google Pixel 9 Pro is off, so the image may be black\n" +
 			"Hint: Turn the screen on: 'adb -s " + serial + " shell input keyevent WAKEUP'\n"
 		if r.code != 0 || r.out != "shot.png\n" || strings.Contains(r.err, want) != c.warn {
 			t.Errorf("screenshot (%q): code %d out %q err %q", c.power, r.code, r.out, r.err)
@@ -978,7 +979,7 @@ func TestRecordFailsFastWhenScreenOff(t *testing.T) {
 	f := baseFake()
 	f.Responses["-s "+serial+" shell dumpsys power"] = adbtest.Response{Stdout: powerDozing}
 	r := ak(t, f, "record", "-t", "3")
-	want := "Error: The screen of Google Pixel 9 Pro is off; it can't be recorded\n" +
+	want := "Error: Couldn't record the screen on Google Pixel 9 Pro: the screen is off\n" +
 		"Hint: Turn the screen on: 'adb -s " + serial + " shell input keyevent WAKEUP'\n"
 	if r.code != 1 || r.err != want {
 		t.Errorf("code %d err %q", r.code, r.err)
@@ -1039,7 +1040,9 @@ func TestPushRenamesInsteadOfOverwriting(t *testing.T) {
 	local := filepath.Join(dir, "a.txt")
 	f := pushFake([]string{"a.txt", "a (1).txt", "other"}, map[string]adbtest.Response{local + " /sdcard/Download/a (2).txt": {}})
 	r := ak(t, f, "push", local)
-	if r.code != 0 || !strings.Contains(r.err, "Warning: '/sdcard/Download/a.txt' already exists on Google Pixel 9 Pro, pushing as 'a (2).txt'\n") ||
+	// The warning follows the step it is about.
+	if r.code != 0 || !strings.Contains(r.err, "==> Pushing 'a.txt' to Google Pixel 9 Pro\n"+
+		"Warning: '/sdcard/Download/a.txt' already exists on Google Pixel 9 Pro, pushing as 'a (2).txt'\n✓ Pushed") ||
 		!strings.Contains(r.err, "to '/sdcard/Download/a (2).txt' (Google Pixel 9 Pro, ") || r.out != "/sdcard/Download/a (2).txt\n" {
 		t.Errorf("code %d\n%s", r.code, r.err)
 	}
@@ -1069,7 +1072,7 @@ func TestPushFailureContinuesAndExitsOne(t *testing.T) {
 	})
 	r := ak(t, f, "push", a, b)
 	if r.code != 1 || !strings.Contains(r.err, "Error: Couldn't push '"+a+"' to Google Pixel 9 Pro\n  adb: error: failed to copy") ||
-		!strings.Contains(r.err, "✓ Pushed '"+b+"'") || !strings.Contains(r.err, "Error: 1 of 2 files failed") {
+		!strings.Contains(r.err, "✓ Pushed '"+b+"'") || !strings.Contains(r.err, "Error: Couldn't push 1 of 2 files") {
 		t.Errorf("code %d\n%s", r.code, r.err)
 	}
 }
@@ -1077,11 +1080,11 @@ func TestPushFailureContinuesAndExitsOne(t *testing.T) {
 func TestPushRejectsMissingFilesAndDirectories(t *testing.T) {
 	dir := pushFiles(t)
 	r := ak(t, baseFake(), "push", filepath.Join(dir, "nope.txt"))
-	if r.code != 1 || !strings.Contains(r.err, "Error: No such file: ") || !strings.Contains(r.err, "Hint: ") {
+	if r.code != 1 || !strings.Contains(r.err, "' was not found\nHint: ") || !strings.Contains(r.err, "Hint: ") {
 		t.Errorf("missing: %d %q", r.code, r.err)
 	}
 	r = ak(t, baseFake(), "push", dir)
-	if r.code != 1 || !strings.Contains(r.err, "is a directory; ak push copies files only\nHint: Pass the files inside it") {
+	if r.code != 1 || !strings.Contains(r.err, "is a directory, and ak push copies files only\nHint: Pass the files inside it") {
 		t.Errorf("directory: %d %q", r.code, r.err)
 	}
 }
@@ -1139,7 +1142,7 @@ func TestPushScansMediaBeforeAndroid11(t *testing.T) {
 
 func TestFilesNeedsTerminal(t *testing.T) {
 	r := ak(t, baseFake(), "files")
-	if r.code != 1 || !strings.Contains(r.err, "ak files needs a terminal\nHint: Use ak pull or ak push") {
+	if r.code != 1 || !strings.Contains(r.err, "ak files needs a terminal\nHint: Run 'ak pull' or 'ak push' instead") {
 		t.Errorf("no terminal: %d\n%s", r.code, r.err)
 	}
 	if r := ak(t, baseFake(), "files", "sdcard"); r.code != 2 {
@@ -1153,7 +1156,7 @@ func TestRecordTimeLimitOnOlderAndroid(t *testing.T) {
 	f.Responses["-s "+serial+" shell screenrecord --help 2>&1"] = adbtest.Response{Stdout: "--time-limit TIME\n    Set the maximum recording time, in seconds.  Default / maximum is 180.\n"}
 	for _, limit := range []string{"0", "181"} {
 		r := ak(t, f, "record", "-t", limit)
-		want := "Error: screenrecord on Google Pixel 9 Pro can't record longer than 180 seconds\nHint: Use -t 1-180\n"
+		want := "Error: Google Pixel 9 Pro records at most 180 seconds\nHint: Pass -t with 1-180 seconds\n"
 		if r.code != 1 || r.err != want {
 			t.Errorf("-t %s: code %d err %q", limit, r.code, r.err)
 		}
@@ -1300,7 +1303,7 @@ func TestSysinfoMissingValues(t *testing.T) {
 	if strings.Contains(r.out, "imei2") {
 		t.Error("imei2 row shown without a second IMEI")
 	}
-	if r.code != 0 || r.err != "==> Google Pixel 9 Pro\nHint: "+hintIMEI+"\n" {
+	if r.code != 0 || r.err != "==> Google Pixel 9 Pro\nHint: "+hintIMEI("TESTSERIAL01")+"\n" {
 		t.Errorf("code %d stderr %q", r.code, r.err)
 	}
 }
@@ -1360,5 +1363,27 @@ func TestMacHidden(t *testing.T) {
 	}
 	if strings.Contains(zshCompletion(), "'mac:") {
 		t.Error("mac in the zsh completion")
+	}
+}
+
+// An empty result is not a failure: a "No …" line on stderr, exit 0.
+func TestEmptyResultsExitZero(t *testing.T) {
+	f := baseFake()
+	f.Responses["-s "+serial+" shell "+files.RecentFilesQuery] = adbtest.Response{Stdout: "No result found.\n"}
+	r := ak(t, f, "pull", t.TempDir())
+	if r.code != 0 || r.out != "" || !strings.HasSuffix(r.err, "  No recent files found on Google Pixel 9 Pro\n") {
+		t.Errorf("pull: code %d out %q err %q", r.code, r.out, r.err)
+	}
+
+	f = baseFake()
+	f.Responses["-s "+serial+" shell dumpsys activity activities"] = adbtest.Response{
+		Stdout: "  topResumedActivity=ActivityRecord{1a2 u0 com.example.app/.Gone t99}\n"}
+	r = ak(t, f, "activities")
+	if r.code != 0 || r.out != "" || r.err != "  No activities found on Google Pixel 9 Pro\n" {
+		t.Errorf("activities: code %d out %q err %q", r.code, r.out, r.err)
+	}
+	r = ak(t, f, "activities", "--json")
+	if r.code != 0 || r.out != "[]\n" {
+		t.Errorf("activities --json: code %d out %q", r.code, r.out)
 	}
 }

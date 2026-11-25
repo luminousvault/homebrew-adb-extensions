@@ -149,12 +149,12 @@ func checkSerial(serial string) error {
 		case "device":
 			return nil
 		case "unauthorized":
-			return failErr("Accept the USB debugging prompt on the device", "Device %s is unauthorized", serial)
+			return failErr("Accept the USB debugging prompt on the device", "Device %s is unauthorized", q(serial))
 		default:
-			return failErr("Reconnect the device and run 'ak devices'", "Device %s is %s", serial, d.State)
+			return failErr("Reconnect the device and run 'ak devices'", "Device %s is %s", q(serial), d.State)
 		}
 	}
-	return failErr("Run 'ak devices' to see connected devices", "Device not found: %s", serial)
+	return failErr("Run 'ak devices' to see connected devices", "Device %s was not found", q(serial))
 }
 
 // Device resolves the single target: -s, ANDROID_SERIAL, the only device, or the picker.
@@ -179,7 +179,7 @@ func (c *Ctx) Device() (string, error) {
 		return ready[0], nil
 	}
 	if !canPick() {
-		return "", failErr("Use -s <serial> or set ANDROID_SERIAL", "Multiple devices connected: %s", strings.Join(ready, ", "))
+		return "", failErr("Pass -s <serial>, or set ANDROID_SERIAL", "Multiple devices connected: %s", strings.Join(ready, ", "))
 	}
 	items := make([]string, len(ready))
 	for i, s := range ready {
@@ -217,7 +217,7 @@ func (c *Ctx) Devices() ([]string, error) {
 		return ready, nil
 	}
 	if !canPick() {
-		return nil, failErr("Use -s <serial>, --all, or set ANDROID_SERIAL", "Multiple devices connected: %s", strings.Join(ready, ", "))
+		return nil, failErr("Pass -s <serial> or --all, or set ANDROID_SERIAL", "Multiple devices connected: %s", strings.Join(ready, ", "))
 	}
 	items := make([]string, len(ready))
 	for i, s := range ready {
