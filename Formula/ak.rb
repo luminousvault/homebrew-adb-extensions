@@ -3,24 +3,24 @@
 class Ak < Formula
   desc "ADB extensions kit - Essential ADB utilities for Android development"
   homepage "https://github.com/luminousvault/homebrew-adb-extensions"
-  version "2.4.1"
+  version "2.5.0"
   license "MIT"
 
   # Prebuilt binaries from the GitHub release: no Go toolchain on the user's machine.
   on_macos do
     # Universal binary: Apple Silicon and Intel in one file.
-    url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.4.1/ak_2.4.1_macos.tar.gz"
-    sha256 "00214487195f7ef936926da7986b81d72c49f20a6d5569193de61cbf6e1dab2d"
+    url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.5.0/ak_2.5.0_macos.tar.gz"
+    sha256 "6722c97da942108207c4538233cf825ecf537ca9c5fd026db175cbf0da0d54ab"
   end
 
   on_linux do
     on_arm do
-      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.4.1/ak_2.4.1_linux_arm64.tar.gz"
-      sha256 "29ccb4f784a60444e429d02c857c98458a17d650880d6e48c968f7c28440632e"
+      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.5.0/ak_2.5.0_linux_arm64.tar.gz"
+      sha256 "d3a96ef24b981992fba062b624faf05cb5272c03f11fbf60a8d804dc5068e83f"
     end
     on_intel do
-      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.4.1/ak_2.4.1_linux_x86_64.tar.gz"
-      sha256 "23c6869e03bcf4c7e70ebf69c9308d6d83c97eb60d4b61055c7fe5bb68ce727e"
+      url "https://github.com/luminousvault/homebrew-adb-extensions/releases/download/v2.5.0/ak_2.5.0_linux_x86_64.tar.gz"
+      sha256 "6e5673be56a057af0d481cd50502fd06939924988813ac5996a53efc02393136"
     end
   end
 
