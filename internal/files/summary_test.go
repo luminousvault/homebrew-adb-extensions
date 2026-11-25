@@ -23,7 +23,7 @@ func TestSummaryRenameMkdirCancel(t *testing.T) {
 	press(t, s, down+"r"+back+back+back+back+back+"b.txt"+enter)
 	press(t, s, "nnew"+enter)
 	press(t, s, tab+"nx/y"+enter) // refused input: a message, not a summary line
-	want := []string{"Renamed 'a.txt' to 'b.txt' on Test Phone", "Made folder 'new' in Test Phone:" + dev}
+	want := []string{"Renamed 'a.txt' to 'b.txt' on Test Phone", "Made folder 'new' in '" + dev + "' on Test Phone"}
 	if strings.Join(s.summary.Done, "|") != strings.Join(want, "|") {
 		t.Errorf("done %q", s.summary.Done)
 	}
@@ -47,15 +47,15 @@ func TestSummaryRenameMkdirCancel(t *testing.T) {
 	s.finishSend(job, false, copyResult{done: []Entry{{Name: "b.txt"}}, doneAs: []string{"b.txt"}, canceled: true, todo: 3})
 	to := displayPath(s.panes[PC].fs, pc)
 	n := len(s.summary.Done)
-	if got := s.summary.Done[n-1]; got != "Pulled 'b.txt' from Test Phone → "+to {
+	if got := s.summary.Done[n-1]; got != "Pulled 'b.txt' from Test Phone to '"+to+"'" {
 		t.Errorf("done %q", s.summary.Done)
 	}
-	if want := "Canceled pulling from Test Phone → " + to + ": 1 of 3 pulled"; len(s.summary.Canceled) != 1 || s.summary.Canceled[0] != want {
+	if want := "Canceled pulling from Test Phone to '" + to + "': 1 of 3 pulled"; len(s.summary.Canceled) != 1 || s.summary.Canceled[0] != want {
 		t.Errorf("canceled %q, want %q", s.summary.Canceled, want)
 	}
 	job = &copyJob{from: s.panes[PC].fs, to: s.panes[Device].fs, dstDir: dev}
 	s.finishSend(job, true, copyResult{canceled: true, todo: 2})
-	if want := "Canceled pushing to Test Phone:" + dev + " ← Computer: 0 of 2 pushed"; s.summary.Canceled[1] != want {
+	if want := "Canceled pushing to '" + dev + "' on Test Phone: 0 of 2 pushed"; s.summary.Canceled[1] != want {
 		t.Errorf("canceled %q, want %q", s.summary.Canceled[1], want)
 	}
 }
@@ -70,7 +70,7 @@ func TestSummaryShowsNewNames(t *testing.T) {
 	press(t, s, "\x1b[F"+"g")        // y.txt: no conflict
 	press(t, s, home+down+"g"+enter) // KEEP.TXT -> rename
 	last := s.summary.Done[len(s.summary.Done)-1]
-	if !strings.HasPrefix(last, "Pulled 'KEEP.TXT' as 'KEEP (1).TXT' from Test Phone → ") {
+	if !strings.HasPrefix(last, "Pulled 'KEEP.TXT' as 'KEEP (1).TXT' from Test Phone to '") {
 		t.Errorf("summary %q", last)
 	}
 	if !strings.Contains(s.msg.text, "'KEEP.TXT' as 'KEEP (1).TXT'") {
@@ -95,7 +95,7 @@ func TestQCancelsQuestions(t *testing.T) {
 		t.Fatalf("mode %d help %q", s.mode, ui.Plain(s.modeKeys()))
 	}
 	press(t, s, "q")
-	if s.mode != modeNormal || s.exit != exitNone || s.msg.text != "Pull canceled" {
+	if s.mode != modeNormal || s.exit != exitNone || s.msg.text != "Canceled pulling" {
 		t.Fatalf("q in conflict: mode %d exit %d %+v", s.mode, s.exit, s.msg)
 	}
 	press(t, s, down+"d")
@@ -236,7 +236,7 @@ func captureStderr(t *testing.T, f func()) string {
 	return b.String()
 }
 
-// The failure list (Enter on "3 of 5 pulled, 2 failed") shows what went
+// The failure list (Enter on "Couldn't pull 2 of 5 files") shows what went
 // through as well, and fits its rows with the failures first.
 func TestFailureLinesShowDone(t *testing.T) {
 	fails := []failure{{"b2.png", "adb was stopped"}, {"b3.png", "adb was stopped"}}
@@ -268,5 +268,76 @@ func TestFailureLinesShowDone(t *testing.T) {
 	want = " Failed (2)\n ✗ b2.png  adb was stopped\n ✗ b3.png  adb was stopped\n\n ✓ 3 done\n"
 	if got != want {
 		t.Errorf("small:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// Messages name a place the same way in the status line, the summary, a
+// cancel and an error: names quoted, the device after "on", words instead
+// of the progress line's arrows (cli-design.md §3).
+func TestMessageWording(t *testing.T) {
+	s, dev, pc := testState(t)
+	devFS, pcFS := s.panes[Device].fs, s.panes[PC].fs
+	to := displayPath(pcFS, pc)
+	for _, c := range []struct {
+		job  *copyJob
+		want string
+	}{
+		{&copyJob{from: devFS, to: pcFS, dstDir: pc}, "from Test Phone to '" + to + "'"},
+		{&copyJob{from: pcFS, to: devFS, dstDir: dev}, "to '" + dev + "' on Test Phone"},
+		{&copyJob{from: devFS, to: devFS, dstDir: dev}, "to '" + dev + "' on Test Phone"},
+		{&copyJob{from: pcFS, to: pcFS, dstDir: pc}, "to '" + to + "'"},
+	} {
+		if got := c.job.where(); got != c.want {
+			t.Errorf("where %q, want %q", got, c.want)
+		}
+	}
+
+	for _, c := range []struct {
+		list []Entry
+		want string
+	}{
+		{[]Entry{{Name: "a.txt"}}, "'a.txt'"},
+		{[]Entry{{Name: "a"}, {Name: "b"}}, "2 files"},
+		{[]Entry{{Name: "a", Dir: true}, {Name: "b", Dir: true}}, "2 folders"},
+		{[]Entry{{Name: "a", Dir: true}, {Name: "b"}}, "2 items"},
+	} {
+		if got := countItems(c.list); got != c.want {
+			t.Errorf("countItems %v = %q, want %q", c.list, got, c.want)
+		}
+	}
+
+	// Some failed: "Couldn't <verb> N of M", as ak pull and push say it.
+	job := &copyJob{from: devFS, to: pcFS, dstDir: pc, ops: []copyOp{{src: Entry{Name: "a"}}, {src: Entry{Name: "b"}}, {src: Entry{Name: "c"}}}}
+	s.finishSend(job, false, copyResult{done: []Entry{{Name: "a"}, {Name: "b"}}, doneAs: []string{"a", "b"}, failed: []failure{{"c", "boom"}}, todo: 3})
+	if s.msg == nil || s.msg.kind != msgError || s.msg.text != "Couldn't pull 1 of 3 files" {
+		t.Errorf("partly failed: %+v", s.msg)
+	}
+	if got, want := s.summary.Failed[len(s.summary.Failed)-1], "Couldn't pull 'c' from Test Phone to '"+to+"': boom"; got != want {
+		t.Errorf("failed %q, want %q", got, want)
+	}
+
+	// A cancel the user asked for is Info in the status line, as for a
+	// delete; the summary keeps it as a Warning (the job is incomplete).
+	s.finishSend(job, false, copyResult{done: []Entry{{Name: "a"}}, doneAs: []string{"a"}, canceled: true, todo: 3})
+	if s.msg == nil || s.msg.kind != msgInfo || s.msg.text != "Canceled pulling: 1 of 3 pulled" {
+		t.Errorf("canceled: %+v", s.msg)
+	}
+
+	// A delete says "from" in the question, the result, the cancel and the error.
+	p := s.panes[Device]
+	targets := []Entry{{Name: "x", Path: filepath.Join(dev, "x")}, {Name: "y", Path: filepath.Join(dev, "y")}}
+	s.finishDelete(p, targets, targets[:1], []failure{{"y", "busy"}}, false, false)
+	if s.msg.text != "Couldn't delete 1 of 2 files" {
+		t.Errorf("delete failed: %q", s.msg.text)
+	}
+	if got := s.summary.Failed[len(s.summary.Failed)-1]; got != "Couldn't delete 'y' from Test Phone: busy" {
+		t.Errorf("delete failure %q", got)
+	}
+	if got := s.summary.Done[len(s.summary.Done)-1]; got != "Deleted 'x' from Test Phone" {
+		t.Errorf("deleted %q", got)
+	}
+	s.finishDelete(p, targets, nil, nil, true, false)
+	if got := s.summary.Canceled[len(s.summary.Canceled)-1]; got != "Canceled deleting from Test Phone: 0 of 2 deleted" || s.msg.kind != msgInfo {
+		t.Errorf("delete canceled %q %+v", got, s.msg)
 	}
 }

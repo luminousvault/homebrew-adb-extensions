@@ -82,7 +82,7 @@ func TestScreenshotSavesPNGAndPrintsPath(t *testing.T) {
 	png := string(pngMagic) + "rest-of-image"
 	f.Responses["-s "+serial+" exec-out screencap -p"] = adbtest.Response{Stdout: png}
 	r := ak(t, f, "screenshot", "shot.png")
-	if r.code != 0 || r.out != "shot.png\n" || !strings.HasPrefix(r.err, "==> Capturing the screen on Google Pixel 9 Pro\n✓ Saved 'shot.png'") {
+	if r.code != 0 || r.out != absIn(t, "shot.png")+"\n" || !strings.HasPrefix(r.err, "==> Capturing the screen on Google Pixel 9 Pro\n✓ Saved '"+tildeHome(absIn(t, "shot.png"))+"'") {
 		t.Fatalf("code %d out %q err %q", r.code, r.out, r.err)
 	}
 	if b, _ := os.ReadFile("shot.png"); string(b) != png {
@@ -183,13 +183,13 @@ func TestScreenshotCopy(t *testing.T) {
 
 	copied = nil
 	r = ak(t, f, "screenshot", "-c", "shot.png")
-	if r.code != 0 || r.out != "shot.png\n" || len(copied) != 1 || copied[0] != "shot.png" || !strings.Contains(r.err, "✓ Copied the screenshot to the clipboard\n") {
+	if r.code != 0 || r.out != absIn(t, "shot.png")+"\n" || len(copied) != 1 || copied[0] != "shot.png" || !strings.Contains(r.err, "✓ Copied the screenshot to the clipboard\n") {
 		t.Errorf("-c with a file: code %d out %q copied %v\n%s", r.code, r.out, copied, r.err)
 	}
 
 	copied, opened = nil, nil
 	r = ak(t, f, "screenshot", "-co")
-	if r.code != 0 || len(copied) != 1 || len(opened) != 1 || copied[0] != opened[0] || strings.TrimSpace(r.out) != opened[0] {
+	if r.code != 0 || len(copied) != 1 || len(opened) != 1 || copied[0] != opened[0] || strings.TrimSpace(r.out) != absIn(t, opened[0]) {
 		t.Errorf("-c -o: code %d out %q copied %v opened %v", r.code, r.out, copied, opened)
 	}
 
@@ -474,6 +474,16 @@ func TestSignaturePrintsSubjectFirst(t *testing.T) {
 	}
 }
 
+// absIn is p from the current directory, as saved paths are printed on stdout.
+func absIn(t *testing.T, p string) string {
+	t.Helper()
+	a, err := filepath.Abs(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
 func TestSavedPathsOnStdout(t *testing.T) {
 	dest := t.TempDir()
 	f := baseFake()
@@ -482,7 +492,7 @@ func TestSavedPathsOnStdout(t *testing.T) {
 	local := filepath.Join(dest, "report.pdf")
 	f.Responses["-s "+serial+" pull /storage/emulated/0/Download/report.pdf "+local] = adbtest.Response{}
 	r := ak(t, f, "pull", dest, "-l")
-	if r.code != 0 || r.out != local+"\n" || !strings.Contains(r.err, "✓ Pulled '"+local+"' (Google Pixel 9 Pro, 2 KB, ") {
+	if r.code != 0 || r.out != local+"\n" || !strings.Contains(r.err, "✓ Pulled '"+tildeHome(local)+"' (Google Pixel 9 Pro, 2 KB, ") {
 		t.Errorf("pull: code %d out %q err %q", r.code, r.out, r.err)
 	}
 
@@ -491,8 +501,9 @@ func TestSavedPathsOnStdout(t *testing.T) {
 	f.Responses["-s "+serial+" shell pm path com.example.app"] = adbtest.Response{Stdout: "package:/data/app/base.apk\n"}
 	f.Responses["-s "+serial+" pull /data/app/base.apk com.example.app.apk"] = adbtest.Response{}
 	r = ak(t, f, "extract")
-	if r.code != 0 || r.out != "com.example.app.apk\n" ||
-		!strings.Contains(r.err, "==> Extracting 'com.example.app' (foreground app) on Google Pixel 9 Pro\n✓ Saved 'com.example.app.apk' (Google Pixel 9 Pro, ") {
+	apk := absIn(t, "com.example.app.apk")
+	if r.code != 0 || r.out != apk+"\n" ||
+		!strings.Contains(r.err, "==> Extracting 'com.example.app' (foreground app) on Google Pixel 9 Pro\n✓ Saved '"+tildeHome(apk)+"' (Google Pixel 9 Pro, ") {
 		t.Errorf("extract: code %d out %q err %q", r.code, r.out, r.err)
 	}
 }

@@ -101,7 +101,7 @@ func TestProgressByItems(t *testing.T) {
 	s.now = func() time.Time { return now }
 	s.task = &task{label: "Deleting 'big'", started: now.Add(-12 * time.Second)}
 	s.prog = progress{index: 1, count: 1, name: "big", total: -1}
-	if got := ui.Plain(s.progressText(120)); !strings.Contains(got, "Deleting 'big'") || !strings.Contains(got, "12s") || strings.Contains(got, "█") {
+	if got := ui.Plain(s.progressText(120)); !strings.Contains(got, "Deleting 'big'") || !strings.Contains(got, "12.0s") || strings.Contains(got, "█") {
 		t.Errorf("one item: %q", got)
 	}
 }
@@ -129,7 +129,7 @@ func TestDeleteStopsBetweenItems(t *testing.T) {
 	s.task = nil
 	apply(s)
 	left, _ := os.ReadDir(dev)
-	if len(left) != 1 || s.msg == nil || !strings.Contains(s.msg.text, "Canceled: 2 of 3 deleted") {
+	if len(left) != 1 || s.msg == nil || !strings.Contains(s.msg.text, "Canceled deleting: 2 of 3 deleted") {
 		t.Errorf("left %d, msg %+v", len(left), s.msg)
 	}
 	if len(s.summary.Canceled) != 1 {
@@ -144,7 +144,7 @@ func TestProgressSeveralItems(t *testing.T) {
 	s := progressState(t, 10, 1000)
 	s.prog = progress{index: 4, count: 10, name: "c.jpg", done: 100, total: 1000, before: 2900, all: 10000}
 	got := ui.Plain(s.progressText(140))
-	if !strings.Contains(got, "Pulling 4/10") || !strings.Contains(got, "30% (3 KB / 10 KB)") || !strings.Contains(got, "c.jpg") {
+	if !strings.Contains(got, "Pulling (4/10)") || !strings.Contains(got, "30% (3 KB / 10 KB)") || !strings.Contains(got, "c.jpg") {
 		t.Errorf("by bytes: %q", got)
 	}
 	s.prog = progress{index: 4, count: 10, name: "c.jpg", done: 10, total: -1}

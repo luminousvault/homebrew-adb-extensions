@@ -582,8 +582,9 @@ func runExtract(c *Ctx) error {
 	if st, err := os.Stat(file); err == nil {
 		size = files.HumanSize(st.Size()) + ", "
 	}
-	ui.Success("Saved %s %s", q(file), ui.Err.Dim("("+deviceName(serial)+", "+size+elapsed(start)+")"))
-	ui.Out.Println(file)
+	abs, shown := savedPath(file)
+	ui.Success("Saved %s %s", q(shown), ui.Err.Dim("("+deviceName(serial)+", "+size+elapsed(start)+")"))
+	ui.Out.Println(abs)
 	if splits > 0 {
 		ui.Warn("%s also has %s, so the base APK alone may not install", q(t.pkg), ui.Plural(splits, "split APK"))
 		ui.Hint("List them with 'adb -s %s shell pm path %s', pull each, and install them together with 'adb install-multiple'", serial, t.pkg)

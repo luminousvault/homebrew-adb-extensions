@@ -24,16 +24,16 @@ func TestGotoTabCompletes(t *testing.T) {
 	sep := string(filepath.Separator)
 
 	for _, c := range []struct{ typed, want, matches, hint string }{
-		{"Mu", "Mu" + "sic" + sep, "", ""},                                       // one folder: filled, with a separator
-		{"D", "D", "DCIM/ Documents/ Download/", ""},                             // several: listed (no file, no hidden)
-		{"Do", "Do", "Documents/ Download/", ""},                                 // nothing more they share
-		{"Dow", "Download" + sep, "", ""},                                        // one again
-		{"dow", "Download" + sep, "", ""},                                        // case does not matter when nothing has it
-		{"d", "dl" + sep, "", ""},                                                // the same case wins
-		{"Download" + sep + "S", "Download" + sep + "Screenshots" + sep, "", ""}, // inside a folder
-		{".", ".Dhidden" + sep, "", ""},                                          // hidden only for a dot
-		{"xyz", "xyz", "", "No folder starts with 'xyz'"},                        // none: the text stays
-		{"nope" + sep + "a", "nope" + sep + "a", "", "Can't read nope" + sep},    // a folder that is not there
+		{"Mu", "Mu" + "sic" + sep, "", ""},                                              // one folder: filled, with a separator
+		{"D", "D", "DCIM/ Documents/ Download/", ""},                                    // several: listed (no file, no hidden)
+		{"Do", "Do", "Documents/ Download/", ""},                                        // nothing more they share
+		{"Dow", "Download" + sep, "", ""},                                               // one again
+		{"dow", "Download" + sep, "", ""},                                               // case does not matter when nothing has it
+		{"d", "dl" + sep, "", ""},                                                       // the same case wins
+		{"Download" + sep + "S", "Download" + sep + "Screenshots" + sep, "", ""},        // inside a folder
+		{".", ".Dhidden" + sep, "", ""},                                                 // hidden only for a dot
+		{"xyz", "xyz", "", "No folder starts with 'xyz'"},                               // none: the text stays
+		{"nope" + sep + "a", "nope" + sep + "a", "", "Couldn't read 'nope" + sep + "'"}, // a folder that is not there
 	} {
 		gotoTyping(t, s, c.typed)
 		press(t, s, tab)

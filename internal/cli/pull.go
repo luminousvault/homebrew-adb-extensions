@@ -156,7 +156,7 @@ func runPull(c *Ctx) error {
 		switch {
 		case base == name:
 		case here[files.FoldName(name)]:
-			renamed = fmt.Sprintf("%s already exists in %s, saving as %s", q(name), q(dest), q(base))
+			renamed = fmt.Sprintf("%s already exists in %s, saving as %s", q(name), q(displayDir(dest)), q(base))
 		default:
 			renamed = fmt.Sprintf("Another file is also named %s, saving as %s", q(name), q(base))
 		}
@@ -179,15 +179,16 @@ func runPull(c *Ctx) error {
 		if renamed != "" { // after the step's "==>" line, before its result
 			ui.Warn("%s", renamed)
 		}
-		ui.Success("Pulled %s %s", q(local), ui.Err.Dim("("+deviceName(serial)+", "+files.HumanSize(recent[i].Size)+", "+elapsed(start)+")"))
-		ui.Out.Println(local)
+		abs, shown := savedPath(local)
+		ui.Success("Pulled %s %s", q(shown), ui.Err.Dim("("+deviceName(serial)+", "+files.HumanSize(recent[i].Size)+", "+elapsed(start)+")"))
+		ui.Out.Println(abs)
 	}
 	if failed > 0 {
 		ui.Errorf("Couldn't pull %d of %s", failed, ui.Plural(ok+failed, "file"))
 		return errReported
 	}
 	if ok > 1 {
-		ui.Success("Pulled %s from %s to %s", ui.Plural(ok, "file"), deviceName(serial), q(dest))
+		ui.Success("Pulled %s from %s to %s", ui.Plural(ok, "file"), deviceName(serial), q(displayDir(dest)))
 	}
 	return nil
 }

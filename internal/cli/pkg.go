@@ -178,6 +178,16 @@ func listAPKs(dir, order string) []string {
 }
 
 // tildeHome abbreviates the home directory prefix as "~".
+// savedPath names a file ak saved on this computer two ways: the absolute
+// path for stdout, so a script can use it from any folder, and the same path
+// with the home folder as ~ for the ✓ message, so people see where it went.
+func savedPath(p string) (abs, shown string) {
+	if a, err := filepath.Abs(p); err == nil {
+		p = a
+	}
+	return p, tildeHome(p)
+}
+
 func tildeHome(p string) string {
 	home, err := os.UserHomeDir()
 	if err == nil && home != "" && strings.HasPrefix(p, home) {

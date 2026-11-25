@@ -109,8 +109,9 @@ func runScreenshot(c *Ctx) error {
 				failed = true
 				continue
 			}
-			ui.Success("Saved %s %s", q(path), meta)
-			ui.Out.Println(path)
+			abs, shown := savedPath(path)
+			ui.Success("Saved %s %s", q(shown), meta)
+			ui.Out.Println(abs)
 		}
 		if copyImg {
 			if err := copyScreenshot(path, data, save); err != nil {

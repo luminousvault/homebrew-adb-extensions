@@ -959,7 +959,7 @@ func TestScreenOffWarnings(t *testing.T) {
 		r := ak(t, f, "screenshot", "shot.png")
 		want := "Warning: The screen of Google Pixel 9 Pro is off, so the image may be black\n" +
 			"Hint: Turn the screen on: 'adb -s " + serial + " shell input keyevent WAKEUP'\n"
-		if r.code != 0 || r.out != "shot.png\n" || strings.Contains(r.err, want) != c.warn {
+		if r.code != 0 || r.out != absIn(t, "shot.png")+"\n" || strings.Contains(r.err, want) != c.warn {
 			t.Errorf("screenshot (%q): code %d out %q err %q", c.power, r.code, r.out, r.err)
 		}
 

@@ -2,11 +2,12 @@ package files
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"strings"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/luminousvault/homebrew-adb-extensions/internal/ui"
 )
 
 // toClipboard takes the targets of p (3/c copy, 4/x cut). The clipboard
@@ -38,13 +39,13 @@ func (s *state) paste(p *pane) {
 		s.setMsg(msgInfo, "Nothing to paste: 3 copies or 4 cuts items first")
 		return
 	case p.recent:
-		s.setMsg(msgInfo, "Can't paste into the recent files: 2 shows the folder")
+		s.setMsg(msgInfo, "Paste in the folder view: 2 shows it")
 		return
 	}
 	from, to := s.panes[s.clip.side].fs, p.fs
 	entries, err := to.List(p.dir) // what is there now
 	if err != nil {
-		s.setMsg(msgError, "Can't paste here: %s", errText(err))
+		s.setMsg(msgError, "Couldn't paste into %s: %s", place(to, p.dir), errText(err))
 		return
 	}
 	items := s.clip.items
@@ -67,7 +68,7 @@ func (s *state) paste(p *pane) {
 		if same {
 			item, dir := real[1+2*i], real[2+2*i]
 			if it.Dir && (under(to, real[0], item) || under(to, p.dir, it.Path)) { // the folder is the item or inside it
-				s.setMsg(msgError, "Can't paste folder '%s' into itself", shown(it.Name))
+				s.setMsg(msgError, "Couldn't paste %s into itself", ui.Quote(shown(it.Name)))
 				return
 			}
 			sameDir = from.Dir(it.Path) == p.dir || (dir != "" && dir == real[0])
@@ -141,8 +142,8 @@ func pasteRoute(job *copyJob) string {
 	return route(job, false)
 }
 
-// finishPaste reports a paste: "Copied 3 files to ~/Downloads", "Moved
-// 'a.txt' to Pixel:/sdcard/DCIM". Moved items leave the clipboard.
+// finishPaste reports a paste: "Copied 3 files to '~/Downloads'", "Moved
+// 'a.txt' to '/sdcard/DCIM' on Pixel". Moved items leave the clipboard.
 func (s *state) finishPaste(job *copyJob, res copyResult) {
 	for _, p := range s.panes {
 		if job.cut && p.fs == job.from {
@@ -165,34 +166,7 @@ func (s *state) finishPaste(job *copyJob, res copyResult) {
 	if job.cut {
 		verb, past, ing = "move", "Moved", "moving"
 	}
-	dest := pasteRoute(job)
-	// Onto the computer the route names the device first ("Pixel →
-	// ~/Downloads"), so it reads "from", as for 5: "Moved 'a.txt' from Pixel → ~/x".
-	prep := "to"
-	if !job.sameFS() && job.to.Side() == PC {
-		prep = "from"
-	}
-	what := pastedItems(res.done, res.doneAs)
-	if len(res.done) > 0 {
-		s.addDone(fmt.Sprintf("%s %s %s %s", past, what, prep, dest), itemNames(res.done, res.doneAs))
-	}
-	if res.canceled {
-		s.summary.Canceled = append(s.summary.Canceled,
-			fmt.Sprintf("Canceled %s %s %s: %d of %d %s", ing, prep, dest, len(res.done), res.todo, strings.ToLower(past)))
-	}
-	for _, f := range res.failed {
-		s.summary.Failed = append(s.summary.Failed, fmt.Sprintf("Couldn't %s '%s' %s %s: %s", verb, f.name, prep, dest, f.msg))
-	}
-	total := len(res.done) + len(res.failed)
-	switch {
-	case res.canceled:
-		s.setMsg(msgWarn, "Canceled %s: %d of %d %s", ing, len(res.done), res.todo, strings.ToLower(past))
-	case len(res.failed) > 0:
-		s.msg = &message{kind: msgError, failures: res.failed, done: itemNames(res.done, res.doneAs),
-			text: fmt.Sprintf("%d of %d %s, %d failed", len(res.done), total, strings.ToLower(past), len(res.failed))}
-	default:
-		s.setMsg(msgSuccess, "%s %s %s %s", past, what, prep, dest)
-	}
+	s.reportCopy(job, res, verb, past, ing)
 }
 
 // clipParts is the clipboard line's text: "Copy 3 files (12.0 MB) from " and

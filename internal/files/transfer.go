@@ -185,6 +185,27 @@ func (j *copyJob) takeFinished() []copyOp {
 // device or within the computer).
 func (j *copyJob) sameFS() bool { return j.from == j.to }
 
+// where is where the job copies to, in words for messages: "from Pixel to
+// '~/Downloads'" from the device onto the computer, else "to '/sdcard/DCIM'
+// on Pixel" or "to '~/x'" (the progress line shows it with arrows instead).
+func (j *copyJob) where() string {
+	if j.from.Side() == Device && j.to.Side() == PC {
+		return "from " + j.from.Label() + " to " + place(j.to, j.dstDir)
+	}
+	return "to " + place(j.to, j.dstDir)
+}
+
+// sources are the items the job copies (not the skipped ones).
+func (j *copyJob) sources() []Entry {
+	var list []Entry
+	for _, op := range j.ops {
+		if !op.skip {
+			list = append(list, op.src)
+		}
+	}
+	return list
+}
+
 type failure struct{ name, msg string }
 
 type copyResult struct {
@@ -273,9 +294,9 @@ type usage struct{ bytes, files int64 }
 var errExists = errors.New("already exists")
 
 var (
-	errInSource   = errors.New("can't replace a folder that holds what is pasted")
+	errInSource   = errors.New("the folder it would replace holds what is pasted")
 	errNoSize     = errors.New("couldn't check the size; the original was kept")
-	errIntoItself = errors.New("can't paste a folder into itself")
+	errIntoItself = errors.New("the folder would go into itself")
 )
 
 // one copies (or moves) a single item. It never deletes anything it did not

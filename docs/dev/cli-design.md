@@ -342,7 +342,7 @@ Error: Couldn't install on 1 of 2 devices
   - macOS: PNG + LZW TIFF를 한 항목으로 씁니다. 클립보드 기록 앱이 TIFF가 있어야 이미지를 기록하기 때문입니다.
   - Linux: Wayland(`WAYLAND_DISPLAY`)면 `wl-copy`, 아니면 `xclip`. 둘 다 없으면 오류. Windows: PowerShell.
 - `-o, --open`(`screenshot`, `record`): 저장한 파일을 기본 앱으로 엽니다(`open` / `xdg-open` / `rundll32`). 파일은 이미 저장됐으므로 열기 실패는 `Warning:`입니다.
-- 파일을 만드는 커맨드는 저장한 경로를 stdout에 따옴표 없이 한 줄씩 출력합니다(`✓ Saved …` 메시지는 stderr): `screenshot`, `record`, `extract`(로컬 APK), `pull`(받은 파일마다). `push`는 기기 쪽 경로(`/sdcard/Download/x.png`)를 출력합니다. `wifi`는 연결한 주소를 출력합니다.
+- 파일을 만드는 커맨드는 저장한 경로를 stdout에 따옴표 없이 한 줄씩 출력합니다(`✓ Saved …` 메시지는 stderr): `screenshot`, `record`, `extract`(로컬 APK), `pull`(받은 파일마다). 컴퓨터에 저장한 파일은 stdout에 **절대 경로**로 내보내 다른 폴더에서 써도 맞게 하고, `✓` 메시지에는 같은 경로를 홈 폴더만 `~`로 줄여 보여 줘 어디에 저장됐는지 보이게 합니다(`savedPath`): `✓ Saved '~/work/app.apk' (…)`. `push`는 기기 쪽 경로(`/sdcard/Download/x.png`)를 출력합니다. `wifi`는 연결한 주소를 출력합니다.
 
 ## 15. `ak files`
 
@@ -357,5 +357,5 @@ Error: Couldn't install on 1 of 2 devices
 - **대상:** 3 · 4 · 5 · 8은 보이는 선택, 없으면 커서 항목. 이름 바꾸기(0)는 최근 보기에서도 됩니다.
 - **아무것도 말없이 덮어쓰지 않습니다.** 같은 이름이면 o/s/r(대문자 = 전부)로 묻고, 덮어쓰기는 임시 이름으로 받아 크기를 확인한 뒤 바꿔 넣습니다. 실패 · 취소면 이번에 만든 것만 지웁니다. 이름 비교는 대상 파일 시스템 기준(대소문자 무시 FS에서는 Stat으로 확인)입니다. 이름 바꾸기도 대상이 있으면 실패합니다.
 - **색:** 이름 색은 할 수 있는 일로 정합니다(확장자가 아님): 빨강 읽을 수 없음, 보라 링크, 노랑 읽기 전용, 파랑 폴더, 초록 실행 파일, 흐림 숨김.
-- **삭제:** 항상 확인([y/N], `This cannot be undone.`). 기기는 `rm -rf`, 컴퓨터도 지금은 영구 삭제입니다. 기기에서 폴더를 지우면 MediaStore에 남는 폴더 행을 `content delete`로 정리합니다(실패는 로그만).
+- **삭제:** 항상 확인(`Delete 3 files from <기기> for good? [y/N]`). 기기는 `rm -rf`, 컴퓨터도 지금은 영구 삭제입니다. 기기에서 폴더를 지우면 MediaStore에 남는 폴더 행을 `content delete`로 정리합니다(실패는 로그만).
 - **끝난 뒤:** 한 일을 stderr에 요약합니다(`✓ Pulled …`, `Warning: Canceled …`, `Error: Couldn't …`). 실패가 있으면 1, Ctrl+C면 130입니다.

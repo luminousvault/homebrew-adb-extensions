@@ -127,7 +127,7 @@ func TestPasteFourWays(t *testing.T) {
 	var lines []string
 	lines = append(lines, s.summary.Done...)
 	joined := strings.Join(lines, "\n")
-	for _, want := range []string{"Copied 'photo.jpg' from Test Phone → ", "Moved 'doc.txt' to ", "Copied 'movie.mp4' to Test Phone:", "Moved 'notes.txt' to "} {
+	for _, want := range []string{"Copied 'photo.jpg' from Test Phone to '", "Moved 'doc.txt' to '", "Copied 'movie.mp4' to '", "' on Test Phone", "Moved 'notes.txt' to '"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("summary lacks %q:\n%s", want, joined)
 		}
@@ -245,7 +245,7 @@ func TestPasteBlockedInRecentView(t *testing.T) {
 	p.recent, p.recentList = true, []Entry{}
 	s.refreshRows(p, "")
 	press(t, s, "v")
-	if s.msg == nil || !strings.Contains(s.msg.text, "recent files") || s.pending != nil {
+	if s.msg == nil || s.msg.text != "Paste in the folder view: 2 shows it" || s.pending != nil {
 		t.Errorf("paste in the recent view: %+v", s.msg)
 	}
 }
